@@ -1,8 +1,10 @@
 # Venus
 
+![Venus](docs/img/image.png)
+
 **Venus is your project heart.**
 
-The heart is where feelings and wishes live — where you want to go. It also pushes blood so the body can work.
+The heart is where feelings and wishes live — where you want to go — and aesthetics, the feeling of beauty. It also pushes blood so the body can work.
 
 Venus is that for a project: it **accumulates** feelings and wishes (aims, intention, the spec humans accept). It **pushes specs like blood** through the full cycle — plan, implement, test, review, iterate — so the rest of the body (agents, PRs, tests, Hugo) can work. Without that pulse, the cycle is motion without a heart.
 
