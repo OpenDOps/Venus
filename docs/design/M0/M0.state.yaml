@@ -1,0 +1,62 @@
+# Board for docs/design/M0/plan.md
+# Canonical workflow state. Not a second copy of the step prose.
+planId: m0-empty-host
+docId: null # design-folder plan; no BlockSuite page yet
+authors:
+  plannerAgentId: null
+  dodAgentId: null
+  implementerAgentId: null
+dodAccepted:
+  gitSha: null
+  acceptedBy: null
+columns:
+  implement: {}
+  autotests: {}
+  review: {}
+  done: {}
+steps:
+  step-scaffold:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-pin:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-recon:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-workspace:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-editor:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-seed:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-outline:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-provider-stub:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-verify:
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults: []
