@@ -16,7 +16,7 @@ Venus is a spec-driven development tool: a collaborative wiki that is also a git
 
 ## Docs
 
-- [Pitch](docs/marketing/pitch.md) — what Venus is (the project heart)
-- [Comparisons](docs/marketing/comparisons.md) — vs PM tools and CodeSpeak
 - [Design](docs/design/venus-design.md) — product and data model (lease, freeze, git snapshots)
+- [Comparisons](docs/marketing/comparisons.md) — vs PM tools and CodeSpeak
 - [Plans](docs/drafts/pre-design/venus-plan.md) — spec → plan → DoD → implement → human-accepted docs
+- [Pitch](docs/marketing/pitch.md) — what Venus is (the project heart)
