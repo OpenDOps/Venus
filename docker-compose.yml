@@ -1,0 +1,38 @@
+# M1 step 2: Postgres (docs + blobs) and OctoBase keck (WS/HTTP).
+# keck image is AGPL-3.0 — see deploy/NOTICE.
+# Do not add a web service here (step 8). Do not publish 5432.
+# Never omit DATABASE_URL (keck would fall back to SQLite). Never USE_MEMORY_SQLITE.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: venus
+      POSTGRES_PASSWORD: venus
+      POSTGRES_DB: jwst
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U venus -d jwst"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  octobase:
+    build:
+      context: ./deploy/octobase
+      dockerfile: Dockerfile
+      args:
+        OCTOBASE_SHA: 276e0e94719a652483119c5fea16be13293ee21c
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://venus:venus@postgres:5432/jwst?sslmode=disable
+      KECK_PORT: "3000"
+    ports:
+      - "3000:3000"
+
+volumes:
+  pg-data:

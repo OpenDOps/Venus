@@ -1,0 +1,9 @@
+The `octobase` Compose service is OctoBase **keck**, licensed **AGPL-3.0-only**.
+
+Source: https://github.com/toeverything/OctoBase
+Pin:    276e0e94719a652483119c5fea16be13293ee21c
+
+keck is an external server image. It is not a dependency of `@venus/web`.
+See docs/legal/licensing.md.
+
+Postgres in the `postgres` service is the PostgreSQL license (not AGPL).

@@ -15,48 +15,124 @@ columns:
   review: {}
   done: {}
 steps:
-  step-scaffold:
-    state: implement
+  step-scaffold: # 1
+    n: 1
+    state: done
+    breakpoint: none
+    pr: null
+    dodResults:
+      - name: App boots
+        status: pass
+      - name: Workspace only
+        status: pass
+  step-pin: # 2
+    n: 2
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-pin:
-    state: implement
+    dodResults:
+      - name: Same version
+        status: pass
+        evidence: "@blocksuite/* 0.22.4; yjs 13.6.32 only"
+      - name: Import compiles
+        status: pass
+        evidence: "pnpm --filter @venus/web build (tsc --noEmit && vite build)"
+  step-recon: # 3
+    n: 3
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-recon:
-    state: implement
+    dodResults:
+      - name: Map complete
+        status: pass
+        evidence: "docs/design/api-map.md Actual column filled for 0.22.4"
+      - name: Store exists
+        status: pass
+        evidence: "pnpm --filter @venus/web test — store.root.flavour === affine:page"
+  step-workspace: # 4
+    n: 4
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-workspace:
-    state: implement
+    dodResults:
+      - name: Single page
+        status: pass
+        evidence: "pnpm test — one doc doc:home; affine:page → affine:note → affine:paragraph"
+      - name: No network
+        status: pass
+        evidence: "createM0Workspace does not construct WebSocket; no y-websocket/y-indexeddb/@affine/core in @venus/web"
+  step-editor: # 5
+    n: 5
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-editor:
-    state: implement
+    dodResults:
+      - name: Type
+        status: pass
+        evidence: "pnpm test:e2e — type into the note (click paragraph, type hello)"
+      - name: Slash
+        status: pass
+        evidence: "pnpm test:e2e — slash menu opens (affine-slash-menu .slash-menu)"
+      - name: Undo
+        status: pass
+        evidence: "pnpm test:e2e — undo reverts typed text (ControlOrMeta+z)"
+      - name: No AFFiNE app shell
+        status: pass
+        evidence: "pnpm test — no @affine/core or @blocksuite/integration-test in @venus/web deps or host imports"
+  step-seed: # 6
+    n: 6
+    state: done
+    breakpoint: none
+    pr: null
+    dodResults:
+      - name: Visible structure
+        status: pass
+        evidence: "pnpm test — seed.test.ts title/H1/H2; pnpm test:e2e — m0-seed.spec.ts doc-title + .h1 + .h2"
+      - name: Constructor undo
+        status: pass
+        evidence: "pnpm test — canUndo false, undo leaves tree; pnpm test:e2e — one ControlOrMeta+z leaves title + headings"
+  step-outline: # 7
+    n: 7
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-seed:
-    state: implement
+    dodResults:
+      - name: Lists headings
+        status: pass
+        evidence: "pnpm test:e2e — m0-outline.spec.ts outline-block-preview-h1/h2 Why Venus / Empty host"
+      - name: Tracks edits
+        status: pass
+        evidence: "pnpm test:e2e — rename H1, outline label updates"
+      - name: Scroll
+        status: pass
+        evidence: "pnpm test:e2e — click outline H2, .h2 is in viewport"
+      - name: Not a wiki TOC
+        status: pass
+        evidence: "pnpm test:e2e — outline has headings not body/folders; pnpm test — outline.test.ts OutlinePanel from fragments/outline"
+  step-provider-stub: # 8
+    n: 8
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-outline:
-    state: implement
+    dodResults:
+      - name: No-op session
+        status: pass
+        evidence: "pnpm test:e2e — m0-provider.spec.ts type hello, reload, seed back, typed text gone"
+      - name: Seam exists
+        status: pass
+        evidence: "pnpm test — sync-provider.test.ts custom SyncProvider connect(docId, spaceDoc); mount-editor.js has no SyncProvider import"
+  step-verify: # 9
+    n: 9
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-provider-stub:
-    state: implement
-    breakpoint: human
-    pr: null
-    dodResults: []
-  step-verify:
-    state: implement
-    breakpoint: human
-    pr: null
-    dodResults: []
+    dodResults:
+      - name: Manual path
+        status: pass
+        evidence: "2026-08-29 person followed Manual testing in Chrome/Firefox; seed, type, slash list, H3, outline edit, scroll, undo, refresh, no WS — all held"
+      - name: Smoke
+        status: pass
+        evidence: "pnpm test:e2e exits 0 — m0-smoke.spec.ts outline H1 Why Venus + type hello into affine-note affine-paragraph rich-text"
+      - name: Refresh
+        status: pass
+        evidence: "pnpm test:e2e — m0-smoke.spec.ts type hello, reload, seed H1/H2 back, typed text gone"

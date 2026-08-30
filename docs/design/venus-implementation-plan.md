@@ -1,12 +1,14 @@
 # Venus implementation plan
 
-How to build the design in [venus-design.md](./venus-design.md) without taking all of AFFiNE: which packages to use, how they bind, and in what order.
+How to build the design in [venus-design.md](./venus-design.md) without taking all of AFFiNE: which packages to use, how they bind, and in what order. Installed symbols (Actual imports, pins, Vite notes): [api-map.md](./api-map.md).
 
 ## Principle
 
 Start with a **thin host** around BlockSuite + OctoBase. Add Venus as layers: catalog, git snapshotter, lease, review. Do not start from the AFFiNE web app.
 
 OctoBase is pre-1.0 and AGPL. Use it for **prototyping** (local / single-server). **Replace it before Venus is a cloud service.** Keep the sync provider swappable (Yjs binaries, spaces, blobs — not OctoBase-specific APIs). Licensing: [licensing.md](../legal/licensing.md). v1 scope and the git/WYSIWYG rule: [v1-concerns.md](../drafts/pre-design/v1-concerns.md). Spec-driven plans: [venus-plan.md](../drafts/pre-design/venus-plan.md). Pitch: [pitch.md](../marketing/pitch.md).
+
+**Prototype runtime (every milestone from M1 on):** persist is **Postgres in Docker**. OctoBase **keck is a second Docker**. Compose services are `postgres` + `octobase` (+ `web` when the host is containerized). Do not use SQLite as the product store. Do not put keck and Postgres in one container. Cloud Venus still replaces OctoBase (Hocuspocus / y-websocket + own Postgres); that is not M1.
 
 ## Tool choices
 
@@ -23,17 +25,18 @@ OctoBase is pre-1.0 and AGPL. Use it for **prototyping** (local / single-server)
 
 Host: Vite + React (or vanilla playground first). Mount `AffineEditorContainer` / current page-editor API on a `Store` from the collection.
 
-Do **not** take `@affine/core` explorer, GraphQL, or copilot. Those pull the whole product.
+Do **not** take `@affine/core` explorer, GraphQL, or copilot. Those pull the whole product. A thin **Venus product header** (undo/redo, current page) is host chrome in [M4](#m4--folder-tree--links--product-header-12-weeks), not that package.
 
 ### Live CRDT — Yjs in the browser
 
 BlockSuite already owns a Y.Doc per page. Venus does not replace that with a second client CRDT.
 
-### Sync and persistence — OctoBase (prototype) + y-octo
+### Sync and persistence — OctoBase keck + Postgres (prototype) + y-octo
 
 | Piece | Use |
 |---|---|
-| **OctoBase** | Prototype workspace store: space-per-page, blob sync, WebSocket. **Not for cloud.** |
+| **OctoBase keck** | Prototype WS front: space-per-page, blob HTTP, Yjs sync. **Own Docker** (`octobase`). **Not for cloud.** |
+| **Postgres** | Prototype persist for Yjs docs **and** blobs. **Own Docker** (`postgres:16`). Named volume. |
 | **y-octo** | MIT. Server merge (`merge_updates_in_apply_way`), snapshots, binary parse; OK in cloud |
 | **Cloud sync (later)** | Hocuspocus or y-websocket + own persistence; same Yjs provider interface |
 
@@ -43,20 +46,17 @@ Binding:
 BlockSuite Store (Y.Doc)
         │  Yjs update binary
         ▼
-OctoBase provider (WS)
-        │
+OctoBase keck  (Compose `octobase`)  WS + blob HTTP
+        │  DATABASE_URL
         ▼
-y-octo Doc on the server
-        │
-        ├── persist snapshot / updates
-        └── Venus: snapshot at lease, markdown export
+Postgres       (Compose `postgres`)  docs + blobs
 ```
 
-Client: whatever OctoBase currently exposes as a JS/WASM provider that applies Yjs updates to a `Y.Doc`. If the JS provider is thinner than AFFiNE’s `nbstore`, write a 50-line `Y.Doc` ↔ OctoBase bridge (encode updates, apply remote updates, blobs). Do not invent a new CRDT.
+Client: Venus `OctoBaseKeckProvider` (`yjs` + `y-protocols` + subprotocol `AFFiNE`). There is no npm OctoBase client. Do not invent a new CRDT.
 
-Server: one OctoBase process per workspace (or one process, many workspaces). Venus services (lease, git) sit beside it and read snapshots through y-octo.
+Server: keck in Docker, Postgres in another Docker. Venus services (lease, git) sit beside them and read snapshots through y-octo / keck export.
 
-Keep the provider interface swappable from day one: the design depends on Yjs binaries and spaces, not OctoBase-specific block APIs. If OctoBase’s JS story is too raw for week 1, run BlockSuite with `y-websocket` behind the same protocol. That path is also the **cloud** path (no OctoBase). y-octo may still sit on the server for merge/snapshots.
+Keep the provider interface swappable from day one: the design depends on Yjs binaries and spaces, not OctoBase-specific block APIs. **M1 implements OctoBase keck only** (not stock `y-websocket`). The **cloud** path is still Hocuspocus / y-websocket + own Postgres (no OctoBase). y-octo may still sit on the server for merge/snapshots.
 
 ### Git — libgit2 or `simple-git`, one repo on disk
 
@@ -75,6 +75,23 @@ Use `isomorphic-git` or `simple-git` in Node, or `git2` in a small Rust sidecar 
 Do not use a docs-framework TOC (Docusaurus, VitePress) as the live tree. Those assume a static build. Do not use AFFiNE’s explorer.
 
 Tree UI: any accessible tree (e.g. React Aria Tree, or a small custom list). Data comes only from the catalog CRDT. Drop = catalog reparent.
+
+### Product header — Venus chrome, with the folder tree
+
+BlockSuite’s **page** widgets are in-page only: slash menu, selection format toolbar, drag-handle, heading outline. Desktop has **no** persistent undo/redo bar. AFFiNE puts those buttons in `@affine/core`’s header. Venus does not take that shell.
+
+When the wiki tree appears ([M4](#m4--folder-tree--links--product-header-12-weeks)), the host already needs a **layout chrome** (tree left, editor center, outline right). Put a **thin product header** on that same slice:
+
+| In the header | How |
+|---|---|
+| Undo / Redo | `store.undo()` / `store.redo()`; disable from `store.canUndo` / `store.canRedo` (or `store.history.canUndo$` / `canRedo$`). Same stack as ⌘Z / Ctrl+Z. |
+| Current page | Catalog title / `gitPath` of the open doc |
+
+Do **not** build a history timeline. `store.history.undoManager` is a Yjs transaction stack, not labeled “typed hello” / “inserted list.” AFFiNE does not ship that panel either.
+
+Do **not** copy AFFiNE explorer, copilot, or GraphQL. Header is a few host controls on the open `Store`, next to the tree.
+
+Until M4, M0–M3 stay keyboard undo and BlockSuite widgets only.
 
 ### Markdown editor (lease holder only)
 
@@ -224,17 +241,20 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ### M0 — Empty host (days)
 
-Step-by-step: [M0/plan.md](./M0/plan.md). Board: [M0/M0.state.yaml](./M0/M0.state.yaml).
+**Status:** done (2026-08-29). Step-by-step: [M0/plan.md](./M0/plan.md). Board: [M0/M0.state.yaml](./M0/M0.state.yaml).
 
 - Vite app, one `DocCollection`, one page, BlockSuite page editor.
 - No sync. Prove editor + outline widget.
 
 ### M1 — OctoBase loop (week)
 
-- OctoBase server (or official example) + WebSocket.
+**Status:** in progress. Steps 1–3 done (2026-08-30). Step-by-step: [M1/plan.md](./M1/plan.md). Board: [M1/M1.state.yaml](./M1/M1.state.yaml).
+
+- **Postgres** in Docker (`postgres:16`). **OctoBase keck** in a **second** Docker (`octobase`, `DATABASE_URL` → Postgres). Browser talks Yjs over WebSocket (`AFFiNE` subprotocol) to keck only.
+- Thin JS client `OctoBaseKeckProvider` behind `SyncProvider`. Not stock `y-websocket` in this milestone.
 - Two browser tabs edit the same page.
-- Blobs: one image upload.
-- y-octo snapshot API reachable from Venus (even if only a `curl`/native call).
+- Blobs: one image upload (bytes in Postgres via keck HTTP).
+- y-octo snapshot API reachable from Venus (keck `GET /api/block/venus-m0/export`).
 
 **Exit:** refresh / second client sees the same page.
 
@@ -256,15 +276,16 @@ Step-by-step: [M0/plan.md](./M0/plan.md). Board: [M0/M0.state.yaml](./M0/M0.stat
 
 **Exit:** clone `wiki/` elsewhere and read the page as markdown; casual WYSIWYG did not require a review comment.
 
-### M4 — Folder tree + links (1–2 weeks)
+### M4 — Folder tree + links + product header (1–2 weeks)
 
 - Catalog CRDT: folders, reorder, rename, `gitPath`.
 - Tree UI; drop to reparent (live CRDT).
+- **Product header** on the same chrome: Undo / Redo on the open page’s `Store`; show the current page name. Not `@affine/core`. Not a history list.
+- Layout: header top; folder tree left; page editor; in-page outline stays the heading TOC (not a second wiki tree).
 - Publish includes `git mv`.
 - `affine:embed-linked-doc` + markdown link round-trip (`docId` + path).
-- Outline widget stays the in-page TOC.
 
-**Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves.
+**Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves. Header undo/redo matches keyboard undo on the open page.
 
 ### M5 — Lease + freeze (week)
 
@@ -307,6 +328,8 @@ Step-by-step: [M0/plan.md](./M0/plan.md). Board: [M0/M0.state.yaml](./M0/M0.stat
 
 ```text
 Venus/
+  docker-compose.yml        # postgres + octobase (+ web from M1 step 8)
+  deploy/octobase/          # Dockerfile: keck from pinned git SHA
   apps/web/                 # BlockSuite host + tree + review UI
   crates/venus-sidecar/     # y-octo + git2: snapshot, export, commit
   packages/catalog/         # catalog schema + ops
@@ -316,7 +339,7 @@ Venus/
   docs/drafts/pre-design/   # these docs
 ```
 
-OctoBase stays an external binary/crate until we know we must vendor it.
+OctoBase stays an **external Docker image** (AGPL). Do not vendor it into `apps/web`. Postgres is a **second** image.
 
 ## Risks and how M0–M1 de-risk them
 
@@ -334,8 +357,8 @@ OctoBase stays an external binary/crate until we know we must vendor it.
 
 M0 + M1 only:
 
-1. Docker Compose: `octobase` + `venus-web`.
-2. One workspace, IndexedDB optional, OctoBase is source for refresh.
+1. Docker Compose: **`postgres` + `octobase` + `venus-web`**. Postgres and keck are **separate** containers.
+2. One workspace, IndexedDB optional, **Postgres** (via keck) is the source for refresh. SQLite is not the product store.
 3. No git, no lease, no catalog.
 
 Everything after that is Venus. Do not block M1 on review design.
@@ -343,8 +366,8 @@ Everything after that is Venus. Do not block M1 on review design.
 ## First implementation slice (when coding starts)
 
 1. Playground page editor.
-2. OctoBase sync of that one doc.
+2. OctoBase sync of that one doc (Postgres + keck in Compose).
 3. Read-only markdown pane + **adapter fixture suite**.
-4. Then catalog + git snapshotter, then lease.
+4. Then catalog + git snapshotter, then **folder tree + product header**, then lease.
 
 Do not start M6 until the adapter gate is green. Snapshot git (autocomment) first, then freeze, then markdown comment-commits.

@@ -1,0 +1,121 @@
+# Board for docs/design/M1/plan.md
+# Canonical workflow state. Not a second copy of the step prose.
+planId: m1-octobase-loop
+docId: null # design-folder plan; no BlockSuite page yet
+authors:
+  plannerAgentId: null
+  dodAgentId: null
+  implementerAgentId: null
+dodAccepted:
+  gitSha: null
+  acceptedBy: null
+columns:
+  implement: {}
+  autotests: {}
+  review: {}
+  done: {}
+steps:
+  step-recon-sync: # 1
+    n: 1
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Map complete
+        status: pass
+        evidence: "docs/design/api-map.md Chosen backend kind octobase; Actual column filled (keck SHA 276e0e9, OctoBaseKeckProvider, blobs, export curl)"
+      - name: Spike syncs
+        status: pass
+        evidence: "2026-08-29 node scripts/m1-recon-spike.mjs → SPIKE OK; B saw spike.k=v in 192ms on ws://127.0.0.1:3000/collaboration/venus-m0 AFFiNE"
+  step-server: # 2
+    n: 2
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Server up
+        status: pass
+        evidence: "2026-08-30 docker compose up --build postgres octobase; ps shows postgres (healthy, 5432 unpublished) + octobase (:3000); curl POST /collaboration/venus-m0 → {\"protocol\":\"AFFiNE\"}; keck log use external database postgres://venus:venus@postgres:5432/jwst"
+      - name: Persists
+        status: pass
+        evidence: "2026-08-30 node scripts/m1-recon-spike.mjs SPIKE OK; wait 3s; compose restart octobase → SPIKE_CHECK=1 spike.k=v (23 bytes); compose down (no -v) + up → SPIKE_CHECK OK; GET /api/block/venus-m0/export 23 bytes contains spike"
+  step-provider: # 3
+    n: 3
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Seam holds
+        status: pass
+        evidence: "2026-08-30 vitest sync-provider.test.ts: mount-editor.js / editor-container.js / boot.js have no y-websocket/octobase/hocuspocus/y-indexeddb/y-protocols/lib0 imports"
+      - name: Env switch
+        status: pass
+        evidence: "2026-08-30 vitest: unset env → memory, no WebSocket; VITE_SYNC_URL → OctoBaseKeckProvider, connect opens ws with AFFiNE. Playwright PLAYWRIGHT_M1=1 e2e/m1-provider.spec.ts: kind octobase, WS ws://127.0.0.1:3000/collaboration/venus-m0, protocols [AFFiNE]. m0-provider.spec.ts still passes (refresh drops text)."
+  step-hydrate: # 4
+    n: 4
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Refresh keeps
+        status: pending
+      - name: No double page
+        status: pending
+      - name: Memory unchanged
+        status: pending
+  step-two-clients: # 5
+    n: 5
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: A→B
+        status: pending
+      - name: Same seed
+        status: pending
+  step-blobs: # 6
+    n: 6
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Upload
+        status: pending
+      - name: Second client
+        status: pending
+      - name: Refresh
+        status: pending
+  step-snapshot: # 7
+    n: 7
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Reachable
+        status: pending
+      - name: Decodes
+        status: pending
+  step-compose: # 8
+    n: 8
+    state: implement
+    breakpoint: none
+    pr: null
+    dodResults:
+      - name: Three services
+        status: pending
+      - name: Loop from Compose
+        status: pending
+  step-verify: # 9
+    n: 9
+    state: implement
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Manual path
+        status: pending
+      - name: Smoke
+        status: pending
+      - name: Refresh + second client
+        status: pending
+      - name: Snapshot
+        status: pending

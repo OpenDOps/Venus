@@ -1,0 +1,14 @@
+node_modules
+dist
+.vite
+test-results
+playwright-report
+blob-report
+playwright/.cache
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+# Host keck SQLite fallback (not the product store)
+/data

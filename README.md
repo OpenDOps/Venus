@@ -16,8 +16,22 @@ That is the product. Venus is the heart of the project — not the board and not
 
 **Venus is a spec-driven development tool**: a collaborative wiki that is also a git markdown tree. The spec is first-class. A story is not done until a human accepts the spec diff.
 
+## Run
+
+Node `>=22`, pnpm `10.19.0`. From the repo root:
+
+```bash
+pnpm install
+pnpm dev
+pnpm test
+pnpm build
+```
+
+What those do, what Vitest covers, and what is not automated yet: **[docs/runbook.md](docs/runbook.md)**.
+
 ## Docs
 
+- [Runbook](docs/runbook.md) — install, `dev`, `test`, `build`
 - [Design](docs/design/venus-design.md) — product and data model (lease, freeze, git snapshots)
 - [Comparisons](docs/marketing/comparisons.md) — vs PM tools and CodeSpeak
 - [Plans](docs/drafts/pre-design/venus-plan.md) — spec → plan → DoD → implement → human-accepted docs

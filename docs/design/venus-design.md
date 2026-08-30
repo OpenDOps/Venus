@@ -18,6 +18,7 @@ This document is the product and data design. Related:
 - **Why freeze on lease:** [lease-freeze-rationale.md](./lease-freeze-rationale.md)
 - **Spec-driven plans** (yaml board; trackers are mirrors): [venus-plan.md](../drafts/pre-design/venus-plan.md)
 - Binding and rollout: [venus-implementation-plan.md](./venus-implementation-plan.md)
+- Installed symbols: [api-map.md](./api-map.md)
 - Markdown cannot be a second CRDT: [cursor_crdt_limitations_with_markdown.md](../drafts/pre-design/cursor_crdt_limitations_with_markdown.md)
 - Licensing (BlockSuite MPL vs OctoBase AGPL, prototype vs cloud): [licensing.md](../legal/licensing.md)
 - Pitch (humans keep intention, agents do the work): [pitch.md](../marketing/pitch.md)
@@ -86,7 +87,7 @@ Venus is **based on** BlockSuite, OctoBase, and y-octo. It is **another tool** o
 | **BlockSuite** (`@blocksuite/affine`) | Primary editor: page editor, block schema, selection, outline, linked-doc embeds, markdown adapter. |
 | **Yjs (browser)** | Client CRDT that BlockSuite already uses. Every doc is a Y.Doc. |
 | **y-octo (Rust)** | Server-side Yjs-compatible engine: apply/merge updates, compact snapshots, binary ↔ structured doc, markdown conversion helpers. |
-| **OctoBase** | Local-first workspace store + sync (WebSocket / later WebRTC). Workspace → spaces (docs) → blocks. Blob sync for images. |
+| **OctoBase** | Prototype WS + blob HTTP (keck). **Own Docker.** Persist is **Postgres in a second Docker**, not SQLite. |
 | **Venus** | Lease, review commits, git snapshotter, folder catalog, freeze policy. None of this is BlockSuite’s job. |
 
 OctoBase is pre-1.0 and AGPL. **Prototype only:** it is a convenient CRDT workspace so we do not write a sync server from scratch. **Cloud Venus replaces it** (Yjs + y-websocket/Hocuspocus, optional y-octo). We do not take AFFiNE’s full product shell. Details: [licensing.md](../legal/licensing.md).

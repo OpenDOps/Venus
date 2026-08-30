@@ -7,9 +7,10 @@ This folder is the implementation contract for the M0 slice in [venus-implementa
 | File | Role |
 |---|---|
 | [plan.md](./plan.md) | Story, steps, DoD, file layout, order of work |
-| [api-map.md](./api-map.md) | Design names → installed BlockSuite exports (fill in step-recon) |
 | [M0.state.yaml](./M0.state.yaml) | Board: step status only |
 
-**Exit:** `pnpm --filter @venus/web dev` opens a page you can type in; headings appear in the outline; click a heading and the editor scrolls; refresh loses the text (memory-only).
+Shared: [api-map.md](../api-map.md) (design names → installed exports).
 
-**Next:** [M1 — OctoBase loop](../venus-implementation-plan.md#m1--octobase-loop-week).
+**Exit:** `pnpm --filter @venus/web dev` opens a page you can type in; headings appear in the outline; click a heading and the editor scrolls; refresh loses the text (memory-only). Met 2026-08-29 (Playwright smoke + person in Chrome/Firefox).
+
+**Next:** [M1 — OctoBase loop](../M1/README.md) ([implementation plan](../venus-implementation-plan.md#m1--octobase-loop-week)).

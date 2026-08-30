@@ -6,9 +6,9 @@
 | **Milestone** | [M0 in the implementation plan](../venus-implementation-plan.md#m0--empty-host-days) |
 | **Duration** | A few days, not a week |
 | **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
-| **Board** | [M0.state.yaml](./M0.state.yaml) |
+| **Board** | [M0.state.yaml](./M0.state.yaml) — all steps `done` (M0 closed 2026-08-29) |
 
-Parent design: [venus-design.md](../venus-design.md). Tool choices and bindings: [venus-implementation-plan.md](../venus-implementation-plan.md). Licensing: [licensing.md](../../legal/licensing.md).
+Parent design: [venus-design.md](../venus-design.md). Tool choices and bindings: [venus-implementation-plan.md](../venus-implementation-plan.md). Licensing: [licensing.md](../../legal/licensing.md). Installed symbols: [api-map.md](../api-map.md).
 
 This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
 
@@ -28,20 +28,20 @@ All of these must be true at once:
 4. The outline lists those headings; clicking one scrolls the editor to it.
 5. There is **no** WebSocket, OctoBase, IndexedDB, or git write. Refresh discards the session.
 6. No `@affine/core` (or AFFiNE GraphQL / copilot) dependency.
-7. [api-map.md](./api-map.md) is filled for every design name the code uses.
+7. [api-map.md](../api-map.md) is filled for every design name the code uses.
 
 ## Non-goals (do not start)
 
 | Later | Why not M0 |
 |---|---|
 | OctoBase, y-websocket, two tabs | M1 |
-| IndexedDB “so refresh keeps text” | Optional even in M1; OctoBase is the refresh source there |
+| IndexedDB “so refresh keeps text” | Optional even in M1; Postgres (via OctoBase keck) is the refresh source there |
 | Markdown pane / adapter fixtures | M2 |
 | `wiki/` git repo, flush, autocomment | M3 |
 | Folder tree UI, catalog CRDT | M4 — outline is **in-page headings only** |
 | Lease, freeze, CodeMirror | M5 |
 | Review After/Before/Diff | M6 |
-| Docker Compose `octobase` + `venus-web` | M0+M1 together; not required to close M0 |
+| Docker Compose `postgres` + `octobase` + `venus-web` | M0+M1 together; not required to close M0. Postgres and keck are **separate** containers. |
 | Edgeless / whiteboard as a product surface | v1 non-goal |
 | Identity, auth, display names | v1 can wait |
 
@@ -85,6 +85,7 @@ Venus/
       styles.css
     e2e/
       m0-smoke.spec.ts       # Playwright, step-verify
+  docs/design/api-map.md     # shared installed-symbol contract (was in this folder)
   docs/design/M0/
     …
 ```
@@ -148,12 +149,13 @@ If installed packages disagree with this list, **api-map.md wins**. Update the m
 
 ## Steps
 
-Do them in order. A step is not started until its `dependsOn` steps are done.
+Do them in order (1–9). A step is not started until its `dependsOn` steps are done.
 
-### step-scaffold
+### 1. step-scaffold
 
 | | |
 |---|---|
+| **n** | 1 |
 | **id** | `step-scaffold` |
 | **title** | pnpm workspace and Vite React app |
 | **dependsOn** | (none) |
@@ -180,10 +182,11 @@ Do them in order. A step is not started until its `dependsOn` steps are done.
 
 ---
 
-### step-pin
+### 2. step-pin
 
 | | |
 |---|---|
+| **n** | 2 |
 | **id** | `step-pin` |
 | **title** | Pin BlockSuite to one AFFiNE-matching set |
 | **dependsOn** | `step-scaffold` |
@@ -197,7 +200,7 @@ Do them in order. A step is not started until its `dependsOn` steps are done.
 4. Pin `yjs` to affine’s dependency (do not let npm hoist a second major).
 5. Add `lit` and `@preact/signals-core` if the copied editor container needs them as direct deps (do not rely on accidental hoisting).
 6. Vite: if the first affine import fails on WASM or CJS, add the smallest plugin that unblocks (`vite-plugin-wasm`, `vite-plugin-top-level-await`). Record it in api-map notes.
-7. Write the versions into [api-map.md](./api-map.md) (package table). Commit the lockfile.
+7. Write the versions into [api-map.md](../api-map.md) (package table). Commit the lockfile.
 
 #### Do not
 
@@ -212,10 +215,11 @@ Do them in order. A step is not started until its `dependsOn` steps are done.
 
 ---
 
-### step-recon
+### 3. step-recon
 
 | | |
 |---|---|
+| **n** | 3 |
 | **id** | `step-recon` |
 | **title** | Map design names to installed exports |
 | **dependsOn** | `step-pin` |
@@ -226,7 +230,7 @@ This step is documentation plus a spike, not product UI. It exists because M0 di
 #### Work
 
 1. Open `node_modules/@blocksuite/affine/package.json` `exports` (and store). Record collection class, `createDoc` / `getStore`, `Store`, `spaceDoc`, outline export, ext-loader.
-2. Fill every **Actual import** cell in [api-map.md](./api-map.md).
+2. Fill every **Actual import** cell in [api-map.md](../api-map.md).
 3. Optional 30-minute spike in `src/host/spike.ts` (deleted before M0 exit, or never committed): create schema + empty store, `console.log` root flavour. No UI required.
 4. If a symbol is missing, try the “likely 0.27” column. If still missing, read AFFiNE git at the SHA that published this npm version (`blocksuite/integration-test/src/__tests__/utils/setup.ts` and `editors/editor-container.ts`). Update the map; do not guess in later steps.
 
@@ -237,15 +241,16 @@ This step is documentation plus a spike, not product UI. It exists because M0 di
 
 #### DoD
 
-1. **Map complete.** Given [api-map.md](./api-map.md), when a reviewer greps `apps/web/src` later, then every BlockSuite import appears in the Actual column.
+1. **Map complete.** Given [api-map.md](../api-map.md), when a reviewer greps `apps/web/src` later, then every BlockSuite import appears in the Actual column.
 2. **Store exists.** Given the recon spike or `workspace.ts` draft, when you create one doc and `load` the default tree, then `store.root` flavour is `affine:page`.
 
 ---
 
-### step-workspace
+### 4. step-workspace
 
 | | |
 |---|---|
+| **n** | 4 |
 | **id** | `step-workspace` |
 | **title** | One collection, one page, default block tree |
 | **dependsOn** | `step-recon` |
@@ -276,14 +281,16 @@ This step is documentation plus a spike, not product UI. It exists because M0 di
 
 ---
 
-### step-editor
+### 5. step-editor
 
 | | |
 |---|---|
+| **n** | 5 |
 | **id** | `step-editor` |
 | **title** | Mount the page editor |
 | **dependsOn** | `step-workspace` |
 | **kind** | implement |
+| **status** | **done** ([board](./M0.state.yaml)) |
 
 #### Work
 
@@ -307,16 +314,29 @@ This step is documentation plus a spike, not product UI. It exists because M0 di
 3. **Undo.** Given typed text, when you undo, then the text reverts.
 4. **No AFFiNE app shell.** Given `apps/web/package.json`, when you read `dependencies`, then there is no `@affine/core`.
 
+#### Done
+
+Host files are `.js` (plus `.d.ts`) so `tsc` does not follow BlockSuite’s published `.ts`. Copy source: AFFiNE tag `v0.22.4`, `blocksuite/integration-test/src/editors/editor-container.ts` → `VenusEditorContainer`, tag `affine-editor-container`. Mount: `mount-editor.js` (`viewManager.get('page'|'edgeless')` + `FontConfigExtension`). Boot: theme CSS; `customElements.define` guarded. `App.tsx` appends the container into a full-viewport `.editor-host`. Do **not** call `stdEffects()` separately — `viewManager.get('page')` already runs view `effect()`. Vite notes (decorators, Lit context, nested CJS) live in [api-map.md](../api-map.md).
+
+DoD evidence:
+
+| Scenario | How |
+|---|---|
+| Type, slash, undo | `pnpm test:e2e` → `apps/web/e2e/m0-editor.spec.ts` (Chromium vs Vite on `127.0.0.1:5173`). Note: `affine-note affine-paragraph rich-text`. Slash: `affine-slash-menu .slash-menu`. Click the paragraph, not the title. |
+| No AFFiNE app shell | `pnpm test` → `apps/web/src/host/editor.test.ts` (deps + host imports; also forbids `@blocksuite/integration-test`) |
+
 ---
 
-### step-seed
+### 6. step-seed
 
 | | |
 |---|---|
+| **n** | 6 |
 | **id** | `step-seed` |
 | **title** | Seed headings so outline is non-empty |
 | **dependsOn** | `step-editor` |
 | **kind** | implement |
+| **status** | **done** ([board](./M0.state.yaml); breakpoint `none`) |
 
 #### Work
 
@@ -338,16 +358,29 @@ This step is documentation plus a spike, not product UI. It exists because M0 di
 1. **Visible structure.** Given a fresh load, when you look at the page, then you see a title, an H1, and an H2 without typing.
 2. **Constructor undo.** Given a fresh load, when you undo once, then you do not delete the whole page tree (history was reset after seed).
 
+#### Done
+
+0.22.4 has no `affine:heading` flavour. Headings are `affine:paragraph` with `type: 'h1'|'h2'` and `text: new Text(...)` (`src/host/seed.js`, called from `workspace.js` after the empty paragraph, then `resetHistory()`). Extra empty paragraphs sit between H1 and H2 so outline click-to-scroll is observable. Title stays `Venus`.
+
+DoD evidence:
+
+| Scenario | How |
+|---|---|
+| Visible structure | `pnpm test` → `apps/web/src/host/seed.test.ts`; `pnpm test:e2e` → `apps/web/e2e/m0-seed.spec.ts` (`doc-title`, `.h1`, `.h2`) |
+| Constructor undo | same files — `store.canUndo` is false; one `ControlOrMeta+z` leaves title + headings |
+
 ---
 
-### step-outline
+### 7. step-outline
 
 | | |
 |---|---|
+| **n** | 7 |
 | **id** | `step-outline` |
 | **title** | Mount the in-page outline |
 | **dependsOn** | `step-seed` |
 | **kind** | implement |
+| **status** | **done** ([board](./M0.state.yaml)) |
 
 This is BlockSuite’s **heading TOC**, not the wiki folder tree ([venus-design.md](../venus-design.md#folder-tree-table-of-contents)).
 
@@ -370,16 +403,31 @@ This is BlockSuite’s **heading TOC**, not the wiki folder tree ([venus-design.
 3. **Scroll.** Given a long page, when you click the H2 in the outline, then the editor scrolls so that heading is in view.
 4. **Not a wiki TOC.** Given the outline, when you inspect it, then it only reflects headings of the open page (no folders).
 
+#### Done
+
+`src/host/mount-outline.js`: poll until `editor.host` (or `editor-host` in the tree) exists — Lit `updateComplete` can resolve first — then `new OutlinePanel()`, `panel.editor = host`, `fitPadding = [20, 20, 20, 20]`. `OutlineViewExtension.effect()` already ran in `mountEditor` via `viewManager.get('page')`. Layout: `.m0-shell` flex, editor left (`flex: 1`), outline right (`300px`). Do not pass the container into OutlinePanel.
+
+DoD evidence:
+
+| Scenario | How |
+|---|---|
+| Lists headings | `pnpm test:e2e` → `apps/web/e2e/m0-outline.spec.ts` (`[data-testid="outline-block-preview-h1|h2"]`) |
+| Tracks edits | same file — type over H1, outline label updates |
+| Scroll | same file — H2 starts below the fold; click outline H2, heading is in view |
+| Not a wiki TOC | same file (outline has seeded headings, not H1 body text, no folder testids); `pnpm test` → `apps/web/src/host/outline.test.ts` (imports `OutlinePanel` from fragments/outline) |
+
 ---
 
-### step-provider-stub
+### 8. step-provider-stub
 
 | | |
 |---|---|
+| **n** | 8 |
 | **id** | `step-provider-stub` |
 | **title** | Swappable sync interface, memory no-op |
 | **dependsOn** | `step-workspace` |
 | **kind** | implement |
+| **status** | **done** ([board](./M0.state.yaml)) |
 
 The implementation plan requires a swappable provider **from day one** (Yjs binaries + spaces, not OctoBase APIs). M0 still has **no** real sync.
 
@@ -404,7 +452,7 @@ export class MemoryNoopProvider implements SyncProvider {
 Replace `ydoc: unknown` with the Actual Y.Doc type from api-map once known.
 
 2. `createM0Workspace` takes `SyncProvider` (default `MemoryNoopProvider`) and calls `connect(docId, ydoc)` after load. Disconnect on App unmount.
-3. Comment on the interface: M1 implements OctoBase (or y-websocket) behind this; the editor host must not import OctoBase.
+3. Comment on the interface: M1 implements OctoBase keck (Postgres + keck in separate Dockers) behind this; the editor host must not import OctoBase.
 
 #### Do not
 
@@ -416,20 +464,33 @@ Replace `ydoc: unknown` with the Actual Y.Doc type from api-map once known.
 1. **No-op session.** Given `MemoryNoopProvider`, when you type and refresh, then the text is gone (still memory-only).
 2. **Seam exists.** Given `workspace.ts`, when M1 starts, then a second `SyncProvider` can be passed without changing `mount-editor.ts`.
 
+#### Done
+
+`src/host/sync-provider.js` (+ `.d.ts`): `SyncProvider` with `ydoc: Doc` from `yjs` (`store.spaceDoc`). `MemoryNoopProvider` (`kind: 'memory'`). `createM0Workspace(provider = new MemoryNoopProvider())` calls `connect(docId, store.spaceDoc)` after load + `resetHistory()`. `App.tsx` calls `provider.disconnect(docId)` on unmount. `mount-editor.js` is unchanged and does not import the seam. No IndexedDB / OctoBase.
+
+DoD evidence:
+
+| Scenario | How |
+|---|---|
+| No-op session | `pnpm test:e2e` → `apps/web/e2e/m0-provider.spec.ts` (type `hello`, reload, seed H1 back, typed text gone) |
+| Seam exists | `pnpm test` → `apps/web/src/host/sync-provider.test.ts` (custom provider gets `connect(docId, spaceDoc)`; `mount-editor.js` has no `SyncProvider` import) |
+
 ---
 
-### step-verify
+### 9. step-verify
 
 | | |
 |---|---|
+| **n** | 9 |
 | **id** | `step-verify` |
 | **title** | Browser + smoke test |
 | **dependsOn** | `step-outline`, `step-provider-stub` |
 | **kind** | test |
+| **status** | **done** ([board](./M0.state.yaml)) |
 
 #### Work
 
-1. **Manual (required):** open the app in a real browser. Type, slash-insert a list, add an H3, confirm outline, click to scroll, refresh and confirm blank seed (not your typing). Check the console for uncaught errors.
+1. **Manual (required).** A person follows **Manual testing** below in Chrome or Firefox. Playwright does not replace this.
 2. Playwright in `apps/web/e2e/m0-smoke.spec.ts`:
    - Go to `/`
    - Assert outline contains the seeded H1 text
@@ -439,6 +500,23 @@ Replace `ydoc: unknown` with the Actual Y.Doc type from api-map once known.
 4. Delete any recon spike file.
 5. Set [M0.state.yaml](./M0.state.yaml) steps to `done` when each DoD is actually met.
 
+#### Manual testing
+
+Use a real browser (Chrome or Firefox), not a screenshot and not Playwright headed mode as a substitute. Ignore console noise from extensions (`contentscript.js`, MetaMask, ObjectMultiplex). Fail on uncaught exceptions from the host or BlockSuite.
+
+1. From the repo root: `pnpm install` if needed, then `pnpm dev`. Open the Vite URL (usually `http://localhost:5173`).
+2. **Seed.** Without typing, the page title is `Venus` (or `Venus M0`). The note has an H1 and an H2 (plan default: `Why Venus`, `Empty host`). The outline on the right lists those headings and nothing that looks like folders or other pages.
+3. **Type.** Click the body (a paragraph), not the title. Type `hello`. The characters appear in the note.
+4. **Slash list.** In an empty paragraph (or after a newline), type `/`. The slash menu opens. Insert a **list** (bulleted or numbered). The list is in the note, not a Venus toolbar.
+5. **H3.** Via slash or the format bar, insert a heading level 3. Give it distinct text (e.g. `Verify H3`). It appears in the outline without reload.
+6. **Outline edit.** Change the H1’s text in the editor. The outline label updates without reload.
+7. **Scroll.** The page is long enough to scroll. Click the H2 in the outline. The editor scrolls so that heading is in view.
+8. **Undo.** Undo until `hello` is gone. The seeded title and headings remain (constructor history was reset).
+9. **Refresh.** Reload. `hello`, the list, and `Verify H3` are gone. Seed title + H1 + H2 are back. Outline matches the seed again.
+10. **No sync.** DevTools → Network → WS (and a glance at WS in the console): no sync socket. Still no `@affine/core` in `apps/web/package.json`.
+
+If a step fails, M0 is not done. Fix the host (specs, outline mount, provider stub); do not fake UI.
+
 #### Do not
 
 - Call M0 done from a screenshot of first paint.
@@ -446,9 +524,21 @@ Replace `ydoc: unknown` with the Actual Y.Doc type from api-map once known.
 
 #### DoD
 
-1. **Manual path.** Given Chrome or Firefox, when a person follows the manual list above, then all behaviors hold and the console has no host exceptions.
+1. **Manual path.** Given Chrome or Firefox, when a person follows **Manual testing** above, then every step holds and the console has no host exceptions.
 2. **Smoke.** Given `pnpm --filter @venus/web test:e2e`, when it runs against `vite preview` or `dev`, then it exits 0.
 3. **Refresh.** Given typed text, when you reload, then that text is absent and the seed headings are back.
+
+#### Done
+
+No recon spike file was present. `test:e2e` already exists (root and `@venus/web`). Playwright `apps/web/e2e/m0-smoke.spec.ts` hits `/`, asserts outline H1 `Why Venus`, types into `affine-note affine-paragraph rich-text`, then a second test reloads and checks seed H1/H2. Editable selector is recorded in [api-map.md](../api-map.md). **Manual path** passed 2026-08-29: a person followed **Manual testing** in Chrome or Firefox; seed, type, slash list, H3, outline edit, scroll, undo, refresh, and no sync socket all held.
+
+DoD evidence:
+
+| Scenario | How |
+|---|---|
+| Smoke | `pnpm test:e2e` exits 0, including `m0-smoke.spec.ts` |
+| Refresh | `m0-smoke.spec.ts` (and `m0-provider.spec.ts`) — type `hello`, reload, typed text gone, seed headings back |
+| Manual path | 2026-08-29 person in Chrome/Firefox — all ten Manual testing steps held |
 
 ---
 
@@ -456,9 +546,9 @@ Replace `ydoc: unknown` with the Actual Y.Doc type from api-map once known.
 
 | When | Steps |
 |---|---|
-| Day 1 | `step-scaffold` → `step-pin` → `step-recon` → start `step-workspace` |
-| Day 2 | `step-workspace` → `step-editor` → `step-seed` |
-| Day 3 | `step-outline` → `step-provider-stub` → `step-verify` |
+| Day 1 | 1 `step-scaffold` → 2 `step-pin` → 3 `step-recon` → start 4 `step-workspace` |
+| Day 2 | 4 `step-workspace` → 5 `step-editor` → 6 `step-seed` |
+| Day 3 | 7 `step-outline` → 8 `step-provider-stub` → 9 `step-verify` |
 
 If step-pin or recon slips (WASM, missing exports), stop and fix the map. Do not “temporarily” mount `@affine/core`.
 
@@ -474,6 +564,8 @@ If step-pin or recon slips (WASM, missing exports), stop and fix the map. Do not
 | Vite cannot bundle affine | WASM / lit / CJS plugins; document in api-map |
 
 ## Handoff to M1
+
+Step-by-step: [M1/plan.md](../M1/plan.md). Board: [M1/M1.state.yaml](../M1/M1.state.yaml).
 
 M1 may assume:
 

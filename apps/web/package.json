@@ -1,0 +1,43 @@
+{
+  "name": "@venus/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:m1": "PLAYWRIGHT_M1=1 playwright test"
+  },
+  "dependencies": {
+    "@blocksuite/affine": "0.22.4",
+    "@preact/signals-core": "1.14.4",
+    "@toeverything/theme": "1.1.23",
+    "bind-event-listener": "3.0.0",
+    "debug": "^4.4.3",
+    "extend": "3.0.2",
+    "lib0": "0.2.117",
+    "lit": "3.3.3",
+    "lodash.clonedeep": "^4.5.0",
+    "lodash.ismatch": "4.4.0",
+    "lodash.merge": "^4.6.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.32"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vanilla-extract/integration": "^8.0.10",
+    "@vanilla-extract/vite-plugin": "^5.2.6",
+    "@vitejs/plugin-react": "^6.1.1",
+    "esbuild": "0.28.2",
+    "typescript": "^5.8.3",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}
