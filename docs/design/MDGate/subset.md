@@ -1,6 +1,6 @@
 # Round-trippable subset and loss
 
-**Status:** design + **step-1–3** Actuals (seed + `rt-*` goldens; sidecar ranges; linked-doc comment post-process). Types and loss classes below are the product contract; whitespace bytes follow the goldens. Fixtures: [fixtures.md](./fixtures.md). Exporter: [README.md](./README.md). Apply: [apply.md](./apply.md).
+**Status:** design + **step-1–4** Actuals (seed + `rt-*` goldens; sidecar ranges; linked-doc comment post-process; opaque image + loss-color). Types and loss classes below are the product contract; whitespace bytes follow the goldens. Fixtures: [fixtures.md](./fixtures.md). Exporter: [README.md](./README.md). Pane: [live-pane.md](./live-pane.md). Pin convert: [pin-convert.md](./pin-convert.md). Apply: [apply.md](./apply.md).
 
 This is what agents and git may treat as source. Everything else is WYSIWYG-only or **opaque**.
 
@@ -78,12 +78,12 @@ Creating or deleting empty CRDT paragraphs from markdown blank-line count is **o
 
 Anything `fromDoc` cannot name as a subset type is **opaque**: HTML comment, raw HTML, or a raw BlockSuite dump — recon picks one form and goldens it.
 
-| Likely opaque on 0.22.4 (confirm in recon) | Why |
-|---|---|
-| `affine:image` / page image | Blob hash vs `blob:` URL; not a faithful git file unless we also write `assets/` (M3). Until then: opaque or named-lossy. |
-| `affine:surface` and edgeless | v1 page mode unused; must not rewrite on a markdown commit that did not touch it. |
-| `affine:embed-synced-doc` | Transclusion; not the linked-doc card form. |
-| Bookmark / embed / database / unknown flavours | Adapter drop or rewrite. |
+| Flavour | Actual on 0.22.4 | Why opaque |
+|---|---|---|
+| `affine:image` / page image | GFM `![dot.png](assets/dot.png)` when the store blob is a `File` named `dot.png` (golden `opaque-image.md`). Sidecar: one range covering that line. `fromDoc` twice: slice byte-equal. | Path names a git `assets/` file we do **not** write in M2. Pixels stay in the blob store. Git flush of `assets/` is M3. |
+| `affine:surface` and edgeless | Not measured in M2 (page mode unused). | Must not rewrite on a markdown commit that did not touch it. |
+| `affine:embed-synced-doc` | Not measured in M2. | Transclusion; not the linked-doc card form. |
+| Bookmark / embed / database / unknown flavours | Not measured in M2. | Adapter drop or rewrite. |
 
 **Apply:** if the markdown diff does not overlap an opaque block’s sidecar range, that id is a **no-op**. A commit must not “pretty-print” opaque regions.
 
@@ -93,7 +93,7 @@ Documented so agents are not told to round-trip them. They may appear in WYSIWYG
 
 | Feature | What git/markdown keeps |
 |---|---|
-| Text color, background, highlight | Plain text (marks dropped) |
+| Text color, background, highlight | Plain text. **Actual:** `AffineTextAttributes.color` is stored on the CRDT (`paragraphHasColorMark`); markdown adapter has no color matcher. Golden `loss-color.md` is the same bytes as a plain paragraph (`Colored text`). Second `fromDoc` equals first. |
 | Empty-paragraph **count** vs extra blank lines in git | WYSIWYG empties kept; blank-line-only markdown diffs are not hunks |
 | Other marks the adapter drops (recon: `color`, `background`, `mention`) | Dropped. **Kept on 0.22.4:** bold, italic, inline code (`rt-marks.md`); also strike / underline / link if present |
 | Column / min-width / note display mode | Not in markdown |
@@ -114,7 +114,7 @@ Filled in [M2 step 1](../M2/plan.md#1-step-recon-adapter). Adapter Actuals: [api
 
 1. **Golden `fromDoc` of seed note** — done. Page title is `# Venus` (`titleMiddleware`), then the empty leading paragraph as blank lines, then `# Why Venus`, body, 24 spacer blank-line runs, `## Empty host`, body. Vitest: `from-doc.test.ts` **Seed fromDoc**. **Sidecar:** `# Venus\n` is `affine:page` (`root.id`). Empty paragraphs take the last N newlines before the next non-empty block. Extra blank lines between two text paragraphs are gaps (neither range). An empty para between two texts is **not** one extra `\n` in the file — remark emits extra blanks around it; last-N maps only the last `\n` to the empty id.
 2. **List item vs list container** — markdown form: nested bullets stringify as `* outer` / `  * inner`. **Sidecar Actual:** one range per `affine:list` item (outer `* outer`, inner `  * inner`). Not a list container. Vitest: `from-doc.test.ts` recon list.
-3. **Opaque form for `affine:image`** — **not run** in step 1 (optional). Required in [step 4](../M2/plan.md#4-step-sidecar).
+3. **Opaque form for `affine:image`** — **done** in [step 4](../M2/plan.md#4-step-sidecar). Node: `blobSync.set(new File(dot.png))` + `addBlock('affine:image', { sourceId })`. Export: `![dot.png](assets/dot.png)`. Golden: `opaque-image.md`. Vitest: `sidecar.test.ts` **opaque-untouched**.
 4. **Bold/italic/inline code** `fromDoc → toDoc → fromDoc` — **done.** They survive. Golden: `rt-marks.md` (`**bold** *italic* \`code\``). Vitest: `roundtrip.test.ts` **rt-marks**.
 
 Whitespace Actual **wins** over the intent table if they disagree; update this file, do not weaken fixtures.

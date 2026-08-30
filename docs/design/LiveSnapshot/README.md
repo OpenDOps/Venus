@@ -1,6 +1,6 @@
 # Live snapshot (pin + git snapshotter)
 
-**Status:** design. Implement in [M3](../venus-implementation-plan.md#m3--git-snapshotter-week); lease `T0` reuses the same pin ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). OctoBase recon: [octobase.md](./octobase.md).
+**Status:** design (one-wiki pin). Implement in [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) **only after** [high-availability.md](./high-availability.md) **Acceptance** (accepted 2026-08-30). Lease `T0` reuses the same pin ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). OctoBase recon: [octobase.md](./octobase.md). Scale (queue, dirty set, pin cut, worker fleet) is that HA file — M3 is a thin instance and must not invert it.
 
 Product rules (two git classes, markdown is a projection): [venus-design.md](../venus-design.md). **Git tree:** [datamodel — git](../datamodel/git.md). Idle / flush-before-lease: [v1-concerns.md](../../drafts/pre-design/v1-concerns.md). Adapter: [MDGate](../MDGate/README.md). Exporter lands in [M2](../M2/README.md); this folder converts a **pin**, not the live Store.
 
@@ -45,7 +45,7 @@ Flush is two phases. Collect every dirty pin **before** any `fromDoc`.
 
 Dirty unit is the **page** (one `.md` file), not a block. Intra-doc hunks are the comment-commit path (M6), not the snapshotter. Catalog moves are `git mv` with no `fromDoc` if the body clock is unchanged.
 
-What you pin is **CRDT export bytes**, not markdown files. Files are the output of convert.
+What you pin is **CRDT export bytes**, not markdown files. Files are the output of convert. MDGate: [pin-convert.md](../MDGate/pin-convert.md) (`pinThenFromDoc`). Do not `fromDoc` the live published Store. Do not pass `incrementalFromDoc` output as T0.
 
 ## Where the pin lives
 
@@ -81,7 +81,7 @@ A best-effort cut: sequential pins of dirty docs, then convert. Not a multi-spac
 
 ## Pin source (prototype)
 
-Preferred: the snapshotter holds its **own Y.Doc replica** (same `SyncProvider` / AFFiNE socket as a hidden client, or a Node `Y.Doc` on that room). Pin = `Y.encodeStateAsUpdate` into a **new** `Y.Doc` (or keep the bytes). Convert from that clone. keck never sees the pin.
+Preferred: the snapshotter holds its **own Y.Doc replica** (same `SyncProvider` / AFFiNE socket as a hidden client, or a Node `Y.Doc` on that room). Pin = `Y.encodeStateAsUpdate` into a **new** `Y.Doc` (or keep the bytes). Convert from that clone (`fromPinnedBytes`). keck never sees the pin.
 
 Acceptable for M3 idle (30–120s): `GET /api/block/:workspace/export` after persist has had a chance to flush. That GET reads **Postgres**, not keck’s live memory ([octobase.md](./octobase.md#export-reads-postgres)). Idle flush is already longer than the ~1s persist batch.
 
@@ -119,5 +119,7 @@ Stock keck **does not** offer “hold persist until pin copy finishes.” It alr
 |---|---|
 | [README.md](./README.md) | This design |
 | [octobase.md](./octobase.md) | What keck actually does (export, persist, no pin API) |
+| [high-availability.md](./high-availability.md) | Queue, dirty list, pin cut, worker fleet. **Accepted;** M3 code is gated on it. |
+| [MDGate pin-convert](../MDGate/pin-convert.md) | Host convert helper (no git write) |
 
 Words: [glossary.md](../glossary.md). Dataflow: [architecture.md](../architecture.md).

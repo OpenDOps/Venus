@@ -1,6 +1,6 @@
 # Apply — markdown → CRDT on commit
 
-**Status:** design. Implement in [M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks). `fromDoc` / sidecar: [README.md](./README.md). Spectator pane: [live-pane.md](./live-pane.md). Product hunks / After / Before / Diff: [venus-design.md](../venus-design.md#comment-commits-markdown-only). Freeze: [lease-freeze-rationale.md](../lease-freeze-rationale.md).
+**Status:** design. Implement in [M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks). `fromDoc` / sidecar: [README.md](./README.md). How `T0` is built: [pin-convert.md](./pin-convert.md). Spectator pane: [live-pane.md](./live-pane.md). Product hunks / After / Before / Diff: [venus-design.md](../venus-design.md#comment-commits-markdown-only). Freeze: [lease-freeze-rationale.md](../lease-freeze-rationale.md).
 
 Do **not** detect changes by converting the whole proposed file to a new block tree. That is adapter parse as the diff, and it produces fake hunks. Detect changes as a **markdown-vs-markdown** diff against `T0`, attribute them with the **frozen sidecar**, overlay those hunks on the **Before/After OctoBase CRDTs** (Cursor-style), then apply **ops** on the published Y.Doc. After/Before persistence: [datamodel — commit Before/After](../datamodel/crdt.md#commit-before-and-after).
 
@@ -15,11 +15,14 @@ Apply is always: **same Y.Doc, BlockSuite ops keyed by T0 ids.**
 At lease acquire (flush-before-lease so this matches git HEAD):
 
 ```text
-pin Yjs bytes
-fromDoc on that pin  →  markdown_T0 + sidecar_T0
+pin Yjs bytes                    ← Y.encodeStateAsUpdate (clone, not live Store)
+fromDoc on that pin              →  markdown_T0 + sidecar_T0
+                                 (`pinThenFromDoc` / `fromPinnedBytes`)
 freeze published Store
 holder buffer = copy of markdown_T0
 ```
+
+Do **not** copy the spectator pane’s spliced RAM sidecar into this slot. Convert: [pin-convert.md](./pin-convert.md). Git write of `wiki/` is still M3.
 
 `T0` is those three kept together until release. Review Before / Diff is vs this clock. The sidecar offsets are true **only** for `markdown_T0`.
 
@@ -115,6 +118,7 @@ Same pipeline: historical `.md` is `markdown_prop`; current pin is `T0`. Diff fi
 |---|---|
 | [README.md](./README.md) | `fromDoc`, sidecar stores |
 | [live-pane.md](./live-pane.md) | Spectator loop (CRDT → md) |
+| [pin-convert.md](./pin-convert.md) | How `markdown_T0` + `sidecar_T0` are built |
 | [apply.md](./apply.md) | This: md vs `T0` → hunks → ops; After/Before are OctoBase CRDTs |
 | [subset.md](./subset.md) | Types, whitespace, opaque, loss |
 | [fixtures.md](./fixtures.md) | M2 export / M6 apply cases |

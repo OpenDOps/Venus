@@ -24,6 +24,7 @@ Words that collide in Venus. Product model: [venus-design.md](./venus-design.md)
 | **SyncProvider** | Host seam: `memory` \| `octobase` \| `y-websocket`. M1 implements `octobase` only. Stock `y-websocket` is the later cloud swap, not the prototype wire. |
 | **Comment-commit** | Markdown lease accept: hunks + required why. Opposite of a git snapshot commit. |
 | **Pin** | Frozen Yjs bytes for one flush / `T0`. Convert runs on the pin. [LiveSnapshot](./LiveSnapshot/README.md). |
+| **Dirty set** | Pages (and blobs / catalog paths) whose clock moved since `last_flushed`. Queue grain is the wiki, not the keystroke. [high-availability.md](./LiveSnapshot/high-availability.md). |
 | **Commit Before / After** | Review CRDTs in OctoBase for one comment-commit. After is editable; edits are the next commit. [datamodel](./datamodel/crdt.md#commit-before-and-after). |
 
 Stack and diagrams: [CRDT](./CRDT/README.md).

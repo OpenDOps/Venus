@@ -16,5 +16,8 @@ declare global {
     __VENUS_PROVIDER_KIND__?: string;
     __VENUS_WS_PROTOCOLS__?: string | string[];
     __VENUS_PAGE_FLAVOUR__?: string;
+    /** Playwright e2e only (`addInitScript`). */
+    __VENUS_E2E__?: boolean;
+    __VENUS_FROM_DOC__?: () => Promise<{ markdown: string }>;
   }
 }

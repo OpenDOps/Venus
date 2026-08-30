@@ -6,7 +6,7 @@
 | **Milestone** | [M2 in the implementation plan](../venus-implementation-plan.md#m2--markdown-projection-week) |
 | **Duration** | About a week |
 | **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
-| **Board** | [M2.state.yaml](./M2.state.yaml) — steps 1–3 `done`; steps 4–8 `pending` |
+| **Board** | [M2.state.yaml](./M2.state.yaml) — steps 1–8 `done` |
 
 Parent design: [venus-design.md](../venus-design.md). Adapter: [MDGate](../MDGate/README.md) ([subset](../MDGate/subset.md), [fixtures](../MDGate/fixtures.md), [live-pane](../MDGate/live-pane.md)). Stores: [datamodel](../datamodel/README.md) — markdown is a **projection**, not Postgres and not git. Dataflow: [architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2). Words: [glossary.md](../glossary.md). M1 host: [M1/plan.md](../M1/plan.md). Installed symbols: [api-map.md](../api-map.md).
 
@@ -26,7 +26,7 @@ All of these must be true at once:
 2. [subset](../MDGate/subset.md) types: `fromDoc → toDoc → fromDoc` byte-stable modulo listed whitespace. Goldens checked in.
 3. Sidecar: every exported subset (and opaque) block has a stable id; **no** ids in the markdown body; insert-above does not rename surviving ids.
 4. Opaque / loss: untouched opaque slice is byte-stable; color (if present) is documented loss, second `fromDoc` stable.
-5. Read-only markdown pane hangs off the **live Store** ([architecture](../architecture.md#markdown-projection-add-here-before-coding-m2)), not keck `GET …/export`. [Single-flight loop](../MDGate/live-pane.md). **No caret.** Replace the string. Paint that string with **highlight.js** (markdown grammar) so headings/fences/comments are visible as **source**, not as rendered HTML.
+5. Read-only markdown pane hangs off the **live Store** ([architecture](../architecture.md#markdown-projection-add-here-before-coding-m2)), not keck `GET …/export`. [Single-flight loop](../MDGate/live-pane.md) ([step-loop](#6-step-loop)): in-place splice or full `fromDoc`. **No caret.** Paint the resulting string with **highlight.js** (markdown grammar) so headings/fences/comments are visible as **source**, not as rendered HTML.
 6. If the pane is not shown: do not run the loop.
 7. [fixtures.md](../MDGate/fixtures.md) **M2 export** rows all pass in CI (`pnpm test` + `pnpm test:e2e` pane spec). **Apply rows (`ap-*`) are out of M2.**
 8. No `wiki/` git commit, no lease, no CodeMirror, no `Y.applyUpdate` of `toDoc`.
@@ -39,11 +39,10 @@ M1 + M2 together: same Y.Doc in two tabs **and** a markdown photograph of that t
 
 | Later | Why not M2 |
 |---|---|
-| `wiki/` git, pin convert, autocomment | M3 — [LiveSnapshot](../LiveSnapshot/README.md). Same exporter, on a **pin**. |
+| `wiki/` git, autocomment | M3 — [LiveSnapshot](../LiveSnapshot/README.md). Convert helper `pinThenFromDoc` is in mdgate; this milestone does not write git. |
 | Apply / hunks / `ap-*` fixtures | M6 — [apply.md](../MDGate/apply.md) |
 | CodeMirror, lease, freeze | M5. M2 pane uses **highlight.js**, not CM. |
 | After/Before OctoBase spaces | [datamodel CRDT](../datamodel/crdt.md#commit-before-and-after); M5–M6 |
-| Incremental pane splice | After goldens exist; [live-pane](../MDGate/live-pane.md#incremental-body-after-fixtures) |
 | Catalog, folder tree, product header | M4 |
 | Second page / linked-doc **resolution** in the catalog | M4. M2 may **export** the linked-doc markdown form with a synthetic `pageId`. |
 | Telling agents “edit `.md` in git and it will apply” | After M6 apply fixtures |
@@ -55,7 +54,7 @@ Do not write sidecar JSON to Postgres or `wiki/.venus/ids/`. RAM only.
 
 1. **Thin host.** Same Vite + React app. Pane is host chrome: a `<pre><code>` painted by **highlight.js**, not a BlockSuite widget, not a `<textarea>` (a textarea cannot hold token spans).
 2. **One Store.** `fromDoc` the same `session.store` as the editor. Do not `GET /api/block/…/export` for the pane.
-3. **Single-flight + dirty** ([live-pane](../MDGate/live-pane.md#scheduler-m2-must-ship-this)). Not one job per Yjs event. Full `fromDoc` each run (no splice).
+3. **Single-flight + dirty** ([live-pane](../MDGate/live-pane.md#scheduler-m2-must-ship-this)). Not one job per Yjs event. In-place edits **splice** RAM markdown + shift later sidecar ranges; structural edits **fall back** to full `fromDoc`. Git / lease `T0` stay full `fromDoc` on a **pin** (M3).
 4. **Seam.** Adapter lives in `src/host/mdgate/` (or equivalent). `mount-editor.js` / `editor-container.js` / `boot.js` do not import it.
 5. **Memory default.** Vitest and `pnpm test:e2e` stay green without Docker. Pane e2e may use memory (like M0). Optional: same pane on Compose — not required to close M2.
 6. **Goldens win.** If adapter bytes disagree with [subset](../MDGate/subset.md) intent, **update subset Actual**, do not weaken tests.
@@ -78,10 +77,17 @@ Venus/
         markdown-adapter.d.ts
         from-doc.test.ts       # seed fromDoc; side-ids; gaps
         roundtrip.test.ts      # rt-* goldens (step 3)
-        goldens/               # seed.fromDoc.md (step 1); more in step 3
+        sidecar.test.ts        # side-stable, side-shift, opaque, loss-color (step 4)
+        goldens/               # seed, rt-*, opaque-image.md, loss-color.md
         highlight-md.js        # highlight.js core + markdown grammar → HTML
-        mount-md-pane.js       # read-only host; paint; single-flight loop
-        mount-md-pane.test.ts  # optional: loop coalescing with fake timers
+        pin-from-doc.js        # pin Yjs bytes, hydrate clone, fromDoc (git/T0 convert)
+        pin-from-doc.test.ts
+        splice.js              # incrementalFromDoc (in-place or full)
+        splice.test.ts         # incr-*
+        md-pane-loop.js        # single-flight dirty / running
+        md-pane-loop.test.ts   # coalesce with fake timers
+        one-exporter.test.ts   # pane imports from-doc.js; editor mount ignorant
+        mount-md-pane.js       # read-only host; paint; subscribe + loop
     src/App.tsx                # .md-pane-host beside editor + outline
     e2e/
       m2-pane.spec.ts          # e2e-pane
@@ -96,11 +102,11 @@ Venus/
 ## Binding (what you are proving)
 
 ```text
-WYSIWYG  (session.store)  ──single-flight──►  fromDoc + RAM sidecar
+WYSIWYG  (session.store)  ──single-flight──►  full fromDoc | in-place splice
                                               │
                                               ▼
                                     read-only markdown pane
-                                    (replace string, highlight.js paint, no caret)
+                                    (RAM string + ranges, highlight.js paint, no caret)
 
 Postgres / keck / git     unchanged from M1
 ```
@@ -117,7 +123,7 @@ Locked in [step-recon-adapter](#1-step-recon-adapter). If this section disagrees
 | Transformers | `titleMiddleware(workspace.meta.docMetas)`, `docLinkBaseURLMiddleware(workspace.id)`, `embedSyncedDocMiddleware('content')` — all three. |
 | Sidecar | Venus JSON `{ docId, clock, blocks: [{ id, start, end }] }` — UTF-16 `[start,end)`. `from-doc.js` (step 2 done). |
 | Pane | Host `<pre><code data-testid="venus-md-pane">` (or testid on the host). Not CodeMirror. Step 5. |
-| Highlighter | **highlight.js** — `highlight.js/lib/core` + `highlight.js/lib/languages/markdown` + one shipped theme CSS. Pin version in [api-map](../api-map.md) in [step-pane](#5-step-pane). |
+| Highlighter | **highlight.js** — `highlight.js/lib/core` + `highlight.js/lib/languages/markdown` + `highlight.js/styles/github.css`. Pin **11.11.1** in [api-map](../api-map.md). |
 
 ## Steps summary
 
@@ -128,11 +134,11 @@ What each step **adds** to the product (not how to test it — that is under eac
 | 1 | [`step-recon-adapter`](#1-step-recon-adapter) | **Done.** api-map adapter Actuals; seed `fromDoc` golden; subset whitespace Actuals. |
 | 2 | [`step-exporter`](#2-step-exporter) | **Done.** Shared `fromDoc` + sidecar module. |
 | 3 | [`step-roundtrip`](#3-step-roundtrip) | **Done.** `rt-*` goldens on the documented subset. |
-| 4 | [`step-sidecar`](#4-step-sidecar) | Stable ids, shift on insert, opaque, loss. |
-| 5 | [`step-pane`](#5-step-pane) | Read-only pane; initial `fromDoc`; **highlight.js** source paint. |
-| 6 | [`step-loop`](#6-step-loop) | Single-flight updates; re-paint highlight.js on each replace. |
-| 7 | [`step-one-exporter`](#7-step-one-exporter) | Pane uses the same helper as Vitest; highlighter is not a second dialect. |
-| 8 | [`step-verify`](#8-step-verify) | Close-out: person in browser (including highlighted source) + full export suite. |
+| 4 | [`step-sidecar`](#4-step-sidecar) | **Done.** Stable ids, shift on insert, opaque image, loss-color. |
+| 5 | [`step-pane`](#5-step-pane) | **Done.** Read-only pane; initial `fromDoc`; **highlight.js** source paint. |
+| 6 | [`step-loop`](#6-step-loop) | **Done.** Single-flight; in-place splice or full `fromDoc`; re-paint highlight.js. |
+| 7 | [`step-one-exporter`](#7-step-one-exporter) | **Done.** Pane uses the same helper as Vitest; highlighter is not a second dialect. |
+| 8 | [`step-verify`](#8-step-verify) | **Done.** Close-out: person in browser (including highlighted source) + full export suite. |
 
 ---
 
@@ -306,9 +312,11 @@ All `rt-*` M2 rows green. Goldens in git. Subset whitespace Actual matches golde
 | **title** | Sidecar stability, opaque, loss |
 | **dependsOn** | `step-roundtrip` |
 | **kind** | implement |
-| **status** | pending ([board](./M2.state.yaml)) |
+| **status** | **done** ([board](./M2.state.yaml)) |
 
 **Adds:** proof that ids survive re-export and insert-above, and that opaque/loss do not jitter into fake changes.
+
+**Actual:** Vitest `sidecar.test.ts`. `side-stable` ranges are identical. `side-shift` uses `addBlock(..., parentIndex=0)`. Opaque is `affine:image` → `![dot.png](assets/dot.png)` (`opaque-image.md`). `loss-color`: schema accepts `color`; markdown is plain (`loss-color.md`). Per-block `<!-- id:… -->` is absent.
 
 #### Work
 
@@ -349,7 +357,7 @@ All `rt-*` M2 rows green. Goldens in git. Subset whitespace Actual matches golde
 | **title** | Read-only highlighted markdown pane in the layout |
 | **dependsOn** | `step-sidecar` |
 | **kind** | implement |
-| **status** | pending ([board](./M2.state.yaml)) |
+| **status** | **done** ([board](./M2.state.yaml)) |
 
 **Adds:** host chrome: a markdown pane next to the editor (outline stays). Initial fill from `fromDoc(session.store)`. **highlight.js** paints that string as markdown **source**. Not `contenteditable`. `data-testid="venus-md-pane"`. `mount-editor` still has no adapter import. `from-doc.js` still has no `highlight.js` import.
 
@@ -369,6 +377,7 @@ All `rt-*` M2 rows green. Goldens in git. Subset whitespace Actual matches golde
 - Import `highlight.js` from `from-doc.js` or `mount-editor.js`.
 - Fetch keck export for the pane.
 - Hide outline.
+- Incremental splice (that is [step-loop](#6-step-loop)). Initial paint is one full `fromDoc`.
 
 #### Test scenarios
 
@@ -404,25 +413,30 @@ Pane shows seed markdown **source**, token-colored. `from-doc.js` unchanged (no 
 |---|---|
 | **n** | 6 |
 | **id** | `step-loop` |
-| **title** | Single-flight fromDoc on Store updates |
+| **title** | Single-flight loop + in-place splice |
 | **dependsOn** | `step-pane` |
 | **kind** | implement |
-| **status** | pending ([board](./M2.state.yaml)) |
+| **status** | **done** ([board](./M2.state.yaml)) |
 
-**Adds:** while the pane is mounted, Store updates (local typing) retrigger `fromDoc` via [single-flight](../MDGate/live-pane.md). Replace the whole string **and re-run highlight.js** (do not splice spans). Full export only (no markdown splice).
+**Adds:** while the pane is mounted, Store updates retrigger export via [single-flight](../MDGate/live-pane.md). **In-place** edits splice the RAM markdown and shift later sidecar ranges. Structural edits fall back to full `fromDoc`. Each run re-highlights the **whole** resulting string (do not patch highlight.js spans). Git / `T0` are **not** this loop.
 
 #### Work
 
-1. Subscribe to Store / Y.Doc updates; implement `dirty` / `running` loop.
-2. Each loop: `fromDoc` → `highlight-md.js` → replace `innerHTML`. Do not incrementally patch token spans.
-3. Unmount: unsubscribe; `running` must not call setState on unmounted pane.
-4. Optional Vitest fake-timers: many events during a slow `fromDoc` → one follow-up, not N jobs.
-5. Playwright `e2e-pane`: type in the note; pane **innerText** equals a fresh `fromDoc` (or contains the typed string) after wait; highlight `span`s still present.
+1. Subscribe to Store / Y.Doc updates; implement `dirty` / `running` / `dirtyIds` loop ([live-pane scheduler](../MDGate/live-pane.md#scheduler-m2-must-ship-this)).
+2. `splice.js`: given last `{ markdown, sidecar }` + dirty ids, either splice or return “fallback”. Splice only when every dirty id already has a sidecar row, flavour/parent/index are unchanged, and the change is in-place text/marks on that block. Delta is **UTF-16** `newSlice.length − (old end − old start)` from adapter `ownMarkdown` (same post-process as `fromDoc`), **not** Y.Text length. Shift every row with `start >= old end`. Apply dirty ids **document order**.
+3. Fallback to full `fromDoc` on insert / delete / move / split / merge / list indent / empty-paragraph last-N / gap-only / opaque / linked-doc title middleware / unknown flavour / recon mismatch.
+4. Reconcile: every N splices or on idle, full `fromDoc`; if markdown or ranges diverge (modulo [subset](../MDGate/subset.md) whitespace), keep the full result.
+5. Each loop: splice or full `fromDoc` → `highlight-md.js` on the **entire** markdown string → set pane `innerHTML`. Do not incrementally patch token spans.
+6. Unmount: unsubscribe; `running` must not paint after unmount.
+7. Optional Vitest fake-timers: many events during a slow export → one follow-up, not N jobs.
+8. Playwright `e2e-pane`: type in the note; pane **innerText** equals a fresh `fromDoc` (or contains the typed string) after wait; highlight `span`s still present.
 
 #### Do not
 
-- Incremental splice of markdown **or** of highlight spans.
-- Update git sidecar.
+- Patch highlight.js token spans.
+- Shift ranges from Y.Text / keystroke count (bold does not change Y.Text length; markdown grows).
+- Freeze a spliced RAM sidecar as lease `T0` or write `wiki/.venus/ids/`.
+- `fromDoc` the live Store for git (M3 pin).
 - Require Docker.
 - Skip re-highlight (raw `textContent = md` after the first paint).
 
@@ -446,9 +460,33 @@ Pane shows seed markdown **source**, token-colored. `from-doc.js` unchanged (no 
    - **Then** at most **two** exporter calls (initial in-flight + one follow-up), not 20.
    - **How:** Vitest fake timers on `mount-md-pane`. **Autotest:** recommended. **Manual:** none.
 
+4. **incr-inplace**
+   - **Given** three paragraphs, a full `fromDoc` snapshot.
+   - **When** only `b1` text changes (plain insert); run splice on that dirty id.
+   - **Then** spliced markdown and sidecar ranges **byte-equal** a fresh full `fromDoc` of the same Store; `b1` id unchanged; later `start`/`end` shifted by the UTF-16 delta.
+   - **How:** `pnpm test` `splice.test.ts`. **Autotest:** required. **Manual:** none.
+
+5. **incr-marks**
+   - **Given** a paragraph, full `fromDoc`.
+   - **When** a bold (or italic / code) mark is applied so Y.Text length is unchanged and markdown grows.
+   - **Then** splice (adapter slice, not Y.Text delta) equals full `fromDoc`. A Y.Text-length shift must **not** be how the helper computes delta.
+   - **How:** same Vitest file. **Autotest:** required. **Manual:** none.
+
+6. **incr-fallback**
+   - **Given** export of `b1,b2`.
+   - **When** `addBlock` **before** `b1` (or delete / list indent — one structural case is enough if the helper’s fallback table is unit-tested).
+   - **Then** splice helper reports fallback (does not invent rows); a following full `fromDoc` matches `side-shift` (surviving id, `start` moved).
+   - **How:** same Vitest file. **Autotest:** required. **Manual:** none.
+
+7. **incr-perf**
+   - **Given** a long note (tens of paragraphs), a full `fromDoc` snapshot, one in-place text edit.
+   - **When** time `incrementalFromDoc` splice (**on**) vs `forceFull` (**off**), median of a few runs after warmup.
+   - **Then** log both medians; splice markdown equals full; splice median wall time is **less than** full. Do not assert a fixed speedup ratio (machines differ).
+   - **How:** same Vitest file. **Autotest:** required. **Manual:** none.
+
 #### Done
 
-Typing in the editor updates the pane. Loop is single-flight. highlight.js re-paints each run. `e2e-pane` green.
+Typing in the editor updates the pane. Loop is single-flight. In-place splice equals full `fromDoc`; structural edits full-export. highlight.js re-paints the whole string each run. `incr-*` and `e2e-pane` green.
 
 ---
 
@@ -463,7 +501,7 @@ Typing in the editor updates the pane. Loop is single-flight. highlight.js re-pa
 | **title** | Pane and tests share from-doc.js |
 | **dependsOn** | `step-loop` |
 | **kind** | implement |
-| **status** | pending ([board](./M2.state.yaml)) |
+| **status** | **done** ([board](./M2.state.yaml)) |
 
 **Adds:** proof there is not a second markdown dialect in App. Fixture `one-exporter`. highlight.js is paint only: pane `innerText` is still `fromDoc`.
 
@@ -509,7 +547,7 @@ Typing in the editor updates the pane. Loop is single-flight. highlight.js re-pa
 | **title** | M2 close-out |
 | **dependsOn** | `step-one-exporter` |
 | **kind** | implement |
-| **status** | pending ([board](./M2.state.yaml)) |
+| **status** | **done** ([board](./M2.state.yaml)) |
 
 **Adds:** nothing in the product. Marks the board `done`. Person in browser + full export suite.
 
@@ -543,7 +581,7 @@ Add [runbook](../../runbook.md) **Manual testing (M2 close-out)** and [scenarios
 
 3. **Export suite complete**
    - **Given** [fixtures.md](../MDGate/fixtures.md) M2 table.
-   - **When** you check each id: `rt-paragraph`, `rt-headings`, `rt-list`, `rt-code`, `rt-link`, `rt-linked-doc`, `side-ids`, `side-stable`, `side-shift`, `opaque-untouched`, `loss-color`, `one-exporter`, `e2e-pane`.
+   - **When** you check each id: `rt-paragraph`, `rt-headings`, `rt-list`, `rt-code`, `rt-link`, `rt-linked-doc`, `side-ids`, `side-stable`, `side-shift`, `opaque-untouched`, `loss-color`, `incr-inplace`, `incr-marks`, `incr-fallback`, `incr-perf`, `one-exporter`, `e2e-pane`.
    - **Then** each has a passing test or a subset-cited skip (`loss-color` only).
    - **How:** map ids → files in yaml evidence. **Autotest:** the tests themselves. **Manual:** reviewer ticks the table.
 
@@ -582,6 +620,7 @@ If `fromDoc` is unstable on a subset type, **stop and cut the type** in subset.m
 | M0 e2e layout break | Keep outline; pane is extra host |
 | Linked-doc without catalog | Synthetic pageId; resolution is M4 |
 | Highlighter rewrite | `innerText` must equal `fromDoc` markdown; fail if highlight.js (or a preview) drops `#` / fences |
+| Splice ≠ full export | `incr-*` must equal full `fromDoc`; never shift by Y.Text length; fall back on structure |
 | Scope creep into apply | No `ap-*` in this plan |
 
 ## Handoff to M3
@@ -589,11 +628,13 @@ If `fromDoc` is unstable on a subset type, **stop and cut the type** in subset.m
 M3 may assume:
 
 - `from-doc.js` + sidecar builder; export fixtures green.
-- Pane is replaceable; loop is single-flight; **highlight.js** is pane chrome only (M3 convert does not import it).
-- **Disk** sidecar and `wiki/` do **not** exist yet. Pin then convert ([LiveSnapshot](../LiveSnapshot/README.md)); do not `fromDoc` the live Store for git.
+- Pane is replaceable; loop is single-flight (in-place splice or full `fromDoc`); **highlight.js** is pane chrome only (M3 convert does not import it).
+- **Disk** sidecar and `wiki/` do **not** exist yet. Pin then convert ([LiveSnapshot](../LiveSnapshot/README.md)); do not `fromDoc` the live Store for git. Do not freeze a spliced RAM sidecar as `T0`.
 - Apply / lease / After spaces are **not** done.
 
 M3 exit is clone `wiki/` and read markdown. M2 exit is “WYSIWYG and a read-only pane stay aligned on a documented subset.”
+
+M3 **implementation** is gated on [high-availability.md](../LiveSnapshot/high-availability.md) **Acceptance**. M3 is the thin column of that shape (RAM dirty, in-process idle, replica or idle GET). Do not invert it: no `fromDoc` of the live Store for git, no snapshotter in keck, no markdown in Postgres.
 
 ## Invariants (M2 only)
 

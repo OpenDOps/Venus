@@ -9,10 +9,10 @@ Commands assume the **repo root**. Machine setup (Docker, `.env`, ports): [runbo
 | Command | Runner | Needs | Matches |
 |---|---|---|---|
 | `pnpm test` | Vitest (Node) | nothing (doc-export Reachable/Decodes skip if keck is down) | `apps/web/src/host/**/*.test.ts` |
-| `pnpm test:e2e` | Playwright | Vite `:5173` (started by the config) | `e2e/m0-*.spec.ts` |
+| `pnpm test:e2e` | Playwright | Vite `:5173` (started by the config) | `e2e/m0-*.spec.ts`, `e2e/m2-*.spec.ts` |
 | `pnpm test:e2e:m1` | Playwright | Compose `postgres` + `octobase` already up; Vite `:5174` + `VITE_SYNC_URL` | `e2e/m1-*.spec.ts` |
 | `PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080` + `PLAYWRIGHT_M1=1` | Playwright | Compose **web** healthy (`pnpm compose:up`) | same `m1-*.spec.ts` against nginx `:8080` |
-| Manual | Person in Chrome/Firefox | see each group | M0 close-out; [M1 close-out](../runbook.md#manual-testing-m1-close-out) |
+| Manual | Person in Chrome/Firefox | see each group | M0 close-out; [M1 close-out](../runbook.md#manual-testing-m1-close-out); [M2 close-out](../runbook.md#manual-testing-m2-close-out) |
 
 ```bash
 pnpm test
@@ -35,9 +35,9 @@ Do not `docker compose down -v` between M1 specs. One Playwright worker for M1.
 | [Blobs](./blobs.md) | Blob HTTP, Postgres | image upload, second tab, reload |
 | [Doc export](./doc-export.md) | curl → keck export | Vitest `snapshot.test.ts` (skip Reachable/Decodes if keck is down) |
 | [Compose stack](./compose.md) | postgres, octobase, web | Vitest `compose.test.ts`; A→B on `:8080` optional |
-| Markdown projection | Host pane, Store `fromDoc` | Not yet — [M2/plan](../design/M2/plan.md); [fixtures](../design/MDGate/fixtures.md) export rows |
+| [Markdown projection](./markdown-projection.md) | Host pane, Store `fromDoc` | Vitest `mdgate/*.test.ts`; Playwright `e2e/m2-pane.spec.ts` |
 
-Milestone DoD prose stays in [M0/plan](../design/M0/plan.md), [M1/plan](../design/M1/plan.md), and [M2/plan](../design/M2/plan.md). When a spec and the plan disagree, the **spec file** is what CI runs. Markdown-projection specs (`mdgate/*.test.ts`, `e2e/m2-pane.spec.ts`) are created during M2; add `scenarios/markdown-projection.md` at [M2 verify](../design/M2/plan.md#8-step-verify).
+Milestone DoD prose stays in [M0/plan](../design/M0/plan.md), [M1/plan](../design/M1/plan.md), and [M2/plan](../design/M2/plan.md). When a spec and the plan disagree, the **spec file** is what CI runs. Markdown projection: [markdown-projection.md](./markdown-projection.md).
 
 ## Docs shape (not a folder per component)
 

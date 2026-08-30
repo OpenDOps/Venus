@@ -12,6 +12,23 @@ export type Sidecar = {
   blocks: SidecarBlockRange[];
 };
 
+export function collectRangedBlocks(root: {
+  flavour: string;
+  children?: unknown[];
+} | null): Array<{ model: { id: string; flavour: string }; listDepth: number }>;
+
+export function blockMarkdownSlice(
+  adapter: {
+    job: { blockToSnapshot: (model: unknown) => unknown; assetsManager: unknown };
+    fromBlockSnapshot: (payload: {
+      snapshot: unknown;
+      assets?: unknown;
+    }) => Promise<{ file?: string } | undefined>;
+  },
+  model: { flavour: string; props?: { pageId?: string } },
+  listDepth: number,
+): Promise<string>;
+
 export function encodeSidecarClock(ydoc: Doc): string;
 
 export function fromDoc(

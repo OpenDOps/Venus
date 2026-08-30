@@ -1,8 +1,8 @@
 # Markdown adapter gate (MDGate)
 
-**Status:** `fromDoc`, [live-pane](./live-pane.md), [apply](./apply.md), [subset](./subset.md), and [fixtures](./fixtures.md) are written. **Shared exporter** is `apps/web/src/host/mdgate/from-doc.js`. **Step 3** `rt-*` goldens are in `apps/web/src/host/mdgate/goldens/`.
+**Status:** `fromDoc`, [live-pane](./live-pane.md), [pin-convert](./pin-convert.md), [apply](./apply.md), [subset](./subset.md), and [fixtures](./fixtures.md) are written. **Shared exporter** is `apps/web/src/host/mdgate/from-doc.js`. **M2 steps 1–8 done** (pane loop + one exporter). Git / `T0` convert is [pin-convert.md](./pin-convert.md) (`pinThenFromDoc`); `wiki/` write is M3.
 
-**M2 coding** starts at [M2/plan.md](../M2/plan.md). **M2 exit:** export fixture rows green. **M6:** apply rows green. Architecture hang-point: [architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2).
+**M2 plan:** [M2/plan.md](../M2/plan.md) (steps 1–8 done). **M2 exit:** export fixture rows green. **M6:** apply rows green. Architecture hang-point: [architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2).
 
 ## Why a separate folder
 
@@ -16,10 +16,11 @@ If we skip it: fake hunks, diffs by “paragraph 3,” opaque blocks rewritten, 
 
 | Direction | Job | Where |
 |---|---|---|
-| **`fromDoc`** | CRDT → `.md` + sidecar. Live pane, git flush, lease `T0` md, review `old`. | This README + [live-pane.md](./live-pane.md) |
-| **Apply** | Diff **markdown vs `markdown_T0`**, attribute with **frozen sidecar**, hunks on Before/After **OctoBase** CRDTs, ops on the **published** Y.Doc. After edits after submit = next commit. | [apply.md](./apply.md) · [datamodel](../datamodel/crdt.md#commit-before-and-after) |
+| **A — pane** | Live CRDT → RAM markdown + sidecar. `fromDoc` or splice. No `T0`. | [live-pane.md](./live-pane.md) |
+| **B — convert** | Pin Yjs bytes → full `fromDoc` on an offline clone → `markdown_T0` + `sidecar_T0`. | [pin-convert.md](./pin-convert.md) |
+| **Apply** | Diff **markdown vs `markdown_T0`**, attribute with **frozen sidecar**, hunks on Before/After **OctoBase** CRDTs, ops on the **published** Y.Doc. | [apply.md](./apply.md) · [datamodel](../datamodel/crdt.md#commit-before-and-after) |
 
-Still required for M2 **exit**: [fixture](./fixtures.md) export rows green on the [subset](./subset.md).
+M2 **exit** is [fixture](./fixtures.md) export rows green on the [subset](./subset.md) (done 2026-08-30).
 
 ## Sidecar — what it is for
 
@@ -110,8 +111,8 @@ The **disk** sidecar is for **coming back** (accept, revert). The spectator pane
 | Path | When |
 |---|---|
 | **Live pane** | While the markdown view is **open**: once on open, then the [update loop](./live-pane.md) on Store changes. If the pane is closed: do not export for display. |
-| **Git flush** | Idle / Flush / flush-before-lease: **pin** Yjs bytes, then `fromDoc` **on the pin**. Not per keystroke. Not the live `Store` on the hot path. |
-| **Lease `T0`** | Once at acquire (keep that pin). |
+| **Git flush** | Idle / Flush / flush-before-lease: **pin** Yjs bytes, then `fromDoc` **on the pin** ([pin-convert.md](./pin-convert.md)). Not per keystroke. Not the live `Store` on the hot path. |
+| **Lease `T0`** | Once at acquire (keep that pin). Same convert helper. |
 | **After accept** | Full `fromDoc` on the updated tree; rewrite git sidecar. |
 
 ### 6. Live WYSIWYG (spectator)
@@ -136,7 +137,7 @@ The leased **editor** is the other direction (CRDT frozen, map T0 ranges through
 
 ## Incremental work (pane only)
 
-Allowed as an optimization of the **RAM** projection, after full `fromDoc` equals the fixture subset.
+Allowed as an optimization of the **RAM** projection in [M2 `step-loop`](../M2/plan.md#6-step-loop).
 
 In-place edit of `b1` (`"Hello"` → `"Hello there"`, `+6`):
 
@@ -146,11 +147,11 @@ In-place edit of `b1` (`"Hello"` → `"Hello there"`, `+6`):
 
 Do **not** incrementally update `wiki/.venus/ids/` on every CRDT op. Git dirty unit is the **page** ([LiveSnapshot](../LiveSnapshot/README.md)).
 
-M2 ships **full `fromDoc` + the coalescing loop**. Incremental splice is later, and only when a run is byte-equal to full `fromDoc`. Structural edits (insert/delete/move/split/merge/list indent/opaque) **fall back to full export**. Detail: [live-pane.md](./live-pane.md).
+M2 `step-loop` ships **single-flight + in-place splice**, with full `fromDoc` on first paint and on fallback. Incremental is only when a run is byte-equal to full `fromDoc`. Structural edits (insert/delete/move/split/merge/list indent/opaque/empty last-N) **fall back to full export**. Detail: [live-pane.md](./live-pane.md). **Never freeze a spliced RAM sidecar as `T0` or a git pin** — [pin-convert.md](./pin-convert.md).
 
 ## One exporter
 
-Pane, git flush, lease `T0` md, and review `old` slices share the same `fromDoc` + sidecar builder. Incremental pane output must match that exporter, not a second markdown dialect.
+Pane, git flush, lease `T0` md, and review `old` slices share the same `fromDoc` + sidecar builder. Incremental pane output must match that exporter, not a second markdown dialect. Git / lease **convert** is [pin-convert.md](./pin-convert.md) (`pinThenFromDoc`), not `fromDoc` of the live Store and not `incrementalFromDoc`.
 
 Until the fixture suite is green: no alternatives/stacks; do not tell agents “edit the `.md` in git and it will apply.” v1 agent path is lease → private buffer → hunks → accept ([apply.md](./apply.md)).
 
@@ -160,6 +161,7 @@ Until the fixture suite is green: no alternatives/stacks; do not tell agents “
 |---|---|
 | [README.md](./README.md) | `fromDoc`, sidecar stores, incremental rules |
 | [live-pane.md](./live-pane.md) | Spectator update loop (single-flight, full vs splice) |
+| [pin-convert.md](./pin-convert.md) | Pin Yjs bytes → offline Store → full `fromDoc` (git / `T0`) |
 | [apply.md](./apply.md) | Markdown vs `T0` → hunks → ops; WYSIWYG overlay |
 | [subset.md](./subset.md) | Round-trippable types, whitespace, opaque, loss |
 | [fixtures.md](./fixtures.md) | Suite layout, How to run, M2 vs M6 rows |

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { mountEditor } from './host/mount-editor.js';
 import { mountOutline, waitForEditorHost } from './host/mount-outline.js';
+import { mountMdPane } from './host/mdgate/mount-md-pane.js';
 import { providerFromEnv, blobSourcesFromEnv } from './host/providers/from-env.js';
+import { seedMarkdownDemo } from './host/seed.js';
 import { createM0Workspace } from './host/workspace.js';
 
 type Session = Awaited<ReturnType<typeof createM0Workspace>>;
@@ -11,6 +13,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const outlineRef = useRef<HTMLDivElement>(null);
+  const mdPaneRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<Session | null>(null);
 
   useEffect(() => {
@@ -19,7 +22,14 @@ export function App() {
       signal: ac.signal,
       blobSources: blobSourcesFromEnv(),
     })
-      .then((created) => {
+      .then(async (created) => {
+        if (ac.signal.aborted) {
+          created.provider.disconnect(created.docId);
+          return;
+        }
+        if (new URLSearchParams(window.location.search).has('md-demo')) {
+          await seedMarkdownDemo(created.store);
+        }
         if (ac.signal.aborted) {
           created.provider.disconnect(created.docId);
           return;
@@ -52,10 +62,12 @@ export function App() {
   useEffect(() => {
     const editorEl = editorRef.current;
     const outlineEl = outlineRef.current;
-    if (!session || !editorEl || !outlineEl) return;
+    const mdEl = mdPaneRef.current;
+    if (!session || !editorEl || !outlineEl || !mdEl) return;
 
-    const { store } = session;
+    const { store, workspace } = session;
     const { editor, unmount } = mountEditor(editorEl, store);
+    const unmountMd = mountMdPane(mdEl, store, workspace);
     let unmountOutline = () => {};
     let cancelled = false;
 
@@ -70,6 +82,7 @@ export function App() {
 
     return () => {
       cancelled = true;
+      unmountMd();
       unmountOutline();
       unmount();
     };
@@ -85,6 +98,7 @@ export function App() {
 
   return (
     <div className="m0-shell">
+      <aside className="md-pane-host" ref={mdPaneRef} />
       <div className="editor-host" ref={editorRef} />
       <aside className="outline-host" ref={outlineRef} />
     </div>

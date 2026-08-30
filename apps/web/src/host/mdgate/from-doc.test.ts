@@ -2,12 +2,15 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
-import { SEED_H1, SEED_H2 } from '../seed.js';
+import { SEED_H1, SEED_H2, seedMarkdownDemo } from '../seed.js';
 import { MemoryNoopProvider } from '../sync-provider.js';
 import { createM0Workspace } from '../workspace.js';
 import { fromDoc } from './from-doc.js';
 import {
+  addEmbedLinkedDoc,
+  addListItem,
   addNestedBulletedList,
+  clearNote,
   createMarkdownAdapter,
   replaceNoteWithParagraphs,
 } from './markdown-adapter.js';
@@ -84,6 +87,38 @@ test('recon: list fromDoc form (one sidecar row per list item)', async () => {
   expect(markdown.slice(inner!.start, inner!.end).replace(/\n+$/, '')).toBe(
     '  * inner',
   );
+});
+
+test('numbered list: per-block 1. still places 2. in the full file', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const note = noteOf(session.store);
+  clearNote(session.store, note);
+  const one = addListItem(session.store, note.id, 'numbered', 'one');
+  const two = addListItem(session.store, note.id, 'numbered', 'two');
+
+  const { markdown, sidecar } = await fromDoc(
+    session.store,
+    session.workspace,
+  );
+  expect(markdown).toMatch(/^1\. one$/m);
+  expect(markdown).toMatch(/^2\. two$/m);
+
+  const row1 = sidecar.blocks.find((b) => b.id === one);
+  const row2 = sidecar.blocks.find((b) => b.id === two);
+  expect(markdown.slice(row1!.start, row1!.end).replace(/\n+$/, '')).toBe(
+    '1. one',
+  );
+  expect(markdown.slice(row2!.start, row2!.end).replace(/\n+$/, '')).toBe(
+    '2. two',
+  );
+});
+
+test('seedMarkdownDemo fromDoc does not throw', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  expect(await seedMarkdownDemo(session.store)).toBe(true);
+  const { markdown } = await fromDoc(session.store, session.workspace);
+  expect(markdown).toContain('2. two');
+  expect(markdown).toContain('Markdown subset');
 });
 
 test('side-ids: three paragraphs map CRDT ids to slices; no ids in the body', async () => {
@@ -168,4 +203,45 @@ test('empty paragraph vs stringify gap: last-N newline is the empty block', asyn
   // empty paragraph. The leading `\n\n` are stringify gaps (neither range).
   expect(withEmpty.markdown.slice(alpha.end, empty.start)).toBe('\n\n');
   expect(empty.end).toBe(bravo.start);
+});
+
+test('duplicate paragraphs place in document order (cursor, not first indexOf)', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const ids = replaceNoteWithParagraphs(session.store, noteOf(session.store), [
+    'Hello',
+    'Hello',
+  ]);
+
+  const { markdown, sidecar } = await fromDoc(
+    session.store,
+    session.workspace,
+  );
+  const notes = noteRanges(session.store, sidecar);
+  expect(notes.map((b) => b.id)).toEqual(ids);
+  expect(markdown.slice(notes[0].start, notes[0].end).replace(/\n+$/, '')).toBe(
+    'Hello',
+  );
+  expect(markdown.slice(notes[1].start, notes[1].end).replace(/\n+$/, '')).toBe(
+    'Hello',
+  );
+  expect(notes[1].start).toBeGreaterThanOrEqual(notes[0].end);
+});
+
+test('linked-doc comment injects at the adapter URL, not a prose substring', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const note = noteOf(session.store);
+  replaceNoteWithParagraphs(session.store, note, ['mentions doc:lease here']);
+  addEmbedLinkedDoc(session.store, note.id, 'doc:lease');
+
+  const { markdown } = await fromDoc(session.store, session.workspace);
+  const comment = '<!-- venus:doc:doc:lease -->';
+  const prose = markdown.indexOf('mentions doc:lease here');
+  const commentAt = markdown.indexOf(comment);
+  const linkAt = markdown.indexOf('](');
+  expect(prose).toBeGreaterThanOrEqual(0);
+  expect(linkAt).toBeGreaterThan(prose);
+  expect(commentAt).toBeGreaterThan(linkAt);
+  expect(markdown).toMatch(
+    /\[untitled\]\(\.\/workspace\/venus-m0\/doc:lease\)\n<!-- venus:doc:doc:lease -->/,
+  );
 });

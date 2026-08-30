@@ -17,6 +17,7 @@
     "bind-event-listener": "3.0.0",
     "debug": "^4.4.3",
     "extend": "3.0.2",
+    "highlight.js": "11.11.1",
     "lib0": "0.2.117",
     "lit": "3.3.3",
     "lodash.clonedeep": "^4.5.0",

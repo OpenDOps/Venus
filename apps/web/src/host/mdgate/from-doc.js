@@ -1,6 +1,9 @@
 import { toBase64 } from 'lib0/buffer';
 import * as Y from 'yjs';
-import { createMarkdownAdapter } from './markdown-adapter.js';
+import {
+  createMarkdownAdapter,
+  markdownAdapterFor,
+} from './markdown-adapter.js';
 
 /**
  * Flavours that get a sidecar range from the note walk. `affine:page` is
@@ -16,6 +19,9 @@ const RANGE_FLAVOURS = new Set([
   'affine:image',
   'affine:embed-linked-doc',
 ]);
+
+/** pageId in `<!-- venus:doc:… -->` — reject comment breakout / odd ids. */
+const SAFE_PAGE_ID = /^[A-Za-z0-9_.:-]+$/;
 
 function collectRanged(model, out, listDepth = 0) {
   if (RANGE_FLAVOURS.has(model.flavour)) {
@@ -35,8 +41,31 @@ function coreOf(slice) {
   return slice.replace(/\n+$/, '');
 }
 
+function snapshotDeltaText(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value.delta)) {
+    return value.delta
+      .map((op) => (typeof op.insert === 'string' ? op.insert : ''))
+      .join('');
+  }
+  if (typeof value.toString === 'function') {
+    const s = value.toString();
+    if (s !== '[object Object]') return s;
+  }
+  return '';
+}
+
 function isEmptyParagraph(model, slice) {
   return model.flavour === 'affine:paragraph' && coreOf(slice) === '';
+}
+
+/** Empty body paragraphs: skip per-block adapter (last-N maps the newline). */
+function isEmptyTextParagraphSnapshot(snapshot) {
+  if (snapshot.flavour !== 'affine:paragraph') return false;
+  const type = snapshot.props?.type;
+  if (type != null && type !== 'text') return false;
+  return snapshotDeltaText(snapshot.props?.text) === '';
 }
 
 function indentSlice(slice, listDepth) {
@@ -48,7 +77,7 @@ function indentSlice(slice, listDepth) {
   return endsWithNl || slice.length === 0 ? `${body}\n` : body;
 }
 
-function placeNonEmpty(markdown, slice, from) {
+function placementCandidates(slice) {
   const candidates = [];
   const seen = new Set();
   const push = (s) => {
@@ -63,13 +92,83 @@ function placeNonEmpty(markdown, slice, from) {
     push(`${core}\n`);
     push(core);
   }
+  return candidates;
+}
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Per-block `fromBlockSnapshot` of a numbered item is always `1.`; the full
+ * `fromDocSnapshot` uses `2.`, `3.`, … Same body, different marker.
+ */
+const NUMBERED_ITEM = /^((?:  )*)(\d+)\.([\s\S]*)$/;
+
+function matchNumberedAt(markdown, slice, i) {
+  const m = NUMBERED_ITEM.exec(slice);
+  if (!m) return null;
+  const pad = m[1];
+  const rest = m[3];
+  if (!markdown.startsWith(pad, i)) return null;
+  const afterPad = i + pad.length;
+  const num = /^(\d+)\./.exec(markdown.slice(afterPad));
+  if (!num) return null;
+  const restAt = afterPad + num[0].length;
+  if (!markdown.startsWith(rest, restAt)) return null;
+  return { start: i, end: restAt + rest.length };
+}
+
+function placeNumberedByIndexOf(markdown, slice, from) {
+  const m = NUMBERED_ITEM.exec(slice);
+  if (!m) return null;
+  const pad = m[1];
+  const rest = m[3];
+  const re = new RegExp(`${escapeRegExp(pad)}\\d+\\.${escapeRegExp(rest)}`);
+  const idx = markdown.slice(from).search(re);
+  if (idx === -1) return null;
+  const start = from + idx;
+  const hit = markdown.slice(start).match(re);
+  if (!hit) return null;
+  return { start, end: start + hit[0].length };
+}
+
+function placeByIndexOf(markdown, candidates, from) {
   for (const candidate of candidates) {
     const idx = markdown.indexOf(candidate, from);
     if (idx !== -1) {
       return { start: idx, end: idx + candidate.length };
     }
   }
+  for (const candidate of candidates) {
+    const numbered = placeNumberedByIndexOf(markdown, candidate, from);
+    if (numbered) return numbered;
+  }
   return null;
+}
+
+/**
+ * Prefer matching at the cursor (skip stringify-gap newlines). Falls back
+ * to forward indexOf if the next bytes are not the slice (opaque gaps).
+ */
+function placeFromCursor(markdown, slice, from) {
+  const candidates = placementCandidates(slice);
+  let i = from;
+  while (i <= markdown.length) {
+    for (const candidate of candidates) {
+      if (markdown.startsWith(candidate, i)) {
+        return { start: i, end: i + candidate.length };
+      }
+      const numbered = matchNumberedAt(markdown, candidate, i);
+      if (numbered) return numbered;
+    }
+    if (i < markdown.length && markdown[i] === '\n') {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return placeByIndexOf(markdown, candidates, from);
 }
 
 /**
@@ -79,8 +178,42 @@ function venusDocComment(pageId) {
   return `<!-- venus:doc:${pageId} -->`;
 }
 
+function isSafePageId(pageId) {
+  return (
+    typeof pageId === 'string' &&
+    pageId.length > 0 &&
+    pageId.length <= 128 &&
+    SAFE_PAGE_ID.test(pageId)
+  );
+}
+
+function urlMentionsPageId(url, pageId) {
+  const path = url.split(/[?#]/, 1)[0];
+  return path === pageId || path.endsWith(`/${pageId}`);
+}
+
+function findLinkedDocInsert(markdown, pageId, from) {
+  let search = from;
+  while (search < markdown.length) {
+    const open = markdown.indexOf('](', search);
+    if (open === -1) return null;
+    const close = markdown.indexOf(')', open + 2);
+    if (close === -1) return null;
+    const url = markdown.slice(open + 2, close);
+    if (urlMentionsPageId(url, pageId)) {
+      const nl = markdown.indexOf('\n', close);
+      return {
+        at: nl === -1 ? markdown.length : nl + 1,
+        missingNl: nl === -1,
+      };
+    }
+    search = open + 2;
+  }
+  return null;
+}
+
 function withVenusLinkedDocComment(slice, pageId) {
-  if (!pageId) return slice;
+  if (!isSafePageId(pageId)) return slice;
   const comment = venusDocComment(pageId);
   if (slice.includes(comment)) return slice;
   const core = slice.replace(/\n+$/, '');
@@ -88,39 +221,41 @@ function withVenusLinkedDocComment(slice, pageId) {
 }
 
 function injectVenusLinkedDocComments(markdown, models) {
-  let result = markdown;
-  let cursor = 0;
+  const inserts = [];
+  let searchFrom = 0;
   for (const { model } of models) {
     if (model.flavour !== 'affine:embed-linked-doc') continue;
     const pageId = model.props?.pageId;
-    if (!pageId) continue;
+    if (!isSafePageId(pageId)) continue;
     const comment = venusDocComment(pageId);
-    const existing = result.indexOf(comment, cursor);
+    const existing = markdown.indexOf(comment, searchFrom);
     if (existing !== -1) {
-      cursor = existing + comment.length;
+      searchFrom = existing + comment.length;
       continue;
     }
-    const idAt = result.indexOf(String(pageId), cursor);
-    if (idAt === -1) continue;
-    const lineEnd = result.indexOf('\n', idAt);
-    if (lineEnd === -1) {
-      result = `${result}\n${comment}\n`;
-      cursor = result.length;
-      continue;
-    }
-    result =
-      result.slice(0, lineEnd + 1) + `${comment}\n` + result.slice(lineEnd + 1);
-    cursor = lineEnd + 1 + comment.length + 1;
+    const loc = findLinkedDocInsert(markdown, pageId, searchFrom);
+    if (!loc) continue;
+    inserts.push({ ...loc, comment });
+    searchFrom = loc.at;
   }
-  return result;
+  if (inserts.length === 0) return markdown;
+  const chunks = [];
+  let cursor = 0;
+  for (const ins of inserts) {
+    chunks.push(markdown.slice(cursor, ins.at));
+    if (ins.missingNl) chunks.push('\n');
+    chunks.push(`${ins.comment}\n`);
+    cursor = ins.at;
+  }
+  chunks.push(markdown.slice(cursor));
+  return chunks.join('');
 }
 
 /**
  * Own markdown for one block: nested ranged children are exported as their
  * own sidecar rows, so they must not appear in the parent slice.
  */
-async function ownMarkdown(adapter, model) {
-  const snapshot = adapter.job.blockToSnapshot(model);
+async function ownMarkdownFromSnapshot(adapter, snapshot) {
   if (!snapshot) return '';
   const own = {
     ...snapshot,
@@ -128,17 +263,25 @@ async function ownMarkdown(adapter, model) {
       (c) => !RANGE_FLAVOURS.has(c.flavour),
     ),
   };
-  const result = await adapter.fromBlockSnapshot({ snapshot: own });
+  const result = await adapter.fromBlockSnapshot({
+    snapshot: own,
+    assets: adapter.job.assetsManager,
+  });
   const file = result?.file ?? '';
-  if (model.flavour === 'affine:embed-linked-doc') {
-    return withVenusLinkedDocComment(file, model.props?.pageId);
+  if (snapshot.flavour === 'affine:embed-linked-doc') {
+    return withVenusLinkedDocComment(file, snapshot.props?.pageId);
   }
   return file;
 }
 
-function placePageTitle(root, markdown) {
-  if (!root || root.flavour !== 'affine:page') return null;
-  const title = root.props?.title?.toString() ?? '';
+async function ownMarkdown(adapter, model) {
+  const snapshot = adapter.job.blockToSnapshot(model);
+  return ownMarkdownFromSnapshot(adapter, snapshot);
+}
+
+function placePageTitle(pageSnap, markdown) {
+  if (!pageSnap || pageSnap.flavour !== 'affine:page') return null;
+  const title = snapshotDeltaText(pageSnap.props?.title);
   if (!title) return null;
   const heading = `# ${title}\n`;
   if (!markdown.startsWith(heading)) {
@@ -146,7 +289,7 @@ function placePageTitle(root, markdown) {
       `Page title ${JSON.stringify(title)} not at start of fromDoc: ${JSON.stringify(markdown.slice(0, 80))}`,
     );
   }
-  return { id: root.id, start: 0, end: heading.length };
+  return { id: pageSnap.id, start: 0, end: heading.length };
 }
 
 function assignEmptyParagraphs(markdown, items, placed, leadingStart) {
@@ -199,8 +342,8 @@ function buildRanges(markdown, items, titleRange) {
     }
     const indented = indentSlice(slice, listDepth);
     const loc =
-      placeNonEmpty(markdown, indented, cursor) ??
-      placeNonEmpty(markdown, slice, cursor);
+      placeFromCursor(markdown, indented, cursor) ??
+      placeFromCursor(markdown, slice, cursor);
     if (!loc) {
       throw new Error(
         `Could not place block ${model.id} (${model.flavour}) slice=${JSON.stringify(indented)} at ${cursor} near ${JSON.stringify(markdown.slice(cursor, cursor + 80))}`,
@@ -218,34 +361,61 @@ function buildRanges(markdown, items, titleRange) {
   return titleRange ? [titleRange, ...noteBlocks] : noteBlocks;
 }
 
-/** Yjs state vector of `store.spaceDoc`, lib0 base64. Sidecar `clock` Actual. */
+export function collectRangedBlocks(root) {
+  const out = [];
+  if (root) collectRanged(root, out);
+  return out;
+}
+
+/**
+ * Adapter markdown for one ranged block, nested ranged children stripped,
+ * list indent applied. Used by full `fromDoc` placement and by RAM splice.
+ */
+export async function blockMarkdownSlice(adapter, model, listDepth) {
+  const slice = await ownMarkdown(adapter, model);
+  return indentSlice(slice, listDepth);
+}
+
 export function encodeSidecarClock(ydoc) {
   return toBase64(Y.encodeStateVector(ydoc));
 }
 
 /**
- * Shared exporter: `MarkdownAdapter.fromDoc` plus a RAM sidecar.
- * Page title `# …` maps to `affine:page` (`root.id`). Extra blank lines
+ * Shared exporter: one frozen `docToSnapshot` + `fromDocSnapshot`, then
+ * parallel per-block slices from that snapshot (empty text paragraphs skip
+ * the adapter). Page title `# …` maps to `affine:page`. Extra blank lines
  * between note blocks are not in any range. Linked-doc cards get
  * `<!-- venus:doc:<pageId> -->` after the adapter link (post-process).
  */
 export async function fromDoc(store, workspace) {
-  const adapter = createMarkdownAdapter(store, workspace);
-  const result = await adapter.fromDoc(store);
-  if (!result) {
-    throw new Error('MarkdownAdapter.fromDoc returned undefined');
+  const adapter = markdownAdapterFor(store, workspace);
+  const docSnapshot = adapter.job.docToSnapshot(store);
+  if (!docSnapshot?.blocks) {
+    throw new Error('MarkdownAdapter job.docToSnapshot returned undefined');
   }
 
   const models = [];
-  if (store.root) collectRanged(store.root, models);
-  const markdown = injectVenusLinkedDocComments(result.file, models);
-  const titleRange = placePageTitle(store.root, markdown);
+  collectRanged(docSnapshot.blocks, models);
 
-  const items = [];
-  for (const { model, listDepth } of models) {
-    const slice = await ownMarkdown(adapter, model);
-    items.push({ model, listDepth, slice });
+  const result = await adapter.fromDocSnapshot({
+    snapshot: docSnapshot,
+    assets: adapter.job.assetsManager,
+  });
+  if (!result) {
+    throw new Error('MarkdownAdapter.fromDocSnapshot returned undefined');
   }
+
+  const markdown = injectVenusLinkedDocComments(result.file, models);
+  const titleRange = placePageTitle(docSnapshot.blocks, markdown);
+
+  const items = await Promise.all(
+    models.map(async ({ model, listDepth }) => {
+      const slice = isEmptyTextParagraphSnapshot(model)
+        ? ''
+        : await ownMarkdownFromSnapshot(adapter, model);
+      return { model, listDepth, slice };
+    }),
+  );
 
   const blocks = buildRanges(markdown, items, titleRange);
   const docId = store.doc?.id ?? store.id;

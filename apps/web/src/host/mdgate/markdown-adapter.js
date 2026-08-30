@@ -19,6 +19,36 @@ export function createMarkdownAdapter(store, workspace) {
   return new MarkdownAdapter(transformer, store.provider);
 }
 
+/** One transformer + adapter per Store (hot pane / splice path). */
+const adapterByStore = new WeakMap();
+
+export function markdownAdapterFor(store, workspace) {
+  const docMetas = workspace?.meta?.docMetas;
+  const hit = adapterByStore.get(store);
+  if (
+    hit &&
+    hit.workspaceId === workspace.id &&
+    hit.docMetas === docMetas
+  ) {
+    return hit.adapter;
+  }
+  const adapter = createMarkdownAdapter(store, workspace);
+  adapterByStore.set(store, {
+    workspaceId: workspace.id,
+    docMetas,
+    adapter,
+  });
+  return adapter;
+}
+
+export function addListItem(store, parentId, type, text, extra = {}) {
+  return store.addBlock(
+    'affine:list',
+    { type, text: new Text(text), ...extra },
+    parentId,
+  );
+}
+
 export function addNestedBulletedList(store, noteId, outer, inner) {
   const outerId = store.addBlock(
     'affine:list',
@@ -60,6 +90,64 @@ export function addParagraph(store, noteId, text) {
     { text: new Text(text) },
     noteId,
   );
+}
+
+export function addParagraphAt(store, noteId, text, index) {
+  return store.addBlock(
+    'affine:paragraph',
+    { text: new Text(text) },
+    noteId,
+    index,
+  );
+}
+
+export function addImageBlock(store, noteId, sourceId) {
+  return store.addBlock('affine:image', { sourceId }, noteId);
+}
+
+export function addColoredParagraph(store, noteId, text, color) {
+  return store.addBlock(
+    'affine:paragraph',
+    {
+      text: new Text([{ insert: text, attributes: { color } }]),
+    },
+    noteId,
+  );
+}
+
+export function paragraphHasColorMark(store, blockId) {
+  const block = store.getBlock(blockId);
+  const text = block?.model?.text;
+  const delta = text?.toDelta?.() ?? [];
+  return delta.some((op) => typeof op.attributes?.color === 'string');
+}
+
+export function setParagraphText(store, blockId, text) {
+  const current = store.getBlock(blockId)?.model?.text;
+  if (!current || typeof current.toString !== 'function') {
+    throw new Error(`No text on block ${blockId}`);
+  }
+  const now = current.toString();
+  if (typeof current.delete === 'function') current.delete(0, now.length);
+  if (typeof current.insert === 'function') current.insert(text, 0);
+}
+
+export function setParagraphType(store, blockId, type) {
+  store.updateBlock(blockId, { type });
+}
+
+export function formatParagraph(store, blockId, attrs) {
+  const current = store.getBlock(blockId)?.model?.text;
+  if (!current || typeof current.format !== 'function') {
+    throw new Error(`No format on block ${blockId}`);
+  }
+  const len = current.toString().length;
+  current.format(0, len, attrs);
+}
+
+export function paragraphTextLength(store, blockId) {
+  const current = store.getBlock(blockId)?.model?.text;
+  return current?.toString?.().length ?? 0;
 }
 
 export function addCodeBlock(store, noteId, language, source) {

@@ -14,7 +14,7 @@ if (composeWeb && !isM1) {
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: isM1 ? 'm1-*.spec.ts' : 'm0-*.spec.ts',
+  testMatch: isM1 ? 'm1-*.spec.ts' : '{m0,m2}-*.spec.ts',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

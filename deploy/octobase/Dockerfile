@@ -14,6 +14,11 @@ RUN git init \
     && git fetch --depth 1 origin "${OCTOBASE_SHA}" \
     && git checkout --force FETCH_HEAD
 
+# Y.Text marks: Content::Format → Value::Format (stock is unimplemented!()).
+# Overlay, not git apply: unified diffs against this pin failed on hunk context.
+COPY patches/value.rs /src/libs/jwst-codec/src/doc/types/value.rs
+COPY patches/publisher.rs /src/libs/jwst-codec/src/doc/publisher.rs
+
 ENV CARGO_TERM_COLOR=always \
     CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 

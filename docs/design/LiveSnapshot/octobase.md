@@ -4,6 +4,24 @@ What pinned keck (`276e0e94719a652483119c5fea16be13293ee21c`) actually does. Pol
 
 Venus does **not** fork keck for a pin-WAL. Cloud replaces keck anyway ([CRDT — seam](../CRDT/README.md#seam)).
 
+## Y.Text `Format` (live A→B)
+
+Stock `jwst-codec` at this pin panics `unimplemented!()` in `Value::from` for `Content::Format`. `DocPublisher` walks every item for history (`content: Value::from(&item.content).to_string()`). That kills the observer thread; `join().unwrap()` on stop is a second panic. **Postgres still stores the Yjs bytes** (export / reload work). Live fan-out does not.
+
+The stored `venus-m0` doc is valid Yjs. Decode of `GET /api/block/venus-m0/export` (2026-08-30) had **10** `ContentFormat` items, all parent `YText`, not deleted:
+
+| key | open value | close |
+|---|---|---|
+| `link` | `https://example.com/path` | `null` |
+| `bold` | `true` | `null` |
+| `italic` | `true` | `null` |
+| `code` | `true` | `null` |
+| `color` | `var(--affine-palette-line-red)` | `null` |
+
+Those are `?md-demo=1` paragraphs (`docs` link, `bold italic code`, `Colored text`). Any BlockSuite mark uses the same `Content::Format` (also underline, strike, background if the user applies them). Encode/decode of Format in the update already worked; only the `Value` mapping was missing.
+
+Venus overlays `deploy/octobase/patches/value.rs` and `publisher.rs` at image build: `Value::Format { key, value }` round-trips to `Content::Format`, `Display` is `format(key=value)`, observer `join` logs instead of unwrap. Same `OCTOBASE_SHA`. Not a skip/`Undefined` stub.
+
 ## Three pipes (already separate)
 
 ```text
@@ -41,7 +59,7 @@ Source: `jwst-rpc` `context.rs` (`apply_change`, `save_update`), `jwst-storage` 
 | Atomic pin of many workspaces | One GET per workspace id |
 | Notify Venus of dirty `docId`s | No; Venus tracks clocks / replica updates |
 
-So: “hold the persist buffer during pin, still sync clients, flush when pin ends” is **not** a keck feature. Live sync already ignores persist. The missing piece is only a **consistent copy of now** for Venus, which the snapshotter owns.
+So: “hold the persist buffer during pin, still sync clients, flush when pin ends” is **not** a keck feature. Live sync already ignores persist. The missing piece is only a **consistent copy of now** for Venus, which the snapshotter owns. At thousands of wikis that copy is a **dirty-set cut**, not one replica per page: [high-availability.md](./high-availability.md).
 
 ## How Venus should pin against this keck
 

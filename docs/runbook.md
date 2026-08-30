@@ -2,7 +2,7 @@
 
 Commands assume the **repo root**. pnpm workspace: `apps/*` (today: `@venus/web` only).
 
-M0 contract: [design/M0](./design/M0/README.md). M1 contract: [design/M1](./design/M1/README.md) (done 2026-08-30). M2 contract: [design/M2](./design/M2/README.md) (not started). Product design: [design/venus-design.md](./design/venus-design.md). Dataflow: [design/architecture.md](./design/architecture.md). Deploy: [devops](./devops/README.md). Tests: [scenarios](./scenarios/README.md).
+M0 contract: [design/M0](./design/M0/README.md). M1 contract: [design/M1](./design/M1/README.md) (done 2026-08-30). M2 contract: [design/M2](./design/M2/README.md) (done 2026-08-30). Product design: [design/venus-design.md](./design/venus-design.md). Dataflow: [design/architecture.md](./design/architecture.md). Deploy: [devops](./devops/README.md). Tests: [scenarios](./scenarios/README.md).
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ pnpm dev
 
 Same as `pnpm --filter @venus/web dev` (Vite). Default URL is the Vite printout, usually `http://localhost:5173`.
 
-M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **octobase** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next: [M2 markdown projection](./design/M2/README.md) ([plan](./design/M2/plan.md)). Adapter contract: [MDGate](./design/MDGate/README.md).
+M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **octobase** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **not** coding `wiki/` yet: [high-availability.md](./design/LiveSnapshot/high-availability.md) **Acceptance** (accepted 2026-08-30) gates [M3 git snapshotter](./design/venus-implementation-plan.md#m3--git-snapshotter-week). Adapter: [MDGate](./design/MDGate/README.md).
 
 Browser console noise from extensions (`contentscript.js`, MetaMask, ObjectMultiplex) is not Venus.
 
@@ -127,9 +127,9 @@ Browser e2e (Playwright; starts Vite on `127.0.0.1:5173` unless that port is alr
 pnpm test:e2e
 ```
 
-Memory-only: `e2e/m0-*.spec.ts`. Ignores `m1-*.spec.ts`. If a stale Vite is bound to 5173, kill it first — `reuseExistingServer` will reuse a broken process.
+Memory-only: `e2e/m0-*.spec.ts` and `e2e/m2-*.spec.ts`. Ignores `m1-*.spec.ts`. If a stale Vite is bound to 5173, kill it first — `reuseExistingServer` will reuse a broken process.
 
-M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose keck up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out).
+M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose keck up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out) and [Manual testing (M2)](#manual-testing-m2-close-out).
 
 ## Manual testing (M0 close-out)
 
@@ -172,6 +172,23 @@ Exit 0. File length **> 2** bytes.
 10. **Memory mode (optional sanity).** Unset sync env, `pnpm dev`: refresh **drops** text (M0 still works for people without Docker).
 
 If any required step fails, M1 is not done. Fix provider, hydrate, blobs, or the server; do not fake two tabs with `localStorage`. Full contract: [M1 step 9](./design/M1/plan.md#9-step-verify).
+
+## Manual testing (M2 close-out)
+
+**Passed 2026-08-30** (live pane on Compose `:8080`; memory path below). Playwright does **not** replace this. Use Chrome or Firefox yourself. Fail on uncaught exceptions from the host or BlockSuite. Ignore extension noise (`contentscript.js`, MetaMask, ObjectMultiplex).
+
+There is **no markdown mode switch**. Layout is three columns: markdown **source** (left), WYSIWYG (middle), outline (right).
+
+1. From the repo root: `pnpm dev`. Open the Vite URL (usually `http://localhost:5173`). **Not** Compose `:8080` for this memory path.
+2. **Source, not a preview.** Left pane shows `# Why Venus` and `## Empty host` as markdown (hash signs visible, token-colored). It is not a second rendered page. Outline on the right still lists those headings.
+3. **Type.** Click the **empty paragraph at the top of the note**, not the title. Type a unique word (e.g. `m2-hello`). It appears in the note **and** in the left pane **without reload**. Tokens stay colored.
+4. **Read-only.** Click the left pane and type. Nothing is inserted. The element is not `contenteditable`.
+5. **Refresh (memory).** Reload. The unique word is **gone**. Seed title + H1/H2 are back. Pane matches the seed source again (same as M0 persist).
+6. **No git.** There is no `wiki/` in the repo from this milestone. The pane is RAM only.
+7. **Optional Compose.** `pnpm compose:up`, open **http://127.0.0.1:8080**. Type a unique word; pane updates; reload **keeps** the word **and** the pane still matches (M1 persist). Not required to close M2. Opt-in extra blocks: `?md-demo=1` (appends once; numbered lists, fences, linked-doc comment). Rebuild `web` after host changes (`docker compose up --build -d web`).
+8. **Optional two tabs (M1).** Same URL in a second tab. Type a unique word in A; B’s **note** (not only the pane) should show it without reload. If B stays stale while reload-in-B shows the word, keck’s publisher may have panicked on Y.Text `Format` (bold/italic/code/link/color). Rebuild octobase after `deploy/octobase/patches/value.rs` (`Value::Format`): `docker compose up --build -d octobase`. Do not `docker compose down -v` unless you want a clean seed.
+
+If any required step (1–6) fails, M2 is not done. Fix the exporter or the pane loop; do not hide jitter by stripping whitespace. Full contract: [M2 step 8](./design/M2/plan.md#8-step-verify). Specs: [scenarios/markdown-projection](./scenarios/markdown-projection.md).
 
 ## Build
 

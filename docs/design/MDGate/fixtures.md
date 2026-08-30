@@ -1,6 +1,6 @@
 # Fixture suite
 
-**Status:** design. Types and loss: [subset.md](./subset.md). Exporter: [README.md](./README.md). Pane: [live-pane.md](./live-pane.md). Apply: [apply.md](./apply.md). Accept bar: [implementation plan](../venus-implementation-plan.md#markdown-adapter-gate-build-this-do-not-debate-it). Coding steps: [M2/plan.md](../M2/plan.md).
+**Status:** M2 export rows implemented. Types and loss: [subset.md](./subset.md). Exporter: [README.md](./README.md). Pane: [live-pane.md](./live-pane.md). Pin convert: [pin-convert.md](./pin-convert.md). Apply: [apply.md](./apply.md). Accept bar: [implementation plan](../venus-implementation-plan.md#markdown-adapter-gate-build-this-do-not-debate-it). Coding steps: [M2/plan.md](../M2/plan.md). Specs: [scenarios/markdown-projection](../../scenarios/markdown-projection.md).
 
 Not a demo. M2 **exit** is the **export** rows green. M6 **exit** (and “edit the `.md` and it will apply”) needs the **apply** rows green.
 
@@ -10,12 +10,14 @@ From repo root. Adapter tests are **Node Vitest** (build a `Store`, no keck). Pa
 
 ```bash
 pnpm test                 # includes mdgate Vitest (path below)
-pnpm test:e2e             # add e2e/m2-*.spec.ts when the pane exists
+pnpm test:e2e             # e2e/m2-pane.spec.ts + m0-*.spec.ts
 ```
 
 | Layer | Files (create in M2/M6) | Needs |
 |---|---|---|
 | Export / sidecar / opaque | `apps/web/src/host/mdgate/*.test.ts` | nothing |
+| In-place splice | `apps/web/src/host/mdgate/splice.test.ts` (`incr-*`) | nothing |
+| Pin then convert | `apps/web/src/host/mdgate/pin-from-doc.test.ts` | nothing |
 | Pane aligned, replaceable | `apps/web/e2e/m2-pane.spec.ts` | Vite; sync optional |
 | Apply hunks | `apps/web/src/host/mdgate/apply.test.ts` | nothing (in-memory T0 Store) |
 
@@ -37,10 +39,15 @@ Do **not** require Compose for the subset round-trip. One exporter: the same `fr
 | `side-ids` | Sidecar ids | Three paragraphs `b1,b2,b3` | Every range maps `id` → slice; slices concatenate with gaps to the file; **no** ids in the markdown body |
 | `side-stable` | Re-export keeps ids | `fromDoc`, mutate nothing, `fromDoc` again | Same ids, ranges may follow whitespace rule only |
 | `side-shift` | Insert above does not rename | Export; `addBlock` **before** `b1`; export | `b1` still `b1`; its `start` moved |
-| `opaque-untouched` | Opaque not rewritten | Subset block + opaque (image or unknown); `fromDoc` twice | Opaque slice **byte-equal**; subset still round-trips |
-| `loss-color` | Loss documented | Paragraph with color mark if the schema allows | `fromDoc` golden is plain (or listed exception); second `fromDoc` stable |
+| `opaque-untouched` | Opaque not rewritten | Subset block + `affine:image` (`e2e/fixtures/dot.png`); `fromDoc` twice | Opaque slice **byte-equal** (`![dot.png](assets/dot.png)`); subset paragraph still `Hello paragraph` |
+| `loss-color` | Loss documented | Paragraph with `AffineTextAttributes.color` | Golden `loss-color.md` is plain text; second `fromDoc` stable; color remains on the CRDT |
 | `one-exporter` | Same helper | Call the shared `fromDoc` used by tests | Pane code imports that helper (static check or same module) |
-| `e2e-pane` | Live alignment | Type in WYSIWYG; markdown pane open | Pane text equals `fromDoc(store)` after debounce; **no caret**; replace whole string |
+| `pin-then-fromDoc` | Path B convert | Pin Yjs bytes; mutate live; convert the pin | Markdown + sidecar ids equal `fromDoc` at pin time; live edit is absent from the pin convert; not `incrementalFromDoc` |
+| `incr-inplace` | Pane splice | Three paragraphs; change only `b1` text; splice | Spliced markdown + ranges **byte-equal** full `fromDoc`; later ids shifted by UTF-16 delta |
+| `incr-marks` | Delta is markdown, not Y.Text | Apply bold / italic / code / link (Y.Text length unchanged) | Splice equals full `fromDoc`; markdown grows (`**` / `*` / `` ` `` / `[ ](url)`) |
+| `incr-fallback` | Structure uses full export | `addBlock` before `b1`; heading type `text`→`h1`; note that has a linked-doc card | Helper falls back; full `fromDoc` still `side-shift` / equals a fresh export |
+| `incr-perf` | Splice vs full cost | ~48 paragraphs; one in-place edit | Log median wall time splice **on** vs `forceFull` **off**; splice equals full; on is faster |
+| `e2e-pane` | Live alignment | Type in WYSIWYG; markdown pane open | Pane text equals `fromDoc(store)` after debounce; **no caret**; highlight re-paint |
 
 Whitespace-only `fromDoc` jitter that is **not** on the exemption list fails `rt-*`. That is the fake-hunk bug.
 
@@ -62,8 +69,7 @@ Build `markdown_T0` + `sidecar_T0` from a Store. Edit a **copy** of the markdown
 
 | Later | Why |
 |---|---|
-| Incremental pane splice = full `fromDoc` | After M2 goldens exist ([live-pane.md](./live-pane.md)) |
-| Git pin convert | [LiveSnapshot](../LiveSnapshot/README.md) M3; same `fromDoc` helper |
+| Git pin convert | [LiveSnapshot](../LiveSnapshot/README.md) M3; same `fromDoc` helper; **not** the pane splice map |
 | Two-tab pane | Nice-to-have; M2 exit is one client |
 | Clone-and-PR | After apply fixtures |
 

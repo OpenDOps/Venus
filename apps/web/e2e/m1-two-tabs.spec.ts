@@ -6,6 +6,7 @@ const SEED_H1 = 'Why Venus';
 const NOTE = 'affine-note affine-paragraph rich-text';
 const OUTLINE = 'affine-outline-panel';
 const OUTLINE_H1 = '[data-testid="outline-block-preview-h1"]';
+const MD_PANE = '[data-testid="venus-md-pane"]';
 const KECK_WS = expectedCollaborationWs();
 
 test.describe.configure({ mode: 'serial' });
@@ -34,6 +35,9 @@ async function waitForHydrated(page: Page) {
   await page.locator(NOTE).first().waitFor({ timeout: 30_000 });
   await page.locator(OUTLINE).waitFor({ timeout: 30_000 });
   await expect(page.locator(OUTLINE_H1)).toContainText(SEED_H1);
+  await expect(page.locator(MD_PANE)).toContainText(SEED_H1, {
+    timeout: 30_000,
+  });
   return pageErrors;
 }
 
@@ -88,7 +92,7 @@ test('A typing appears in B without reload', async ({ page, context }) => {
   await pageA.keyboard.type(fromA);
   await expect(pageA.locator(NOTE).first()).toContainText(fromA);
 
-  await expect(pageB.getByText(fromA)).toBeVisible({ timeout: 10_000 });
+  // Do not `getByText` the whole page: the markdown pane repeats the note.
   await expect(pageB.locator(NOTE).first()).toContainText(fromA, {
     timeout: 10_000,
   });
@@ -118,7 +122,6 @@ test('B typing appears in A without reload', async ({ page, context }) => {
   await pageB.keyboard.type(fromB);
   await expect(pageB.locator(NOTE).first()).toContainText(fromB);
 
-  await expect(pageA.getByText(fromB)).toBeVisible({ timeout: 10_000 });
   await expect(pageA.locator(NOTE).first()).toContainText(fromB, {
     timeout: 10_000,
   });

@@ -1,6 +1,6 @@
 # Architecture
 
-How Venus’s pieces connect. **Product rules** (lease, freeze, two git classes) stay in [venus-design.md](./venus-design.md). **Stores:** [datamodel](./datamodel/README.md). This file is the **dataflow**: who talks to whom, and which box markdown will attach to later.
+How Venus’s pieces connect. **Product rules** (lease, freeze, two git classes) stay in [venus-design.md](./venus-design.md). **Stores:** [datamodel](./datamodel/README.md). This file is the **dataflow**: who talks to whom. Markdown hangs off the synced Store ([projection](#markdown-projection-add-here-before-coding-m2)).
 
 Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CRDT/README.md). Installed names: [api-map.md](./api-map.md). How we test each box: [scenarios](../scenarios/README.md).
 
@@ -10,13 +10,13 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 |---|---|---|
 | Editor + outline | **M0 done** | [M0](./M0/README.md) |
 | Sync, persist, blobs, **doc export** | **M1 done** | [CRDT](./CRDT/README.md), [M1](./M1/README.md) |
-| Markdown projection | **Not started** (code). Design: [MDGate](./MDGate/README.md). Steps: [M2](./M2/README.md). | [MDGate](./MDGate/README.md), [M2/plan.md](./M2/plan.md) |
+| Markdown projection | **M2 done** | [MDGate](./MDGate/README.md), [M2/plan.md](./M2/plan.md) |
 | Pin + git snapshotter | Later (M3) | [LiveSnapshot](./LiveSnapshot/README.md) |
 | Catalog / header | Later | M4 |
 | Lease `T0` + freeze | Later | [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
 | Stores (CRDT + git) | Design | [datamodel](./datamodel/README.md) |
 
-## Dataflow (M0–M1, with M2 dashed)
+## Dataflow (M0–M2)
 
 ```mermaid
 flowchart TB
@@ -40,14 +40,11 @@ flowchart TB
   tabA -->|"POST/GET /api/blobs/venus-m0"| keck
   tabB -->|"POST/GET /api/blobs/venus-m0"| keck
 
-  subgraph m2["M2 not started — RAM projection"]
+  subgraph m2["M2 — RAM projection"]
     pane["read-only markdown pane"]
   end
 
-  tabA -.->|"MarkdownAdapter.fromDoc<br/>same CRDT · not a second replica<br/>not GET export"| pane
-
-  classDef future stroke-dasharray: 5 5
-  class m2,pane future
+  tabA -->|"MarkdownAdapter.fromDoc<br/>same CRDT · not a second replica<br/>not GET export"| pane
 ```
 
 
@@ -69,7 +66,7 @@ Each row is a box that later markdown (or git) can hang off. Do not put review h
 | **Postgres** | Source of truth for refresh. Docs + blobs. | Not a markdown store. | [Hydrate](../scenarios/hydrate-persist.md), [blobs](../scenarios/blobs.md) |
 | **Compose web** | nginx + static host. Proxies `/api` and `/collaboration` to keck. | Layout only. | [Compose stack](../scenarios/compose.md) |
 | **Doc export** | `GET /api/block/venus-m0/export`. Current tree, no tab. | Same GET becomes `T0` bytes (M5) and optional `.venus/snapshots/*.bin`. | [Doc export](../scenarios/doc-export.md) |
-| **Markdown projection** | Adapter output + RAM id sidecar. | **M2.** [plan](./M2/plan.md). | None yet ([fixtures](./MDGate/fixtures.md) export rows). |
+| **Markdown projection** | Adapter output + RAM id sidecar. | **M2 done.** [plan](./M2/plan.md). | [Markdown projection](../scenarios/markdown-projection.md) |
 | **Git** | Folders + `.md` + commits. | Snapshot vs comment-commit. Layout: [datamodel git](./datamodel/git.md). Pin then convert: [LiveSnapshot](./LiveSnapshot/README.md). M3+. | None yet. |
 | **Review session** | Lease, threads, hunks. Per commit Before/After **OctoBase CRDTs**. | Comment-commits vs `T0`. After editable; edits are the next commit. M5–M6. | None yet. |
 
@@ -87,9 +84,9 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 - Markdown is a **projection**, not a replica ([venus-design.md](./venus-design.md)).
 - One exporter later serves the pane, git flush, and lease `T0` md ([implementation plan — adapter gate](./venus-implementation-plan.md#markdown-adapter-gate-build-this-do-not-debate-it)).
 - Non-browser jobs still use **doc export** for the binary, then the same adapter. Git flush **pins** those bytes (or a sidecar replica) **before** `fromDoc`; live CRDT is not paused ([LiveSnapshot](./LiveSnapshot/README.md)).
-- Spectator loop (single-flight, full `fromDoc`, optional splice): [live-pane.md](./MDGate/live-pane.md).
+- Spectator loop (single-flight; in-place splice or full `fromDoc`): [live-pane.md](./MDGate/live-pane.md). Git / lease convert: [pin-convert.md](./MDGate/pin-convert.md) (pin Yjs bytes, then `fromDoc` on an offline clone).
 
-**Do not close M2** until [fixtures.md](./MDGate/fixtures.md) **export** rows are green. Steps: [M2/plan.md](./M2/plan.md). `fromDoc` + pane loop: [MDGate](./MDGate/README.md). Apply (markdown vs `T0` → hunks): [apply.md](./MDGate/apply.md); **apply** fixture rows before M6. The implementation-plan checklist is the accept bar.
+**M2 closed** when [fixtures.md](./MDGate/fixtures.md) **export** rows are green ([M2/plan.md](./M2/plan.md), 2026-08-30). `fromDoc` + pane loop: [MDGate](./MDGate/README.md). Apply (markdown vs `T0` → hunks): [apply.md](./MDGate/apply.md); **apply** fixture rows before M6.
 
 ## Cross-references
 
@@ -102,8 +99,8 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | M1 steps | [M1/plan.md](./M1/plan.md) |
 | M2 steps | [M2/plan.md](./M2/plan.md) |
 | Compose / Kubernetes | [devops](../devops/README.md) |
-| Adapter gate (M2) | [MDGate](./MDGate/README.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live pane](./MDGate/live-pane.md), [M2/plan.md](./M2/plan.md) |
+| Adapter gate (M2) | [MDGate](./MDGate/README.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live pane](./MDGate/live-pane.md), [pin convert](./MDGate/pin-convert.md), [M2/plan.md](./M2/plan.md) |
 | Apply (M6) | [MDGate apply](./MDGate/apply.md) |
-| Pin + git snapshotter (M3) | [LiveSnapshot](./LiveSnapshot/README.md) |
+| Pin + git snapshotter (M3) | [LiveSnapshot](./LiveSnapshot/README.md); **gated on** [high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** |
 | Implemented tests | [scenarios](../scenarios/README.md) |
 | License split | [licensing.md](../legal/licensing.md) |

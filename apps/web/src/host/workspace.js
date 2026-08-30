@@ -2,6 +2,7 @@ import { StoreExtensionManager } from '@blocksuite/affine/ext-loader';
 import { getInternalStoreExtensions } from '@blocksuite/affine/extensions/store';
 import { Text } from '@blocksuite/affine/store';
 import { TestWorkspace } from '@blocksuite/affine/store/test';
+import * as Y from 'yjs';
 import { SEED_TITLE, seedHomeNote } from './seed.js';
 import { MemoryNoopProvider } from './sync-provider.js';
 
@@ -65,6 +66,38 @@ function seedHomePage(store) {
   seedHomeNote(store, noteId);
 }
 
+function openBareM0Workspace(options = {}) {
+  const manager = new StoreExtensionManager(getInternalStoreExtensions());
+  const workspace = new TestWorkspace({
+    id: 'venus-m0',
+    ...(options.blobSources ? { blobSources: options.blobSources } : {}),
+  });
+  workspace.storeExtensions = manager.get('store');
+  workspace.meta.initialize();
+  const docId = 'doc:home';
+  const doc = workspace.createDoc(docId);
+  const store = doc.getStore();
+  return { workspace, store, docId };
+}
+
+/**
+ * Offline clone from Yjs update v1. Does **not** seed, does **not** connect
+ * a SyncProvider (keck never sees this pin). Convert with `fromDoc` on the
+ * returned store — never `fromDoc` the live published Store for git / T0.
+ */
+export function hydrateM0FromUpdate(bytes, options = {}) {
+  if (!bytes || bytes.byteLength <= 2) {
+    throw new Error('Yjs pin is empty');
+  }
+  const { workspace, store, docId } = openBareM0Workspace(options);
+  Y.applyUpdate(store.spaceDoc, bytes);
+  if (!hasPageRoot(store)) {
+    throw new Error('Yjs pin has no affine:page root');
+  }
+  store.load();
+  return { workspace, store, docId };
+}
+
 /**
  * One collection, one page (M0). Sync order (M1 hydrate): connect → wait
  * until the provider is synced → seed only if there is no `affine:page` root.
@@ -75,17 +108,7 @@ function seedHomePage(store) {
 export async function createM0Workspace(provider, options = {}) {
   const sync = provider ?? new MemoryNoopProvider();
   const signal = options.signal;
-  const manager = new StoreExtensionManager(getInternalStoreExtensions());
-  const workspace = new TestWorkspace({
-    id: 'venus-m0',
-    ...(options.blobSources ? { blobSources: options.blobSources } : {}),
-  });
-  workspace.storeExtensions = manager.get('store');
-  workspace.meta.initialize();
-
-  const docId = 'doc:home';
-  const doc = workspace.createDoc(docId);
-  const store = doc.getStore();
+  const { workspace, store, docId } = openBareM0Workspace(options);
 
   sync.connect(docId, store.spaceDoc);
   try {

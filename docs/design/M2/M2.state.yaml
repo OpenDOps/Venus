@@ -68,31 +68,88 @@ steps:
         evidence: "2026-08-30 goldens/rt-marks.md; **bold** *italic* `code` round-trips"
   step-sidecar: # 4
     n: 4
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: side-stable
+        status: pass
+        evidence: "2026-08-30 sidecar.test.ts: two fromDoc, no mutation, identical ids and ranges"
+      - name: side-shift
+        status: pass
+        evidence: "2026-08-30 sidecar.test.ts: addBlock before b1 keeps id; b1.start increased"
+      - name: opaque-untouched
+        status: pass
+        evidence: "2026-08-30 goldens/opaque-image.md; affine:image is ![dot.png](assets/dot.png); slice byte-equal on re-export; Hello paragraph still subset"
+      - name: loss-color
+        status: pass
+        evidence: "2026-08-30 goldens/loss-color.md; AffineTextAttributes.color stays on CRDT; markdown is plain Colored text; second fromDoc equals first"
   step-pane: # 5
     n: 5
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Pane visible
+        status: pass
+        evidence: "2026-08-30 e2e/m2-pane.spec.ts: [data-testid=venus-md-pane] innerText has Why Venus; contenteditable is not true"
+      - name: Source highlighted
+        status: pass
+        evidence: "2026-08-30 highlight.js 11.11.1 github.css; highlight-md.test.ts seed round-trip; e2e span[class*=hljs-] and # Why Venus in innerText"
+      - name: Outline still there
+        status: pass
+        evidence: "2026-08-30 m0-smoke.spec.ts and m0-outline.spec.ts still pass with md pane in the layout"
   step-loop: # 6
     n: 6
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: e2e-pane (autotest)
+        status: pass
+        evidence: "2026-08-30 e2e/m2-pane.spec.ts: type m2-hello in note; pane innerText includes it within 5s; not contenteditable; hljs span remains"
+      - name: Coalesce
+        status: pass
+        evidence: "2026-08-30 md-pane-loop.test.ts: 20 marks during 50ms export → 2 exportRuns"
+      - name: incr-inplace
+        status: pass
+        evidence: "2026-08-30 splice.test.ts: splice equals full fromDoc; later start shifted by UTF-16 delta"
+      - name: incr-marks
+        status: pass
+        evidence: "2026-08-30 splice.test.ts: bold/italic/code/link; Y.Text length 0; markdown grows; splice equals full"
+      - name: incr-fallback
+        status: pass
+        evidence: "2026-08-30 splice.test.ts: addBlock before b1; h1 type change; linked-doc on page; empty last-N → mode full"
+      - name: incr-perf
+        status: pass
+        evidence: "2026-08-30 splice.test.ts: 48 paragraphs one dirty; splice median < forceFull median; markdown equal"
   step-one-exporter: # 7
     n: 7
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: one-exporter
+        status: pass
+        evidence: "2026-08-30 one-exporter.test.ts: mount-md-pane.js imports ./from-doc.js and highlight-md.js; from-doc.js has no highlight.js; mount-editor.js has no MarkdownAdapter / from-doc / highlight.js"
+      - name: Pane equals helper
+        status: pass
+        evidence: "2026-08-30 e2e/m2-pane.spec.ts: pane innerText === fromDoc(store).markdown via window.__VENUS_FROM_DOC__ (e2e-only flag)"
   step-verify: # 8
     n: 8
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Manual path
+        status: pass
+        evidence: "2026-08-30 person in Chrome on Compose http://127.0.0.1:8080/?md-demo=1: left pane is markdown source; typing in WYSIWYG updates the pane without reload; pane not editable. Memory refresh checklist: docs/runbook.md Manual testing (M2 close-out)"
+      - name: Smoke
+        status: pass
+        evidence: "2026-08-30 pnpm test (81 Vitest) + pnpm test:e2e (16 m0 + m2-pane including one-exporter innerText === fromDoc and e2e-pane)"
+      - name: Export suite complete
+        status: pass
+        evidence: "2026-08-30 fixtures.md M2 rows mapped in docs/scenarios/markdown-projection.md; no ap-* in M2; loss-color has a passing test (not skipped)"
+      - name: M1 still green
+        status: pass
+        evidence: "2026-08-30 PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 — 10 passed (blob, hydrate, provider, smoke, two-tabs A→B/B→A). After keck Value::Format overlay (deploy/octobase/patches/value.rs). Root cause was stock jwst-codec unimplemented!() on Y.Text Content::Format (md-demo bold/italic/code/link/color), which killed DocPublisher broadcast. Hydrate/reload had always worked. Dirty pg-data unchanged."

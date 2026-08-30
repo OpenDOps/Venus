@@ -263,18 +263,22 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ### M2 — Markdown projection (week)
 
-**Status:** not started. Step-by-step: [M2/plan.md](./M2/plan.md). Board: [M2/M2.state.yaml](./M2/M2.state.yaml). Contract: [MDGate](./MDGate/README.md) ([subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live-pane](./MDGate/live-pane.md)). Stores: [datamodel](./datamodel/README.md) — markdown is a **RAM projection**; Postgres stays Yjs; git sidecar is M3. Hang the pane on [architecture.md](./architecture.md#markdown-projection-add-here-before-coding-m2). Fixture accept bar: [adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it).
+**Status:** done (2026-08-30). Step-by-step: [M2/plan.md](./M2/plan.md). Board: [M2/M2.state.yaml](./M2/M2.state.yaml). Contract: [MDGate](./MDGate/README.md) ([subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live-pane](./MDGate/live-pane.md)). Stores: [datamodel](./datamodel/README.md) — markdown is a **RAM projection**; Postgres stays Yjs; git sidecar is M3. Hang the pane on [architecture.md](./architecture.md#markdown-projection-add-here-before-coding-m2). Fixture accept bar: [adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it).
 
-- Read-only markdown pane: `MarkdownAdapter.fromDoc` on the **synced Store** ([live-pane.md](./MDGate/live-pane.md) single-flight loop). **highlight.js** paints that string as source (not CodeMirror, not a rendered preview). Not keck `GET …/export`.
+- Read-only markdown pane: `MarkdownAdapter.fromDoc` on the **synced Store** ([live-pane.md](./MDGate/live-pane.md) single-flight loop in [M2 `step-loop`](./M2/plan.md#6-step-loop): in-place RAM splice or full export). **highlight.js** paints that string as source (not CodeMirror, not a rendered preview). Not keck `GET …/export`. Git pin is still full `fromDoc` on a pin.
 - Block-id sidecar in **RAM** (and test goldens). No `wiki/.venus/ids/`, no Postgres markdown.
-- **Export fixture suite** (`rt-*`, `side-*`, opaque, loss, `one-exporter`, `e2e-pane`). **Apply rows (`ap-*`) are M6.**
+- **Export fixture suite** (`rt-*`, `side-*`, `incr-*`, opaque, loss, `one-exporter`, `e2e-pane`). **Apply rows (`ap-*`) are M6.**
 - No git, lease, CodeMirror, or editable markdown.
 
 **Exit:** [fixtures.md](./MDGate/fixtures.md) **export** rows green; WYSIWYG and markdown stay aligned on one client; pane is replaceable (no caret); one shared exporter.
 
 ### M3 — Git snapshotter (week)
 
-Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). Same `from-doc.js` as [M2](./M2/README.md) on a **pin** — do not `fromDoc` the live Store for git.
+**Status:** not started. **Gate:** [high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (accepted 2026-08-30). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while that file is un-accepted or under revision. An M3 step plan comes **after** this gate; it is not opened in this change.
+
+Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. Same `from-doc.js` as [M2](./M2/README.md) on a **pin** — do not `fromDoc` the live Store for git.
+
+Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in keck; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
 - Init `wiki/` repo.
 - Catalog v0: one folder, one doc, fixed path.
@@ -414,7 +418,7 @@ Everything after that is Venus. Do not block M1 on review design.
 1. Playground page editor. **Done** — [M0](./M0/README.md).
 2. OctoBase sync of that one doc (Postgres + keck in Compose). **Done** — [M1](./M1/README.md).
 3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M6.
-4. Then catalog + git snapshotter ([LiveSnapshot](./LiveSnapshot/README.md)), then **folder tree + product header**, then lease.
+4. **Accept** [high-availability.md](./LiveSnapshot/high-availability.md) (done 2026-08-30). **Then** catalog + git snapshotter ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape). Then **folder tree + product header**, then lease. Do not start M3 code if HA is reopened.
 
 Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M6 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
 

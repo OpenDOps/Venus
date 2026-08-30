@@ -2,7 +2,7 @@
 
 **Feature:** two tabs share one Y.Doc over the keck socket. Typing appears without reload. Not BroadcastChannel.
 
-**Boxes:** Tab A, Tab B, SyncProvider, keck ([architecture](../design/architecture.md#dataflow-m0m1-with-m2-dashed), [CRDT share](../design/CRDT/README.md#share-between-clients)).
+**Boxes:** Tab A, Tab B, SyncProvider, keck ([architecture](../design/architecture.md#dataflow-m0m2), [CRDT share](../design/CRDT/README.md#share-between-clients)).
 
 ## Run
 
@@ -19,8 +19,8 @@ Open tab B **after** A has the seed H1 (DoD: no double page).
 
 | Spec | Proves |
 |---|---|
-| `e2e/m1-two-tabs.spec.ts` — A typing appears in B | A types `from-a-…`; B sees it within 10s without reload |
+| `e2e/m1-two-tabs.spec.ts` — A typing appears in B | A types `from-a-…`; B’s note shows it within 10s without reload (not page-wide `getByText` — the markdown pane repeats the body) |
 | `e2e/m1-two-tabs.spec.ts` — both tabs same seed once | both titles `Venus`, one H1 `Why Venus` each |
-| `e2e/m1-two-tabs.spec.ts` — B typing appears in A | B types `from-b-…`; A sees it without reload |
+| `e2e/m1-two-tabs.spec.ts` — B typing appears in A | B types `from-b-…`; A’s note shows it without reload |
 
 Person-in-browser two windows is [M1 step 9](../design/M1/plan.md#9-step-verify), not a substitute for this spec.

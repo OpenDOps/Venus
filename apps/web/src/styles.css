@@ -25,6 +25,28 @@ body,
   overflow: auto;
 }
 
+.md-pane-host {
+  flex: 0 0 400px;
+  width: 400px;
+  height: 100%;
+  overflow: auto;
+  border-right: 1px solid var(--affine-border-color, #e3e2e4);
+}
+
+.md-pane-host pre {
+  margin: 0;
+  min-height: 100%;
+}
+
+.md-pane-host code {
+  display: block;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .outline-host {
   flex: 0 0 300px;
   width: 300px;
