@@ -280,6 +280,8 @@ Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in keck; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
+Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1. Chat-edit (**AB3**) starts only after M5–M6 apply. History/why pack (**AB4**) starts only after comment-commits (M6); do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
+
 - Init `wiki/` repo.
 - Catalog v0: one folder, one doc, fixed path.
 - Dirty set: only docs whose clock moved since last git (M3: the one page).
@@ -298,6 +300,8 @@ Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then c
 - `affine:embed-linked-doc` + markdown link round-trip (`docId` + path).
 
 **Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves. Header undo/redo matches keyboard undo on the open page.
+
+**After M4 (not this exit):** record the workspace’s **wiki remote + product remote@branch** (separate histories; submodules lean). Do **not** delay M5 for the analyzer. **Before AB5:** select CodeGraph CLI, Aider, or both ([code-bind — select](./Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). Design: [code-bind](./Agents/code-bind.md). AB5 / runner review: [agentic-binding — AB5](./Agents/agentic-binding.md#ab5--code-bind--aider), [product-plan](../product/product-plan.md#workspace-and-aider).
 
 ### M5 — Lease + freeze (week)
 
@@ -367,7 +371,7 @@ When a spec page **changes intention**, v1 must use comment-commit: After / Befo
 
 ### Not in v1 dogfood
 
-Runner, two-agent DoD, MCP, Hugo, alternatives/stacks. Identity can stay display name + id ([Identity (v1)](#identity-v1)). Named people (not `user1`) so a PM can see who holds a lease.
+Runner, two-agent DoD, MCP, Hugo, alternatives/stacks, **analyzer review**. Identity can stay display name + id ([Identity (v1)](#identity-v1)). Named people (not `user1`) so a PM can see who holds a lease. After M4 you **may** record product remote + branch; you do not run Aider or CodeGraph in dogfood.
 
 Header in M4 should already show **current page**. As soon as M5 exists, show **who holds the lease**. That is manager chrome, not programmer chrome.
 
@@ -383,7 +387,7 @@ Venus/
   packages/catalog/         # catalog schema + ops
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
-  wiki/                     # git working tree (or separate repo)
+  wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
   docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans
   docs/devops/              # Compose now; Kubernetes later
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
@@ -424,4 +428,4 @@ Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows a
 
 **v1 documenting this product:** after M4, dogfood the wiki as the manager-facing spec store; after M6, spec-intention changes use comment-commit. Details: [v1 dogfood](#v1-dogfood--document-the-product).
 
-After the wiki spine (M8): runner, MCP, accept inbox, shared git hop — [product-plan](../product/product-plan.md). That file is product, not this milestone list. Flow invariants to force: [product-plan — Force these](../product/product-plan.md#force-these-or-it-is-not-the-flow).
+After the wiki spine (M8): runner, lease MCP, accept inbox, shared git hop — [product-plan](../product/product-plan.md). Bound chat (AB2) and chat-edit (AB3) are parallel: [agentic-binding](./Agents/agentic-binding.md). **Two gits + analyzer** (AB5): record remotes after M4; **select** CodeGraph CLI, Aider, or both; review product diffs after plan-step implement — [code-bind](./Agents/code-bind.md), [product-plan — Workspace and Aider](../product/product-plan.md#workspace-and-aider). Those files are not this milestone list. Flow invariants to force: [product-plan — Force these](../product/product-plan.md#force-these-or-it-is-not-the-flow).

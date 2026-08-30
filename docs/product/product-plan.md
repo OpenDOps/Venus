@@ -1,6 +1,6 @@
 # Product plan: first-class for development and agents
 
-This is a **product** doc: what to add, in what order, and what not to build so Venus is a real development app and an agent orchestrator. It is not marketing. Positioning vs Notion / Cursor / CodeSpeak stays in [comparisons.md](../marketing/comparisons.md). The pitch stays in [pitch.md](../marketing/pitch.md). Pains: [pains.md](./pains.md). Editor, lease, git, MDGate stay in [design](../design/README.md). Plan invariants and open git decisions stay in [venus-plan.md](../drafts/pre-design/venus-plan.md).
+This is a **product** doc: what to add, in what order, and what not to build so Venus is a real development app and an agent orchestrator. It is not marketing. Positioning vs Notion / Cursor / CodeSpeak stays in [comparisons.md](../marketing/comparisons.md). Bound chat vs Notion Agent / Cursor ask: [agentic-comparison.md](../marketing/agentic-comparison.md). Main wiki feature (spatial + temporal graph): [Agents](../design/Agents/README.md), [below](#multidimensional-spec-graph). Workspace (two gits) + Aider on the product clock: [below](#workspace-and-aider), [code-bind](../design/Agents/code-bind.md). The pitch stays in [pitch.md](../marketing/pitch.md). Pains: [pains.md](./pains.md). Editor, lease, git, MDGate stay in [design](../design/README.md). Plan invariants stay in [venus-plan.md](../drafts/pre-design/venus-plan.md). Wiki vs product trees: [venus-plan §2](../drafts/pre-design/venus-plan.md#2-wiki-repo-vs-product-repo) (lean: separate remotes / submodules).
 
 ## Product goal
 
@@ -12,9 +12,42 @@ Bar: a PM writes prose in Venus, an agent (or source write) that **changes contr
 
 Keep until that bar is green: MDGate, git snapshot, lease on **agent** writes, meaning-accept, skip when spec did not move, status check on merge, PM tree without Cursor.
 
+**Main wiki feature** (agentic-native, not the loop bar): [multidimensional spec graph](#multidimensional-spec-graph) — spatial binds + temporal why. Design: [Agents](../design/Agents/README.md).
+
 Cut from v1 (they make the loop longer than Notion + a PR): two-agent DoD as a **hard** rule (warning only), alternatives/stacks, Hugo, Linear mirrors, “every story is a plan.”
 
 M0–M8 is the spec wiki (dual store). First-class is that **short** outer loop. Cursor (and CI, PRs) stay the inner loop.
+
+## Agentic-native (user-to-agent)
+
+Venus is an **agentic-native** environment. It is not a human wiki, board, or editor with an agent **adopted onto** the same UI (Notion Agent, copilots in docs, bots that click Linear).
+
+Those products were built for humans. The agent is a guest: it searches the page, types the page, or mimics the ticket. The human tool stays the product; the model is bolted on.
+
+Venus inverts that. Git markdown, lease, hunks, Bind pack, comment-commit why — those surfaces exist so **agents can work**. The human UI is how you **aim** them: point at a span, bless meaning, skip when spec did not move. That is a **user-to-agent tool**, not an agent-in-a-human-tool.
+
+A **main product feature** of that environment is the **multidimensional spec graph**: parts bind to parts, and parts bind to the timeline of accepted whys ([below](#multidimensional-spec-graph)).
+
+WYSIWYG still exists so PMs can write prose without Cursor. It is not the agent’s interface. Do not teach agents Yjs. Do not ship “copilot in the page” as the native path.
+
+Positioning: [agentic-comparison.md](../marketing/agentic-comparison.md). Pains: [agents on human UIs](./pains.md#8-agents-bolted-onto-human-tools), [why is it designed this way](./pains.md#7-why-is-it-designed-this-way).
+
+## Multidimensional spec graph
+
+**Main feature** of the LLM wiki (with dual store and meaning-accept). Not a search index bolted on later.
+
+The spec is a graph with **two axes**, keyed by stable block ids at a git SHA ([LifeIndexing](../design/Agents/LifeIndexing.md), [Agents](../design/Agents/README.md)):
+
+| Axis | Links | Product use |
+|---|---|---|
+| **Spatial** | Heading ↔ heading (`depends-on`, `constrains`, `contradicts`) and direct wiki links | Change this without violating that. Bound chat packs the neighborhood. |
+| **Temporal** | Heading ↔ comment-commits + review comments (`decided-in`, `supersedes`, `reverts`) | “Why is it designed this way?” Full history and reasoning on the clause. Name the bad decision and revert (M8). |
+
+Notion has page history (a blob) and `@` / search. Cursor has why in **chat**, not on the hunk. Venus already stores why on comment-commits; the graph makes that **retrievable with the selection**. Snapshot autocomments are not why. Pain this closes: [pains §7](./pains.md#7-why-is-it-designed-this-way). Comparison: [agentic-comparison — graph](../marketing/agentic-comparison.md#how-the-multidimensional-graph-compares).
+
+This is what agents and PMs expand when they point at a span. It is not a second spec. Build: [agentic-binding](../design/Agents/agentic-binding.md) AB1 (spatial, after M3) then AB4 (temporal, after M6). Bound chat (AB2) and chat-edit (AB3) consume it.
+
+Cut from v1 **loop** (Notion + a PR bar) still does not include this graph — dual store + meaning-accept can ship first. Cut it from the **product story** and Venus is honest git plus a copilot. Keep it in the story from day one.
 
 ## The gap: CRDT is for humans, folders of markdown are for agents
 
@@ -62,7 +95,7 @@ Venus **orchestrates gates**. It does not host the IDE, the board, or the agent 
 
 - Humans keep intention: CodeSpeak-like accept of **spec meaning**, not mute patches.
 - Agents do the work under lease; implementer lives in the product repo. Two-agent DoD is a **warning** in v1, not a hard gate.
-- The hop between Venus and Cursor is **git**, not the clipboard.
+- The hop between Venus and Cursor is **git**, not the clipboard. The runner kicks **Cursor CLI** (or SDK) to implement. **Cursor IDE is not required** for that loop. **CodeGraph CLI and/or Aider review that PR or branch** — they do not implement. **Select** the reviewer: [code-bind — select](../design/Agents/code-bind.md#select-codegraph-cli-or-aider-or-both).
 
 Venus is not only a wiki app. It is a **spec-first development flow**: one spec instead of Notion + git + agent chat. The app enforces the short loop (lease, git, skip, merge check). Teams that keep Figma, Notion, or Linear still need this once agents write code. Those tools are surfaces. They are not the pulse.
 
@@ -74,7 +107,9 @@ Figma is canvas, not a spec agents can clone and not silently rewrite. Notion is
 
 What they may refuse is a **heavy second wiki**, not the loop. If Venus is the flow (few gates, shared git, skip when spec does not move), those teams can accept it. If Venus is “replace Notion and Figma,” they will not — and should not. Do not sell Venus as their home screen. Sell it as the framework that makes the rest of the body honest.
 
-**PMs and other managers are first-class.** Only programmers live in Cursor. Product managers, design leads, and other managers will not adopt an IDE. They can adopt Venus: the wiki, the tree, WYSIWYG, and the **accept inbox** (understand this spec change). That is their Cursor loop. Programmers pull accepted git. If Venus requires Cursor to participate in the flow, the flow is only for engineers and the heart is empty.
+**PMs and other managers are first-class.** They will not adopt an IDE. They adopt Venus: wiki, tree, WYSIWYG, **accept inbox**. That is their loop.
+
+**The agentic loop does not require the Cursor IDE.** Venus **controls the implementer job**: pack at `wikiSha`, kick Cursor **CLI** (`agent -p` / SDK) on the product checkout, get a branch/PR, kick Aider/CodeGraph **review**, gates. Humans may still open the IDE to debug or type by hand. That is optional inner-loop chrome, not the product. If Venus *is* a Composer clone, Cursor already won. If Venus requires the IDE to participate, PMs have no heart and programmers are glued to a window they no longer need for the loop.
 
 ## Force these (or it is not the flow)
 
@@ -89,25 +124,45 @@ The app can exist as a collab wiki and still be skippable. To make Venus **the**
 | Planner ≠ DoD author ≠ implementer | **v1: warn**, do not block. Hard refuse is later — it lengthens the loop past Notion + a PR. |
 | Agents do not type the live CRDT. Lease + hunks only. | Freeze is theater. |
 | **Git is how programmers see the spec.** Shared checkout; no copy-paste. | Cursor and Venus are two products. |
-| **Managers never need Cursor.** WYSIWYG + accept inbox + tree is a complete path to write and bless intention. | Only programmers have a heart. |
+| **Managers never need Cursor** (IDE or CLI). WYSIWYG + accept inbox + tree is a complete path to write and bless intention. | Only programmers have a heart. |
 | Header shows the **gate** (who holds the lease, what is waiting to accept), not a kanban. | People live on a board. |
+| **Environment is agentic-native.** Human chrome **aims** the agent (bind, accept). Agents do not fake the human UI. | You bolted a copilot onto Notion/Linear. They already won that. |
+| **Cursor CLI implements. Aider / CodeGraph CLI review the PR or branch.** The **IDE is optional.** | You sold a second IDE, or you glued the loop to a window nobody needs. |
 
 Data-model invariants (CRDT, freeze, two git classes) stay in [venus-design.md](../design/venus-design.md). These are **flow** invariants. Product: [below](#add-this--first-class-gap). v1 documenting the product: [implementation plan](../design/venus-implementation-plan.md#v1-dogfood--document-the-product).
 
 ## Shared git, not copy-paste
 
-Humans and agents must not paste spec into chat or the IDE. They work from a **shared checkout** of the same git (workspace branch, or parent repo with wiki + product as submodules — [venus-plan § wiki vs product](../drafts/pre-design/venus-plan.md#2-wiki-repo-vs-product-repo)).
+Humans and agents must not paste spec into chat or the IDE. They work from a **shared checkout** of the workspace: wiki git + product git, **two remotes or submodules, separate histories** ([venus-plan § wiki vs product](../drafts/pre-design/venus-plan.md#2-wiki-repo-vs-product-repo) — lean **C**). That split is decided. Parent-vs-nested (workspace-of-two vs product-owns-wiki) is chosen when the first product remote is wired. Do not assume the product repo is the same git as `wiki/`.
 
 | Direction | How |
 |---|---|
 | **PM, prose / aims / narrative** | WYSIWYG → snapshot git. No ceremony. |
 | **Contract** (behavior, API, DoD, must-clauses) | Human or agent: lease + meaning-accept. |
 | **Agent** | Always lease. Never live CRDT. |
-| **Programmer** | Read accepted git; write product code in Cursor; spec writes through Venus if contract moved. |
+| **Programmer / implementer** | Read accepted **wiki** git. Product writes: Venus kicks **Cursor CLI** (or SDK) on the product repo → branch / PR. Spec writes through Venus if contract moved. **IDE is optional** (debug, hand-edit). |
+| **Aider / CodeGraph CLI** | **Review only:** the agentic-loop **PR or branch** at `productSha` (graph/map + comments). **Not implementation.** Does not publish spec. **Select** before AB5. |
 
 v1: clone-and-PR import of wiki markdown is later ([MDGate](../design/MDGate/README.md)). Until the adapter gate is green, do not tell agents “edit the `.md` in git and it will apply.” They acquire a lease (MCP or UI) and put hunks; accept still lands as a wiki commit the next `git pull` sees.
 
-Decide submodule vs monorepo **before** the runner. One clone for agents; two histories if possible (lean: submodules).
+Wire the two remotes (or submodules) into the runner and MCP **before** implement starts. Design: [code-bind](../design/Agents/code-bind.md).
+
+## Workspace and Aider
+
+A Venus workspace **binds** the wiki remote to a Venus-controlled product (separate repo + branch). Bind object: `{ wikiSha, productSha, productBranch }`. Notion’s GitHub connector dumps sources into chat with no clock. Venus only packs code when the recipe asks, at the **pinned** product SHA.
+
+**Aider and CodeGraph CLI are for agentic-loop PR (or branch) review, not for implementation.** **Cursor CLI** (the named implementer) writes the product branch and opens the PR — Venus kicks that job; the IDE is not required. The runner then kicks the selected analyzer on **that PR or branch** — comments, impact, map. They do not `git commit` product code, do not replace Cursor CLI, and do not type the wiki.
+
+**Select CodeGraph CLI, Aider, or both** before that kick. Lean default (**both, split jobs**): [code-bind — select](../design/Agents/code-bind.md#select-codegraph-cli-or-aider-or-both).
+
+| | CodeGraph CLI | Aider |
+|---|---|---|
+| Job on the **PR / branch** | Queryable graph at `productSha` (callers, impact, later `implements`) | LLM **review comments** on that diff; packed repo map if CodeGraph is off |
+| Implementation | **No** | **No** |
+
+Neither replaces GitHub human review or meaning-accept. v1: always **run** the selected reviewer(s) after a branch/PR exists; flags are a **warning** (same softness as two-agent DoD). Later the step may fail. Merge check stays spec current or skip — not “Aider approved.”
+
+Do not enrich every wiki request with the codebase. Do not delay M5 for this. After [M4](../design/venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks) **record** the remotes; **select** the reviewer; the kick is on the runner ([AB5](../design/Agents/agentic-binding.md#ab5--code-bind--aider)).
 
 ## Already designed — ship the spine
 
@@ -126,19 +181,21 @@ The implementation plan stops at M8 (revert + regenerate). **Plans, runner, agen
 
 ### 1. Agent protocol (MCP + HTTP)
 
-Lease-shaped tools. Cursor stays in the IDE and talks git + this API.
+Lease-shaped tools. **Cursor CLI** stays the implementer (IDE optional). Venus talks git + this API + a kick (`agent -p` / SDK), not a hosted Composer.
 
-- Read published spec / plan / DoD **at a git SHA** (disk after pull, or the same bytes via API).
+- Read published spec / plan / DoD **at a git SHA** (disk after pull, or the same bytes via API). Product tree **at `productSha`** when the workspace has a product remote.
 - `acquire` / heartbeat / release; `putHunks`; submit a **human-language description** of the spec change.
 - List open leases, waiting accepts, plan state, `pr` URLs.
 - **v1:** warn if `dodAgentId` is missing or equals planner/implementer. **Later:** refuse. Hard refuse in v1 makes the loop longer than Notion + a PR.
+
+Selection-grounded **read** context (bind a span, expand LifeIndexing pack; optional CodeGraph / Aider pack at `productSha`) is a **different** tool family: [agentic-binding](../design/Agents/agentic-binding.md). Same MCP server later may host both; lease writes stay this section.
 
 ### 2. Plan runner (orchestrator)
 
 Not a board. Not “every story is a plan.” A state machine on `*.state.yaml` **when a plan exists**:
 
 - Optional: spec (or a section) → planner lease → human accept → implementer may run. DoD from another agent is a **warning** in v1, a hard gate later.
-- Step: `implement → tests → PR → breakpoint → done`. Runner kicks **external** agents (Cursor, CI, PR review). It does not write code.
+- Step: `implement (Cursor CLI) → PR or branch → Aider / CodeGraph review (that PR/branch) → tests → breakpoint → done`. Runner kicks **external** CLIs. It does not write code. **Cursor CLI implements** (`agent -p` / SDK). **IDE is optional.** Aider / CodeGraph CLI **review** the product PR or branch ([code-bind](../design/Agents/code-bind.md#automated-review-after-implement)). **Select** the reviewer CLIs first.
 - Overlapping spec leases serialize.
 - Story cannot go `done` without spec accept **if contract moved**. **Skip** if it did not.
 - **Merge status check:** GitHub (or equivalent) is red until Venus says spec is current or skipped. Without this, the loop is social and Linear wins.
@@ -165,13 +222,17 @@ Heartbeat, steal, expiry — already in [lease-freeze-rationale](../design/lease
 
 - Agents read accepted git from the workspace checkout; humans open Venus **at gates**.
 - PR URL on the yaml; breakpoint is GitHub + Venus notify, not a second review of the same hunks.
-- “Open this plan in Cursor” is a clone/SHA on the shared branch, not a new editor.
+- “Open this plan in Cursor” is a **CLI kick** (clone/SHA + `agent -p` / SDK) on the product branch, not a required IDE window.
+- After Cursor CLI implements, kick Aider / CodeGraph CLI on that **PR or branch** — review only ([Workspace and Aider](#workspace-and-aider)).
+
+Spatial + temporal graph is a **main feature**, not this gap list: [Multidimensional spec graph](#multidimensional-spec-graph). Two gits + analyzer is this gap: [Workspace and Aider](#workspace-and-aider).
 
 ## Do not add
 
 | Temptation | Why it kills Venus |
 |---|---|
-| In-wiki coding / Cursor clone | Inner loop already won |
+| In-wiki coding / Cursor **IDE** clone | Inner loop already won. Venus kicks **CLI**, it does not host Composer. |
+| Venus “chat control” as the spec | Transcript is not the spec. Venus owns the **job** (kick, SHA, PR URL, next gate), not a second Cursor thread that becomes the record. |
 | Copy-paste spec into the IDE | Shared git is the hop |
 | 24/7 Custom Agents that write the live page | Notion; silent spec |
 | Linear-like home board | People live on the board; spec dies |
@@ -181,6 +242,10 @@ Heartbeat, steal, expiry — already in [lease-freeze-rationale](../design/lease
 | Chat as the spec | CodeSpeak’s object, opposite pulse |
 | Mute apply of markdown | Accepting code, not meaning |
 | Cursor required to bless spec | PMs cannot adopt the flow |
+| Bolting an agent onto a human wiki/board as the product | They already won “copilot in the tool.” Venus is user-to-agent ([agentic-native](#agentic-native-user-to-agent)). |
+| Aider or CodeGraph dumped into every wiki ask | Notion connector. Pack code only on recipe, at `productSha`. |
+| Aider or CodeGraph as **implementer** | Cursor writes the branch/PR. These CLIs **review** that PR or branch. Selling them as coding agents kills the loop. |
+| Shipping AB5 with no `codeAnalyzer` pick | Must select CodeGraph CLI, Aider, or both ([code-bind](../design/Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). |
 
 ## Order
 
@@ -190,7 +255,7 @@ Judge each slice against the goal: **shorter than Notion + a PR**.
 2. Lease on **agent** (and contract) writes + meaning-accept + skip.
 3. **Status check on merge** (otherwise the loop is a lecture).
 4. MCP + accept inbox (shared git; no clipboard; PMs never need Cursor).
-5. Plan runner **optional** (not every story). Two-agent DoD warn, then later refuse.
+5. Plan runner **optional** (not every story). Two-agent DoD warn, then later refuse. Kick **Cursor CLI** to implement (IDE optional). **Aider / CodeGraph review the PR or branch**. Select reviewer CLIs **before** that kick.
 6. Hugo / autodoc / Linear mirrors — only after the bar is green.
 
 Until the dual store is honest and a contract change is **one** meaning-accept plus a PR (or skip), Venus is AFFiNE + a GitHub workflow spec, aimed at a Notion user, justified by a Cursor metaphor. That can become the flow. The product goal is to **make the loop shorter**, not to add gates.

@@ -1,8 +1,10 @@
 # Git storage
 
-**Status:** design. Map: [README.md](./README.md). CRDT side: [crdt.md](./crdt.md). Convert path: [LiveSnapshot](../LiveSnapshot/README.md). Sidecar / `fromDoc`: [MDGate](../MDGate/README.md). Two commit classes: [venus-design.md](../venus-design.md#apply-and-git).
+**Status:** design. Map: [README.md](./README.md). CRDT side: [crdt.md](./crdt.md). Convert path: [LiveSnapshot](../LiveSnapshot/README.md). Sidecar / `fromDoc`: [MDGate](../MDGate/README.md). Two commit classes: [venus-design.md](../venus-design.md#apply-and-git). Index after SHA: [LifeIndexing](../Agents/LifeIndexing.md).
 
 Git is the **share and history** format: humans and agents clone folders of markdown. It is not the live page and not a second CRDT.
+
+The **wiki** git tree is not the **product** git tree. Lean: separate remotes or submodules, separate histories. Product code is pinned as `productSha` on a named branch. [code-bind](../Agents/code-bind.md).
 
 Venus is the only writer of published commits in v1. Clones do not `git push` into the live tree. Later: attach a clone PR as a review commit (same apply path).
 
@@ -22,6 +24,8 @@ wiki/
       <docId>.json             ← block-id sidecar; clock = pin / accept clock
     snapshots/                 ← optional M8: <docId>/<gitSha>.bin (Yjs bytes)
 ```
+
+[LifeIndexing](../Agents/LifeIndexing.md) reads this tree at the flush SHA (gists, tags, direct + logical graphs). Logical artifacts are a **side index** keyed by that SHA (Venus tables, or a follow-up under `.venus/` that does not change `.md` and does not delay `last_flushed`). They are not live truth and not a snapshot git message.
 
 | Path | What | Source |
 |---|---|---|
@@ -73,6 +77,7 @@ Used when markdown must **come back** ([apply.md](../MDGate/apply.md)): diff vs 
 | Before/After proposal trees (while in flight) | [Commit spaces](./crdt.md#commit-before-and-after) |
 | Catalog sibling order | Catalog CRDT |
 | Agent private markdown buffer | Holder RAM until submit |
+| LifeIndexing gists / logical edges | Side index at git SHA ([LifeIndexing](../Agents/LifeIndexing.md)); not the spec |
 
 After accept, git has the new `.md` + sidecar; After/Before spaces remain **archives** in OctoBase.
 

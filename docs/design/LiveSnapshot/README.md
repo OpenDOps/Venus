@@ -41,7 +41,11 @@ Flush is two phases. Collect every dirty pin **before** any `fromDoc`.
 4. Commit        one git commit (autocomment, or required why on lease accept)
 5. Release       store last-flushed clocks; drop pins
                  (keep the pin if this flush is T0 for a lease)
+6. Index         enqueue LifeIndexing on this SHA + dirty docIds
+                 (async; must not delay 5)
 ```
+
+Step 6 is a **parallel track**, not M3 exit. Direct (link) parse may run after the `.md` is written and the cut is released. LLM gists / logical graph never sit on the cut, `fromDoc`, or `last_flushed`.
 
 Dirty unit is the **page** (one `.md` file), not a block. Intra-doc hunks are the comment-commit path (M6), not the snapshotter. Catalog moves are `git mv` with no `fromDoc` if the body clock is unchanged.
 
@@ -107,6 +111,8 @@ wiki/
   assets/                   ← dirty blobs only
 ```
 
+LifeIndexing ([Agents](../Agents/LifeIndexing.md)) reads this tree at the commit SHA. It does not convert the pin. Logical gists/edges are a side index keyed by that SHA (Venus tables or a follow-up under `.venus/`); they do not change snapshot autocomment.
+
 Clone of `wiki/` is ordinary folders + markdown. Folder **nesting** is directories. Sibling **order** stays on the catalog CRDT. Empty catalog folders are not in git unless a placeholder is added later.
 
 ## OctoBase
@@ -121,5 +127,6 @@ Stock keck **does not** offer “hold persist until pin copy finishes.” It alr
 | [octobase.md](./octobase.md) | What keck actually does (export, persist, no pin API) |
 | [high-availability.md](./high-availability.md) | Queue, dirty list, pin cut, worker fleet. **Accepted;** M3 code is gated on it. |
 | [MDGate pin-convert](../MDGate/pin-convert.md) | Host convert helper (no git write) |
+| [LifeIndexing](../Agents/LifeIndexing.md) | After commit: gists, tags, direct + logical graphs. Not convert. Plan: [agentic-binding](../Agents/agentic-binding.md). |
 
 Words: [glossary.md](../glossary.md). Dataflow: [architecture.md](../architecture.md).

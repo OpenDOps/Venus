@@ -26,5 +26,10 @@ Words that collide in Venus. Product model: [venus-design.md](./venus-design.md)
 | **Pin** | Frozen Yjs bytes for one flush / `T0`. Convert runs on the pin. [LiveSnapshot](./LiveSnapshot/README.md). |
 | **Dirty set** | Pages (and blobs / catalog paths) whose clock moved since `last_flushed`. Queue grain is the wiki, not the keystroke. [high-availability.md](./LiveSnapshot/high-availability.md). |
 | **Commit Before / After** | Review CRDTs in OctoBase for one comment-commit. After is editable; edits are the next commit. [datamodel](./datamodel/crdt.md#commit-before-and-after). |
+| **LifeIndexing** | **Main wiki feature:** hidden multidimensional index of a **git SHA** — spatial heading binds + temporal comment-commit why. After [LiveSnapshot](./LiveSnapshot/README.md) convert; must not delay `last_flushed`. [Agents](./Agents/README.md), [LifeIndexing](./Agents/LifeIndexing.md). |
+| **Direct graph** | Deterministic edges from markdown links, `venus:doc:`, catalog, outline containment. No LLM. |
+| **Logical graph** | LLM-typed heading binds (`defines`, `depends-on`, `constrains`, `contradicts`, `supersedes`). Incremental on dirty pages; full re-gist when rolling summaries drift. **Temporal:** those headings → comment-commits + comments (`decided-in`). [LifeIndexing](./Agents/LifeIndexing.md). |
+| **Bind** | Pin of a markdown selection at a SHA (`docId` + `blockIds`) plus the LifeIndexing **pack**. Optional `productSha` + CodeGraph / Aider when the recipe asks. [agentic-binding](./Agents/agentic-binding.md), [code-bind](./Agents/code-bind.md). |
+| **productSha** | Pin of the product remote at `productBranch`. CodeGraph CLI and/or Aider maps/reviews this tree, not the live worktree. **Select** which: [code-bind](./Agents/code-bind.md#select-codegraph-cli-or-aider-or-both). |
 
 Stack and diagrams: [CRDT](./CRDT/README.md).

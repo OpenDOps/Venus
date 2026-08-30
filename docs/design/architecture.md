@@ -12,6 +12,10 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 | Sync, persist, blobs, **doc export** | **M1 done** | [CRDT](./CRDT/README.md), [M1](./M1/README.md) |
 | Markdown projection | **M2 done** | [MDGate](./MDGate/README.md), [M2/plan.md](./M2/plan.md) |
 | Pin + git snapshotter | Later (M3) | [LiveSnapshot](./LiveSnapshot/README.md) |
+| LifeIndexing | Parallel (after M3) | [Agents](./Agents/README.md) — [AB1](./Agents/agentic-binding.md#ab1--lifeindexing) / [LifeIndexing](./Agents/LifeIndexing.md) |
+| Bound chat | Parallel (after AB1) | [AB2](./Agents/agentic-binding.md#ab2--bound-chat) |
+| Chat-edit markdown | Parallel (after AB2, M5–M6) | [AB3](./Agents/agentic-binding.md#ab3--chat-edit-markdown) |
+| History / why pack | Parallel (after AB1, M6) | [AB4](./Agents/agentic-binding.md#ab4--history--why-pack) |
 | Catalog / header | Later | M4 |
 | Lease `T0` + freeze | Later | [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
 | Stores (CRDT + git) | Design | [datamodel](./datamodel/README.md) |
@@ -102,5 +106,6 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | Adapter gate (M2) | [MDGate](./MDGate/README.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live pane](./MDGate/live-pane.md), [pin convert](./MDGate/pin-convert.md), [M2/plan.md](./M2/plan.md) |
 | Apply (M6) | [MDGate apply](./MDGate/apply.md) |
 | Pin + git snapshotter (M3) | [LiveSnapshot](./LiveSnapshot/README.md); **gated on** [high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** |
+| LifeIndexing / bound chat | [agentic-binding](./Agents/agentic-binding.md) (AB1–AB4). Contract: [LifeIndexing](./Agents/LifeIndexing.md) (spatial + temporal). |
 | Implemented tests | [scenarios](../scenarios/README.md) |
 | License split | [licensing.md](../legal/licensing.md) |

@@ -95,4 +95,5 @@ Flush-before-lease: pin so `T0` is not missing in-memory-not-yet-SQL updates ([L
 | [live-pane.md](./live-pane.md) | Path A loop |
 | [apply.md](./apply.md) | Path B consume: md vs `T0` → hunks |
 | [LiveSnapshot](../LiveSnapshot/README.md) | Pin beside keck; git snapshotter |
+| [LifeIndexing](../Agents/LifeIndexing.md) | After that git SHA: gists / graphs. Not this helper. |
 | [fixtures.md](./fixtures.md) | `pin-then-fromDoc` row |

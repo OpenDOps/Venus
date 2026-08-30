@@ -1,6 +1,6 @@
 # Data model
 
-**Status:** design. Product rules (lease, freeze, two git classes, views): [venus-design.md](../venus-design.md). Wire and keck: [CRDT](../CRDT/README.md). Pin then git convert: [LiveSnapshot](../LiveSnapshot/README.md). Markdown projection: [MDGate](../MDGate/README.md) (RAM pane in [M2](../M2/README.md); git sidecar in M3).
+**Status:** design. Product rules (lease, freeze, two git classes, views): [venus-design.md](../venus-design.md). Wire and keck: [CRDT](../CRDT/README.md). Pin then git convert: [LiveSnapshot](../LiveSnapshot/README.md). Markdown projection: [MDGate](../MDGate/README.md) (RAM pane in [M2](../M2/README.md); git sidecar in M3). Workspace index (after SHA): [LifeIndexing](../Agents/LifeIndexing.md).
 
 This folder is **what is stored where**. Markdown is a **projection** of a block tree, not a second replica.
 
@@ -19,6 +19,11 @@ browsers ──Yjs──► keck ──► Postgres     published, catalog, revi
                      pin + fromDoc
                           ▼
                     wiki/  git          .md + .venus/ids + assets
+                          │
+                     last_flushed
+                          ▼
+                    LifeIndexing        gists / tags / graphs at that SHA
+                                        (async; not the spec)
 ```
 
 ## Invariants

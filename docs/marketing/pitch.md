@@ -12,13 +12,15 @@ That is the product. Venus is the heart of the project — not the board and not
 
 **Product bar:** that loop must be **shorter than Notion + a PR**. If it is not, Venus is those products plus freeze and yaml. Details: [product-plan](../product/product-plan.md).
 
-The hole Notion leaves: CRDT is for humans; **agentic development wants markdown in folders**. Venus is that wiki — collab for people, git tree for agents and developers, one spec. Pains (this gap, SDD vs Notion-spec / Scrum): [pains.md](./pains.md).
+The hole Notion leaves: CRDT is for humans; **agentic development wants markdown in folders**. Venus is that wiki — collab for people, git tree for agents and developers, one spec. It is **agentic-native**: a **user-to-agent** tool, not a human wiki with a copilot bolted on ([product-plan](../product/product-plan.md#agentic-native-user-to-agent)).
+
+**Main feature of that wiki:** a **multidimensional spec graph** — document parts bind to each other, and to the timeline of accepted whys (design evolution, “why is it this way?”, which SHA to revert). Design: [Agents](../design/Agents/README.md). Marketing: [agentic-comparison](./agentic-comparison.md#why--timeline-main-feature). Pains: [pains.md](./pains.md).
 
 ## How (technically)
 
 Humans and agents share one spec that cannot silently drift, because nothing publishes without a lease and a human, and a story is not done until the spec diff is accepted.
 
-Agents draft specs, plans, DoD, code, tests, API markdown, and Hugo-ready pages. They do not become the published record by typing into the live tree. A human accepts the intention — and the spec diff that records it.
+Agents draft specs, plans, DoD, code, tests, API markdown, and Hugo-ready pages. They do not become the published record by typing into the live tree. A human accepts the intention — and the spec diff that records it. **Cursor implements** the product via **CLI** (branch / PR); the IDE is not required for that loop. **Aider and CodeGraph CLI review that PR or branch**; they do not implement ([product-plan](../product/product-plan.md#workspace-and-aider)).
 
 That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept human-language descriptions of what moved and why — when you understand them — not a mute patch of markdown or code. The hunks are how the change is tracked; the description is what you are saying yes to.
 
@@ -26,6 +28,7 @@ That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept h
 
 - An agent merging a story while the spec still describes the old world.
 - The same agent writing the definition of done and the tests that “prove” it.
+- Aider or CodeGraph CLI as the **implementer** (they review the PR or branch; Cursor writes the code).
 - Accepting a mute spec patch, or a page rewrite whose meaning was never reviewed in human language.
 - Markdown on git and the live page meaning two different products.
 - A docs site (Hugo or otherwise) publishing anything that was not accepted into that spec git, or outdated.
@@ -39,8 +42,9 @@ That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept h
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Heart / intention  | Humans accept every spec, plan, DoD, and docs lease. Aims of the software are wiki pages, not generated afterthoughts. |
 | Understand, then accept | CodeSpeak-like cycle on **spec** review: human-language descriptions of the change, pinned to hunks. Not accepting code. |
-| Agents do the work | Planner, DoD author, implementer, autodoc generator — leased drafts, PRs, tests.                                       |
+| Agents do the work | Planner, DoD author, **implementer (Cursor)**, autodoc — leased drafts, PRs, tests. **Aider / CodeGraph CLI:** review that PR or branch, not implement. |
 | One spec           | BlockSuite CRDT + git markdown snapshots; markdown is not a second live replica.                                       |
+| Spec graph         | **Main feature:** spatial binds + temporal why ([Agents](../design/Agents/README.md)). Not a copilot search box.         |
 | No silent drift    | [venus-design.md](../design/venus-design.md), [venus-plan.md](../drafts/pre-design/venus-plan.md)           |
 
 
@@ -64,6 +68,6 @@ That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept h
 
 The empty cell is multiplayer spec + file snapshot + agent writes are leased + CodeSpeak-like accept of human-language spec-change descriptions + DoD from a different agent + story closed by human spec accept. Do not sell editor, board, or agent. Sell that gate.
 
-Comparisons: [comparisons.md](./comparisons.md) — [PM tools](./comparisons.md#versus-pm-tools-linear-jira-plane-github-issues), [Notion](./comparisons.md#versus-notion-and-notion-agents), [Cursor](./comparisons.md#versus-cursor), [CodeSpeak](./comparisons.md#versus-codespeak). First-class product (runner, MCP, shared git): [product-plan](../product/product-plan.md).
+Comparisons: [comparisons.md](./comparisons.md) — [PM tools](./comparisons.md#versus-pm-tools-linear-jira-plane-github-issues), [Notion](./comparisons.md#versus-notion-and-notion-agents), [Cursor](./comparisons.md#versus-cursor), [CodeSpeak](./comparisons.md#versus-codespeak). Bound chat (ask, write, **why/history**): [agentic-comparison.md](./agentic-comparison.md). First-class product (runner, MCP, shared git): [product-plan](../product/product-plan.md).
 
 Autodocumenting (APIs, aims, Hugo) is part of the same gate: generated files are still markdown in the spec tree; Hugo only builds **accepted** git. Details: [venus-plan.md](../drafts/pre-design/venus-plan.md) (autodoc + Hugo).

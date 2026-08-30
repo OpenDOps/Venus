@@ -20,6 +20,7 @@ Related:
 - **Why freeze on lease:** [lease-freeze-rationale.md](./lease-freeze-rationale.md)
 - **Spec-driven plans** (yaml board; trackers are mirrors): [venus-plan.md](../drafts/pre-design/venus-plan.md)
 - Binding and rollout: [venus-implementation-plan.md](./venus-implementation-plan.md)
+- **Two gits + analyzer** (wiki remote ≠ product remote; **select** CodeGraph CLI / Aider / both; review step diffs): [code-bind](./Agents/code-bind.md), [product-plan](../product/product-plan.md#workspace-and-aider)
 - **Stores (CRDT spaces + git tree):** [datamodel](./datamodel/README.md)
 - Installed symbols: [api-map.md](./api-map.md)
 - Markdown adapter gate: [MDGate](./MDGate/README.md) (design). Code: [M2](./M2/README.md).
@@ -36,7 +37,7 @@ A spec-driven workspace that is:
 - **Collaborative** for humans in a Notion-style WYSIWYG editor (BlockSuite).
 - **Sharable as files** for humans and agents (git folders + markdown).
 - **Reviewable like Cursor** when someone (human or agent) edits source: one lease, frozen published page, commented diffs, accept / rollback / reply. Each review commit has **Before and After CRDTs in OctoBase**. Edits to After before apply are a **new** comment-commit in the sequence, not a silent rewrite. Alternative **picker** UI is post-v1 ([v1-concerns.md](../drafts/pre-design/v1-concerns.md)).
-- **Runnable as plans:** spec → plan (planner agent) → DoD (**other** agent) → both human-accepted on the same lease/review path as spec → implement / autotests / PR review → human-accepted doc updates. The board is yaml + the plan page; GitHub/Plane are optional mirrors. See [venus-plan.md](../drafts/pre-design/venus-plan.md).
+- **Runnable as plans:** spec → plan (planner agent) → DoD (**other** agent) → both human-accepted on the same lease/review path as spec → implement / **analyzer review of the product diff** (CodeGraph CLI and/or Aider) / autotests / PR review → human-accepted doc updates. Wiki git and product git are **separate remotes or submodules** ([code-bind](./Agents/code-bind.md)). The board is yaml + the plan page; GitHub/Plane are optional mirrors. See [venus-plan.md](../drafts/pre-design/venus-plan.md).
 - **Autodocumenting:** aims of the software and generated API markdown live in the same spec tree; Hugo publishes only accepted git. See [venus-plan.md](../drafts/pre-design/venus-plan.md).
 
 It is not a second AFFiNE. It is a thinner product on the same editor and CRDT engine, with git as the long-term, human-readable history.
@@ -48,6 +49,7 @@ It is not a second AFFiNE. It is a thinner product on the same editor and CRDT e
 - Storing pending hunks, rationales, or review threads on published blocks.
 - Forking AFFiNE Cloud (NestJS, GraphQL, payments, copilot). OctoBase + y-octo are the backend.
 - Full Notion databases, edgeless/whiteboard as a first-class surface.
+- **Aider or CodeGraph as wiki copilot** or as the implementer. The selected analyzer works the **product** tree at a pinned SHA and reviews plan-step diffs. Cursor writes code. Spec publish stays lease + human ([code-bind](./Agents/code-bind.md)).
 - **UI** for picking among alternatives / deep stacks (v2). The **data** already stores Before/After CRDTs and `parentCommitId` ([v1-concerns.md](../drafts/pre-design/v1-concerns.md) is the wedge for one visible commit).
 
 ## Stores

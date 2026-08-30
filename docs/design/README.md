@@ -8,6 +8,7 @@
 | [glossary.md](./glossary.md) | Doc export vs `T0` vs git snapshot vs markdown projection |
 | [CRDT](./CRDT/README.md) | Prototype CRDT stack (Yjs, keck, Postgres, export) |
 | [LiveSnapshot](./LiveSnapshot/README.md) | Pin (copy, do not stall CRDT) + git snapshotter. **M3 gated on** [high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (accepted 2026-08-30). |
+| [Agents](./Agents/README.md) | **Main product feature:** multidimensional spec graph (spatial binds + temporal why). Plan: [agentic-binding.md](./Agents/agentic-binding.md). Contract: [LifeIndexing](./Agents/LifeIndexing.md). Two gits + analyzer (select CodeGraph CLI / Aider / both): [code-bind](./Agents/code-bind.md). |
 | [MDGate](./MDGate/README.md) | Adapter gate. `fromDoc`, [live pane](./MDGate/live-pane.md), [apply](./MDGate/apply.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md). |
 | [api-map.md](./api-map.md) | Installed symbols (Actual column) |
 | [scenarios](../scenarios/README.md) | Implemented tests, grouped by feature |

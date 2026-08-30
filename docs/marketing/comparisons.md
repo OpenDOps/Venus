@@ -1,6 +1,6 @@
 # Venus comparisons
 
-Pitch: [pitch.md](../marketing/pitch.md). Design: [venus-design.md](../design/venus-design.md), [venus-plan.md](../drafts/pre-design/venus-plan.md). Product: [product-plan](../product/product-plan.md), [pains](../product/pains.md).
+Pitch: [pitch.md](./pitch.md). Design: [venus-design.md](../design/venus-design.md), [venus-plan.md](../drafts/pre-design/venus-plan.md). Product: [product-plan](../product/product-plan.md), [pains](../product/pains.md). Bound chat vs Notion Agent / Cursor **ask**: [agentic-comparison.md](./agentic-comparison.md).
 
 ## Versus PM tools (Linear, Jira, Plane, GitHub Issues)
 
@@ -25,7 +25,7 @@ Do not build Venus cycles, points, or a kanban as the home screen. If people liv
 
 Notion is a CRDT (block graph) for humans. It does not fit **docs for agentic development**: agents cannot clone folders of markdown; they type the live workspace. Venus exists to close that gap — LLM wiki as **git markdown**, collab page for humans, same spec.
 
-If Venus looks like Notion with a copilot, Notion still wins at ops. The job Notion cannot do is a spec that hardens Cursor: files in folders, honest export, agents do not publish by typing.
+If Venus looks like Notion with a copilot, Notion still wins at ops. The job Notion cannot do is a spec that hardens Cursor: files in folders, honest export, agents do not publish by typing. Notion **adopts** an agent onto a human workspace. Venus is the other direction: **agentic-native** surfaces, human UI to **aim** them ([product-plan — Agentic-native](../product/product-plan.md#agentic-native-user-to-agent)).
 
 | | Notion / Notion Agent / Custom Agents | Venus |
 |---|---|---|
@@ -46,28 +46,34 @@ Use Notion when the wiki **is** the ops workspace (databases, standups, Q&A). Ke
 
 Do not build Notion databases, Slack routing, or 24/7 report bots. If people live in the live page while an agent patches it, you are a worse Notion. If they live on the spec and agent writes go through the lease, Venus is the LLM wiki; Notion stays the ops surface — or stays out.
 
+**Ask path (not this write table):** selection → graph pack → chat must not feel like Notion-with-a-copilot. Gesture is Cursor add-to-chat. [agentic-comparison.md](./agentic-comparison.md).
+
 ## Versus Cursor
 
-Cursor is the loop Venus copies for source: you ask (change or audit), the working set is exclusive, you wait, you review the diff, you accept. That is an efficient **developer-first** model, not a lockout for the person who prompted. Freeze is that contract on a wiki page.
+Cursor is the loop Venus copies for source: you ask, the working set is exclusive, you wait, you review the diff, you accept. In the **agentic loop** that job is **Cursor CLI** (`agent -p` / SDK), kicked by Venus. The **IDE is optional** — debug, hand-type, local review. Venus does not host Composer. If the loop requires the IDE, you glued the product to a window the CLI already replaced.
 
-The write loop is Cursor’s. The **accept** is CodeSpeak-shaped, aimed at spec: you are not rubber-stamping markdown hunks the way you accept a code patch. You accept human-language descriptions of what the spec now says and why, when you understand them. Hunks and the rail are how that description stays attached to the change; they are not the thing you are blessing as “the code looks fine.”
+The write loop is Cursor’s (CLI). The **accept** is CodeSpeak-shaped, aimed at spec: you are not rubber-stamping markdown hunks the way you accept a code patch. You accept human-language descriptions of what the spec now says and why, when you understand them. Hunks and the rail are how that description stays attached to the change; they are not the thing you are blessing as “the code looks fine.”
 
-Cursor is the **code** editor. Venus is the **spec** wiki that same loop must not silently skip.
+Cursor is the **code** implementer (CLI first; IDE optional). Venus is the **spec** wiki that loop must not silently skip — agentic-native for the contract, **user-to-agent** chrome for PMs. Venus **controls the job** (kick CLI, pin SHAs, next gate). It does not own Cursor’s chat as a second spec.
 
 | | Cursor | Venus |
 |---|---|---|
-| Surface | Product repo (files, PR) | Spec wiki (CRDT + git markdown) |
+| Surface | Product repo (files, PR). **CLI** is enough for the loop; IDE is optional | Spec wiki (CRDT + git markdown) + runner that **kicks** CLI |
 | Agent loop | Prompt → dirty buffer → review → accept | Same loop: lease → private markdown → After/Before/Diff → human accept |
 | What you accept | Code diff; why is in the chat | Human-language description of the **spec** change, once you understand it (hunks are the evidence) |
-| Tracking | Chat + git; why is not on the hunks | Descriptions pinned to hunks; git message is that why |
+| Tracking | Chat + git; why is not on the hunks | Descriptions pinned to hunks; git message is that why. Index packs that timeline with the clause ([agentic-comparison — why](./agentic-comparison.md#why--timeline-main-feature)) |
 | Multiplayer during the loop | You and the agent; other files stay yours | Page freeze for everyone on that `docId`; other pages stay live; comment rail stays |
 | Story complete | PR merged / tests green | Spec diff **accepted**; PR is the implementer path, not done |
 | Spec | README, rules, chat — optional and drift-prone | First-class; agents do not become the record by typing |
-| Role | Implementer (and local review) | Heart: intention accepted, then Cursor may run |
+| Role | **Implementer** (and local review). Aider / CodeGraph CLI are **not** this column — they review the Venus-loop **PR or branch** | Heart: intention accepted, then Cursor may run; then those CLIs may **review** |
 
 **Freeze is the current design**, tuned for this Cursor-like loop: one source writer, stable `T0`, then a CodeSpeak-like spec accept. It can be **extended later** (narrower leases, other exclusive modes) once the loop is boring. Do not treat whole-page freeze as the forever product, and do not treat it as a bug. Primary design is: you asked, you wait, you accept **the meaning of the spec change** — Cursor’s checkout, CodeSpeak’s review, on the wiki. The extra wiki cost is only the person who did **not** prompt: they review or they open another page. That is checkout, not Cursor; v1 accepts it.
 
-Use Cursor to write product code against a **published** contract on a **shared git checkout** — not copy-paste. Use Venus when the spec must survive that run. The accept on that spec is not a mute apply.
+Use **Cursor CLI** (or SDK) to write product code against a **published** contract on a **shared git checkout** — Venus kicks that. Use the IDE if you want to; the loop does not. Use Venus when the spec must survive that run. The accept on that spec is not a mute apply.
+
+**Aider / CodeGraph CLI** are kicked in the Venus **agentic loop** to **review the PR or the implement branch** (comments, impact, map). They are not a second Cursor and not how Venus implements. Product: [Workspace and Aider](../product/product-plan.md#workspace-and-aider).
+
+Bound **chat** on the wiki copies Cursor’s **add selection to chat**, not Cursor’s apply. [agentic-comparison.md](./agentic-comparison.md).
 
 **Bar:** the whole loop must stay **shorter than Notion + a PR** ([product-plan](../product/product-plan.md)). If it does not, Venus is AFFiNE + a GitHub workflow, aimed at a Notion user, justified by a Cursor metaphor.
 

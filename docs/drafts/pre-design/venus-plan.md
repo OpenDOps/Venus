@@ -376,9 +376,9 @@ Specs, plans, and Venus git snapshots live in the **wiki git tree**. Implementat
 | **B. Two remotes, no link** | Wiki remote; product remote; yaml stores a URL | Runner must know two remotes. Doc updates cannot land in the same PR as code. Easy to forget the wiki bump. |
 | **C. Submodules** (lean) | Parent workspace repo; **wiki** and **product** are submodules (or product is parent and wiki is a submodule) | Product PR is normal. Wiki lease commits in the wiki submodule; parent pin updates when docs are accepted. Clone is one command; histories stay separate. |
 
-**Lean: C (submodules).** Keep Venus markdown history out of the product’s `git blame`, keep product PRs ordinary, still have one workspace checkout for agents. Decide parent-vs-nested (workspace-of-two vs product-owns-wiki) when the first real product repo is wired.
+**Lean: C (submodules / two remotes, separate histories).** Keep Venus markdown history out of the product’s `git blame`, keep product PRs ordinary, still have one workspace checkout for agents. Decide parent-vs-nested (workspace-of-two vs product-owns-wiki) when the first real product repo is wired.
 
-**Status:** undecided; **prefer submodules**. Must be written into the runner and MCP before implement starts. Do not assume “the product repo” is the same git as `wiki/plans/`.
+**Status:** **decided lean C.** Not “the product repo is `wiki/`.” Wire remotes into the runner and MCP before implement starts. **Select** CodeGraph CLI, Aider, or both for analysis/review at `productSha` ([code-bind — select](../../design/Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). Design: [code-bind](../../design/Agents/code-bind.md). Product: [product-plan — Workspace and Aider](../../product/product-plan.md#workspace-and-aider).
 
 ## Invariants
 

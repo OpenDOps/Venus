@@ -157,6 +157,8 @@ last_flushed clocks
 - Autocomment `snapshot: <title>` for idle/flush; lease accept is the other class (required why) and reuses this convert path.
 - Do not re-export clean pages. Catalog-only moves are `git mv` without `fromDoc` if the body clock is unchanged.
 
+**After** `last_flushed` (step 8), enqueue [LifeIndexing](../Agents/LifeIndexing.md) `{ wikiSha, dirtyDocIds }`. Same dirty grain (`docId`). Direct-link parse may run after git add (no model). LLM gists, tags, and the logical graph are a **second job**: upsert per wiki, must not hold the cut, must not delay step 8, must not retry the pin on model failure. `last_indexed` is not `last_flushed`.
+
 `fromDoc` is BlockSuite JS. Scale-out is **more convert workers**, not a Rust reimplementation of the adapter. y-octo + git2 in `crates/venus-sidecar` may own pin-decode + commit in one Venus process; it still consumes the pin interface and still must call the same exporter (Node or embedded JS). It still does not live in keck.
 
 ## High availability
@@ -219,6 +221,7 @@ Accepted 2026-08-30. No `wiki/` writer, snapshotter process, or M3 implementatio
 - Use the spectator splice map as a git pin.
 - Store the list of keystrokes as the dirty list.
 - One global git index for all wikis at this load.
+- Wait on an LLM (gists, tags, logical graph) to `last_flushed` or to the `.md` git commit ([LifeIndexing](../Agents/LifeIndexing.md)).
 
 ## Files
 
@@ -228,3 +231,4 @@ Accepted 2026-08-30. No `wiki/` writer, snapshotter process, or M3 implementatio
 | [octobase.md](./octobase.md) | Why keck cannot be the queue or the cut |
 | [high-availability.md](./high-availability.md) | This scale / HA contract |
 | [MDGate pin-convert](../MDGate/pin-convert.md) | Convert helper (no git write) |
+| [LifeIndexing](../Agents/LifeIndexing.md) | Index job after step 8; not this convert worker |
