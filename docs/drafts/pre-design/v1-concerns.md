@@ -50,7 +50,7 @@ Commit classes, invariant 5, stores table, and views live in [venus-design.md](.
 - Bidirectional `git push` from clones into the live CRDT.
 - Perfect `git blame` through snapshot commits (filter autocomments).
 - Zero lag.
-- Editing the After **preview** CRDT during a markdown lease (holder uses markdown).
+- A **chooser** for alternatives / deep stacks (data: `parentCommitId` + Before/After OctoBase docs; v1 UI: one tip).
 
 ---
 
@@ -67,27 +67,29 @@ That last cluster is Git-for-docs (multiple PRs, stacked diffs): a **graph of re
 **In v1:**
 
 - One lease per page.
-- **One** review commit at a time (one set of hunks, one required message).
+- **One visible tip** (required message). Draft: regenerate same id, bump `generation`.
 - Comments on that commit / hunks (thread, reply).
-- Accept, reject (rollback), regenerate (replace hunks on the **same** commit, bump `generation`).
-- Old / new / diff views → **After / Before / Diff**; Before has a **right-rail** comment pin (Google Docs / Jira).
+- Accept, reject (rollback).
+- After / Before / Diff on **persisted** OctoBase CRDTs; Before has a **right-rail** comment pin.
 - Pin on a selection when the writer has one.
 
 **Not in v1:**
 
-- Alternative commits on one thread (`A` vs `B` vs same `T0`).
-- Stacked commits (`C` based on `A`).
+- Alternative commits on one thread (`A` vs `B` vs same `T0`) as a **chooser UI**.
+- Deep stack explorer. `parentCommitId` + Before/After **spaces** still exist: After edits after submit are a new commit, not a rewrite. v1 shows the **tip**.
 - Entry B as “empty commit, diffs later” (a commit with no hunks). Pin-a-comment on **live** text can exist as a comment thread without creating a review commit.
 - Multi-page / folder leases (design already says “later”).
 
-Regenerate is enough of the Cursor loop: same lease, same commit id, new hunks, comments stay attached by `generation`.
+**Do** persist Before/After as OctoBase CRDTs as soon as hunks exist. Do **not** implement After as tab RAM.
+
+Regenerate (`generation++`) is for an **unsubmitted draft** on the same commit id. After submit, Cursor-like follow-up edits are the next commit in the sequence.
 
 ### Why this order
 
 1. Adapter fixture suite green ([implementation plan](../../design/venus-implementation-plan.md#markdown-adapter-gate-build-this-do-not-debate-it)).
 2. Git snapshot class and review class do not fight ([§1](#1-wysiwyg-vs-git)).
-3. One comment-commit + After/Before.
-4. Then alternatives/stacks (`baseClock`, supersede).
+3. One comment-commit + persisted After/Before CRDTs.
+4. Then alternative **chooser** UI (`baseClock`, supersede).
 
 ---
 
@@ -96,6 +98,6 @@ Regenerate is enough of the Cursor loop: same lease, same commit id, new hunks, 
 | Concern | v1 rule |
 |---|---|
 | WYSIWYG vs git | Snapshot + **autocomment** for casual typing; **comment-commit** only for markdown. After/Before CRDT views. Flush-before-lease. |
-| Review UI | One lease, one commit, comments, accept / reject / regenerate. No alternatives, no stacks. |
+| Review UI | One lease, one **visible** tip, comments, accept / reject. Draft regenerate in place. After/Before **persisted** in OctoBase. After-edits after submit = next commit (no chooser UI). |
 
 §1 is in [venus-design.md](../../design/venus-design.md). Adapter round-trip is in [venus-implementation-plan.md](../../design/venus-implementation-plan.md#markdown-adapter-gate-build-this-do-not-debate-it).

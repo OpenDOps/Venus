@@ -53,69 +53,85 @@ steps:
         evidence: "2026-08-30 vitest: unset env → memory, no WebSocket; VITE_SYNC_URL → OctoBaseKeckProvider, connect opens ws with AFFiNE. Playwright PLAYWRIGHT_M1=1 e2e/m1-provider.spec.ts: kind octobase, WS ws://127.0.0.1:3000/collaboration/venus-m0, protocols [AFFiNE]. m0-provider.spec.ts still passes (refresh drops text)."
   step-hydrate: # 4
     n: 4
-    state: implement
+    state: done
     breakpoint: human
     pr: null
     dodResults:
       - name: Refresh keeps
-        status: pending
+        status: pass
+        evidence: "2026-08-30 PLAYWRIGHT_M1=1 e2e/m1-hydrate.spec.ts: type hello, wait 2s, reload; note still has hello; doc-title Venus; outline H1 Why Venus. Host waits for whenReady then seeds only if no affine:page root."
       - name: No double page
-        status: pending
+        status: pass
+        evidence: "2026-08-30 same file, new browser context (no down -v): one doc-title Venus, one outline H1 Why Venus, __VENUS_PAGE_FLAVOUR__ affine:page. Vitest: Yjs snapshot hydrate does not add a second H1."
       - name: Memory unchanged
-        status: pending
+        status: pass
+        evidence: "2026-08-30 pnpm test:e2e m0-provider.spec.ts: type hello, reload, hello absent (memory project, VITE_SYNC_URL unset)."
   step-two-clients: # 5
     n: 5
-    state: implement
+    state: done
     breakpoint: human
     pr: null
     dodResults:
       - name: A→B
-        status: pending
+        status: pass
+        evidence: "2026-08-30 PLAYWRIGHT_M1=1 e2e/m1-two-tabs.spec.ts: pageA then context.newPage() pageB; both WS ws://127.0.0.1:3000/collaboration/venus-m0; A types from-a-<ts>; B sees it within 10s without reload."
       - name: Same seed
-        status: pending
+        status: pass
+        evidence: "2026-08-30 same spec: both tabs doc-title Venus, one outline H1 Why Venus each. Optional B→A: B types from-b-<ts>, A sees it without reload."
   step-blobs: # 6
     n: 6
-    state: implement
+    state: done
     breakpoint: human
     pr: null
     dodResults:
       - name: Upload
-        status: pending
+        status: pass
+        evidence: "2026-08-30 PLAYWRIGHT_M1=1 e2e/m1-blob.spec.ts: slash Image + filechooser fixture e2e/fixtures/dot.png; affine-image .affine-image-container img naturalWidth>0; POST /api/blobs/venus-m0 2xx. OctoBaseBlobSource is TestWorkspace blobSources.main; Vite proxies /api → keck (:5174 is not in keck CORS)."
       - name: Second client
-        status: pending
+        status: pass
+        evidence: "2026-08-30 same spec: after A’s image is on the CRDT, pageB hydrates; img naturalWidth>0 within 15s; B does not pick a file. keck blob id = BlockSuite sha() (SHA-256 base64url with padding)."
       - name: Refresh
-        status: pending
+        status: pass
+        evidence: "2026-08-30 same spec: page.reload(); image pixels still naturalWidth>0; doc-title Venus; outline H1 Why Venus."
   step-snapshot: # 7
     n: 7
-    state: implement
+    state: done
     breakpoint: human
     pr: null
     dodResults:
       - name: Reachable
-        status: pending
+        status: pass
+        evidence: "2026-08-30 vitest snapshot.test.ts: execFileSync curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs exit 0; /tmp/venus-m0.yjs >2 bytes (9041). api-map still contains that exact Export command."
       - name: Decodes
-        status: pending
+        status: pass
+        evidence: "2026-08-30 same file: Y.applyUpdate(new Y.Doc(), bytes) does not throw; Y.encodeStateAsUpdate byteLength >2. Node yjs only; no venus-sidecar crate. Skip Reachable/Decodes when nothing on :3000 (documented in scenarios/doc-export.md)."
   step-compose: # 8
     n: 8
-    state: implement
+    state: done
     breakpoint: none
     pr: null
     dodResults:
       - name: Three services
-        status: pending
+        status: pass
+        evidence: "2026-08-30 vitest compose.test.ts: docker-compose.yml services postgres, octobase, web; docker compose config --services lists those three. docker compose ps: postgres (healthy), octobase (:3000 healthy), web (:8080 healthy). Named volume pg-data. No USE_MEMORY_SQLITE env."
       - name: Loop from Compose
-        status: pending
+        status: pass
+        evidence: "2026-08-30 docker compose up --build -d; curl http://127.0.0.1:8080 200 (index.html); nginx POST /collaboration/venus-m0 → {\"protocol\":\"AFFiNE\"}. PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 m1-two-tabs.spec.ts: A→B, same seed, B→A (3 passed). VITE_SYNC_URL=same-origin through nginx. Playwright default remains Vite :5174."
   step-verify: # 9
     n: 9
-    state: implement
+    state: done
     breakpoint: human
     pr: null
     dodResults:
       - name: Manual path
-        status: pending
+        status: pass
+        evidence: "2026-08-30 person walked runbook Manual testing (M1 close-out) on Compose web :8080; required items held. First-paragraph e2e debris (hello/from-a/from-b mash) was present — expected persist on venus-m0/pg-data, not a fail. Export curl 10240 bytes, Y.applyUpdate OK. Browser not named (Chrome or Firefox)."
       - name: Smoke
-        status: pending
+        status: pass
+        evidence: "2026-08-30 pnpm test:e2e:m1 exit 0 (10 passed, none skipped): m1-smoke.spec.ts seed H1 + hello + reload keeps; m1-hydrate keep-on-reload; m1-two-tabs A→B; m1-blob second client. Vite :5174 + VITE_SYNC_URL. pnpm test:e2e (memory) 12 passed separately."
       - name: Refresh + second client
-        status: pending
+        status: pass
+        evidence: "2026-08-30 same pnpm test:e2e:m1 run: m1-hydrate.spec.ts (typed hello after refresh; second session one page) and m1-two-tabs.spec.ts (A→B, same seed, B→A) passed, not skipped. Manual items 4–5 also held."
       - name: Snapshot
-        status: pending
+        status: pass
+        evidence: "2026-08-30 operator curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs exit 0; 10240 bytes; Y.applyUpdate + re-encode 10240; affine:page title Venus, H1 Why Venus, H2 Empty host. Recon spike scripts/m1-recon-spike.mjs deleted."

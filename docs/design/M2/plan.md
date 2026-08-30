@@ -1,0 +1,585 @@
+# M2 — Markdown projection
+
+| | |
+|---|---|
+| **planId** | `m2-markdown-projection` |
+| **Milestone** | [M2 in the implementation plan](../venus-implementation-plan.md#m2--markdown-projection-week) |
+| **Duration** | About a week |
+| **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
+| **Board** | [M2.state.yaml](./M2.state.yaml) — steps 1–8 `pending` |
+
+Parent design: [venus-design.md](../venus-design.md). Adapter: [MDGate](../MDGate/README.md) ([subset](../MDGate/subset.md), [fixtures](../MDGate/fixtures.md), [live-pane](../MDGate/live-pane.md)). Stores: [datamodel](../datamodel/README.md) — markdown is a **projection**, not Postgres and not git. Dataflow: [architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2). Words: [glossary.md](../glossary.md). M1 host: [M1/plan.md](../M1/plan.md). Installed symbols: [api-map.md](../api-map.md).
+
+This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
+
+## Story
+
+As an implementer I need a **read-only markdown pane** that stays aligned with the live BlockSuite page: `MarkdownAdapter.fromDoc` on the **synced Store**, plus a RAM block-id sidecar. The [export fixture suite](../MDGate/fixtures.md#m2--export-must-be-green-to-close-m2) is green. Venus still has no git write, lease, apply, or editable markdown.
+
+If export jitters, later comment-commits will be fake hunks. If the pane is a second replica, we have already lost.
+
+## Exit
+
+All of these must be true at once:
+
+1. One shared **exporter** (`fromDoc` + sidecar builder). Pane, tests, and later pin/git (M3) import it. [one exporter](../MDGate/README.md#one-exporter).
+2. [subset](../MDGate/subset.md) types: `fromDoc → toDoc → fromDoc` byte-stable modulo listed whitespace. Goldens checked in.
+3. Sidecar: every exported subset (and opaque) block has a stable id; **no** ids in the markdown body; insert-above does not rename surviving ids.
+4. Opaque / loss: untouched opaque slice is byte-stable; color (if present) is documented loss, second `fromDoc` stable.
+5. Read-only markdown pane hangs off the **live Store** ([architecture](../architecture.md#markdown-projection-add-here-before-coding-m2)), not keck `GET …/export`. [Single-flight loop](../MDGate/live-pane.md). **No caret.** Replace the string.
+6. If the pane is not shown: do not run the loop.
+7. [fixtures.md](../MDGate/fixtures.md) **M2 export** rows all pass in CI (`pnpm test` + `pnpm test:e2e` pane spec). **Apply rows (`ap-*`) are out of M2.**
+8. No `wiki/` git commit, no lease, no CodeMirror, no `Y.applyUpdate` of `toDoc`.
+9. [api-map.md](../api-map.md) Actual column is filled for every adapter name the code uses.
+10. `mount-editor` still does not import the adapter. Layout chrome (App) mounts the pane, like outline.
+
+M1 + M2 together: same Y.Doc in two tabs **and** a markdown photograph of that tree on one client. Postgres is still only Yjs (+ blobs). Sidecar on **disk** is M3 ([datamodel git](../datamodel/git.md)).
+
+## Non-goals (do not start)
+
+| Later | Why not M2 |
+|---|---|
+| `wiki/` git, pin convert, autocomment | M3 — [LiveSnapshot](../LiveSnapshot/README.md). Same exporter, on a **pin**. |
+| Apply / hunks / `ap-*` fixtures | M6 — [apply.md](../MDGate/apply.md) |
+| CodeMirror, lease, freeze | M5 |
+| After/Before OctoBase spaces | [datamodel CRDT](../datamodel/crdt.md#commit-before-and-after); M5–M6 |
+| Incremental pane splice | After goldens exist; [live-pane](../MDGate/live-pane.md#incremental-body-after-fixtures) |
+| Catalog, folder tree, product header | M4 |
+| Second page / linked-doc **resolution** in the catalog | M4. M2 may **export** the linked-doc markdown form with a synthetic `pageId`. |
+| Telling agents “edit `.md` in git and it will apply” | After M6 apply fixtures |
+| Markdown as Y.Text | Forbidden ([datamodel](../datamodel/README.md)) |
+
+Do not write sidecar JSON to Postgres or `wiki/.venus/ids/`. RAM only.
+
+## Constraints
+
+1. **Thin host.** Same Vite + React app. Pane is host chrome (pre/code or textarea `readOnly`), not a BlockSuite widget.
+2. **One Store.** `fromDoc` the same `session.store` as the editor. Do not `GET /api/block/…/export` for the pane.
+3. **Single-flight + dirty** ([live-pane](../MDGate/live-pane.md#scheduler-m2-must-ship-this)). Not one job per Yjs event. Full `fromDoc` each run (no splice).
+4. **Seam.** Adapter lives in `src/host/mdgate/` (or equivalent). `mount-editor.js` / `editor-container.js` / `boot.js` do not import it.
+5. **Memory default.** Vitest and `pnpm test:e2e` stay green without Docker. Pane e2e may use memory (like M0). Optional: same pane on Compose — not required to close M2.
+6. **Goldens win.** If adapter bytes disagree with [subset](../MDGate/subset.md) intent, **update subset Actual**, do not weaken tests.
+7. **One page.** Workspace `venus-m0`, doc `doc:home`. Do not add catalog spaces.
+8. **Pin `yjs` 13.6.32** and BlockSuite **0.22.4**. Headings stay `affine:paragraph` + `type` h1/h2.
+
+## Target tree
+
+Only create what M2 needs. Do **not** add `wiki/`, `packages/review`, or apply tests.
+
+```text
+Venus/
+  apps/web/
+    src/host/
+      mdgate/
+        from-doc.js            # MarkdownAdapter.fromDoc + sidecar ranges
+        from-doc.d.ts
+        from-doc.test.ts       # rt-*, side-*, opaque, loss, one-exporter import
+        goldens/               # checked-in fromDoc bytes
+        mount-md-pane.js       # read-only host; single-flight loop
+        mount-md-pane.test.ts  # optional: loop coalescing with fake timers
+    src/App.tsx                # .md-pane-host beside editor + outline
+    e2e/
+      m2-pane.spec.ts          # e2e-pane
+      m0-*.spec.ts             # still pass
+      m1-*.spec.ts             # still pass when PLAYWRIGHT_M1=1
+  docs/design/api-map.md       # adapter Actuals in step 1
+  docs/design/MDGate/subset.md # whitespace Actual after recon
+  docs/design/M2/
+    …
+```
+
+## Binding (what you are proving)
+
+```text
+WYSIWYG  (session.store)  ──single-flight──►  fromDoc + RAM sidecar
+                                              │
+                                              ▼
+                                    read-only markdown pane
+                                    (replace string, no caret)
+
+Postgres / keck / git     unchanged from M1
+```
+
+Ids stay on the CRDT. Sidecar offsets are a photograph of **this** export ([MDGate README](../MDGate/README.md)).
+
+## Chosen stack
+
+Locked in [step-recon-adapter](#1-step-recon-adapter). If this section disagrees with [api-map.md](../api-map.md), **the map wins**.
+
+| Piece | Actual (fill in step 1) |
+|---|---|
+| Adapter | `@blocksuite/affine/shared/adapters` `MarkdownAdapter` (or Actual import) |
+| Transformers | `titleMiddleware`, `docLinkBaseURLMiddleware`, `embedSyncedDocMiddleware` as needed |
+| Sidecar | Venus JSON `{ docId, clock, blocks: [{ id, start, end }] }` — UTF-16 `[start,end)` |
+| Pane | Host DOM, `data-testid="venus-md-pane"` |
+
+## Steps summary
+
+What each step **adds** to the product (not how to test it — that is under each step).
+
+| # | id | Adds |
+|---|---|---|
+| 1 | [`step-recon-adapter`](#1-step-recon-adapter) | api-map adapter Actuals; first `fromDoc` of seed; subset whitespace notes. |
+| 2 | [`step-exporter`](#2-step-exporter) | Shared `fromDoc` + sidecar module. |
+| 3 | [`step-roundtrip`](#3-step-roundtrip) | `rt-*` goldens on the documented subset. |
+| 4 | [`step-sidecar`](#4-step-sidecar) | Stable ids, shift on insert, opaque, loss. |
+| 5 | [`step-pane`](#5-step-pane) | Read-only pane in the layout; initial `fromDoc`. |
+| 6 | [`step-loop`](#6-step-loop) | Single-flight updates while the pane is open. |
+| 7 | [`step-one-exporter`](#7-step-one-exporter) | Pane uses the same helper as Vitest. |
+| 8 | [`step-verify`](#8-step-verify) | Close-out: person in browser + full export suite. |
+
+---
+
+## Steps
+
+Do them in order (1–8). A step is not started until its `dependsOn` steps are done. Test scenarios under each step are the accept rules (Given / When / Then). Encode them as tests where the How column names a command; do not invent extra scenarios.
+
+Fixture ids (`rt-paragraph`, `e2e-pane`, …) are defined in [fixtures.md](../MDGate/fixtures.md). Do not rename them.
+
+### 1. step-recon-adapter
+
+[Back to overall summary](#steps-summary). Steps: **1** · [2](#2-step-exporter) · [3](#3-step-roundtrip) · [4](#4-step-sidecar) · [5](#5-step-pane) · [6](#6-step-loop) · [7](#7-step-one-exporter) · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 1 |
+| **id** | `step-recon-adapter` |
+| **title** | Map MarkdownAdapter, first fromDoc, subset Actuals |
+| **dependsOn** | (none; M1 closed) |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** a decision and a map, not the pane. You know the Actual import of `MarkdownAdapter`, `fromDoc` / `toDoc` (or `toDocSnapshot`), transformers, and what `fromDoc` of the M0 seed looks like. [subset.md](../MDGate/subset.md) recon checklist is started.
+
+M2 dies if you code against guessed package paths or hide adapter jitter in tests.
+
+#### Work
+
+1. Find `MarkdownAdapter` on `@blocksuite/affine` **0.22.4**. Record import path, constructor, `fromDoc` / `toDoc` / `toDocSnapshot` names in [api-map.md](../api-map.md) (new **Names — markdown adapter** rows).
+2. In a Vitest (Node) test, `createM0Workspace(MemoryNoopProvider)`, seed as today, call `fromDoc`. Log / write a **draft** golden of the seed note (h1, body, spacers, h2).
+3. Append [subset.md](../MDGate/subset.md) **Recon** Actuals: EOF newlines, empty-paragraph bytes, whether list **items** vs list container get sidecar rows (sidecar builder may wait for step 2).
+4. Note opaque form for `affine:image` if you `fromDoc` a store that has one (optional here; required in step 4).
+5. Confirm `toDoc` of that markdown does not throw. Do **not** require byte-stable round-trip until goldens in step 3.
+
+#### Do not
+
+- Mount a pane.
+- Write `wiki/` or Postgres markdown.
+- Import `@affine/core`.
+- Start apply / hunk code.
+
+#### Test scenarios
+
+1. **Map complete**
+   - **Given** the repo after this step.
+   - **When** a reviewer opens [api-map.md](../api-map.md) **Names — markdown adapter** Actual column.
+   - **Then** these are concrete strings: adapter import, class name, `fromDoc` method, `toDoc` or `toDocSnapshot` method, transformer setup (or “none”).
+   - **How:** read the file. Fail if cells are still empty or `recon:`.
+   - **Autotest:** none (docs). **Manual:** reviewer reads api-map.
+
+2. **Seed fromDoc**
+   - **Given** Node Vitest and `MemoryNoopProvider` (no Docker).
+   - **When** the test builds the same seed tree as `seedHomeNote` and calls Actual `fromDoc`.
+   - **Then** it returns a string containing `Why Venus` and `Empty host` (seed H1/H2); it does not throw.
+   - **How:** `pnpm test` file under `apps/web/src/host/mdgate/` (or recon test path recorded in api-map). **Autotest:** required. **Manual:** none.
+
+#### Done
+
+api-map adapter Actuals filled. A Vitest `fromDoc` of seed succeeds. Subset recon notes started (EOF / empty para). Draft golden may be uncommitted until step 3.
+
+---
+
+### 2. step-exporter
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · **2** · [3](#3-step-roundtrip) · [4](#4-step-sidecar) · [5](#5-step-pane) · [6](#6-step-loop) · [7](#7-step-one-exporter) · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 2 |
+| **id** | `step-exporter` |
+| **title** | Shared fromDoc + sidecar builder |
+| **dependsOn** | `step-recon-adapter` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** one module that returns `{ markdown, sidecar }` from a `Store`. Sidecar ids are CRDT block ids; ranges are UTF-16 `[start, end)` per [subset](../MDGate/subset.md#whitespace-rules). Markdown body has **no** `<!-- id:b1 -->`.
+
+This is the exporter M3 will call on a pin. Build it once.
+
+#### Work
+
+1. `apps/web/src/host/mdgate/from-doc.js` (plus `.d.ts`): Actual adapter + transformers; walk document order; attach ranges (gaps between blocks are not part of a range).
+2. `clock` on sidecar: Yjs state vector encoding or a documented Store clock; `docId` = `doc:home` (or `store.id` Actual).
+3. Vitest: three paragraphs → `side-ids` ([fixtures](../MDGate/fixtures.md)).
+4. Do not mount UI.
+
+#### Do not
+
+- Persist sidecar to disk or Postgres.
+- Incremental splice.
+- `fromDoc` the live Store from a tab for git.
+
+#### Test scenarios
+
+1. **Helper exists**
+   - **Given** the module path in api-map **Exporter**.
+   - **When** Vitest imports it and calls it on a Store with three paragraphs.
+   - **Then** `markdown` is a string; `sidecar.blocks` has three `{ id, start, end }`; ids match `store` block ids; `markdown.slice(start, end)` equals that block’s markdown slice; the markdown file contains **no** `b1` as HTML comments.
+   - **How:** `pnpm test` — fixture id `side-ids`. **Autotest:** required. **Manual:** none.
+
+2. **Gaps**
+   - **Given** two paragraphs with a blank line between in `fromDoc` output.
+   - **When** you inspect ranges.
+   - **Then** the extra blank line is in **neither** range (or subset Actual documents otherwise — then update subset, do not skip).
+   - **How:** same Vitest file. **Autotest:** required. **Manual:** none.
+
+#### Done
+
+`from-doc.js` is the only exporter. `side-ids` green.
+
+---
+
+### 3. step-roundtrip
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · [2](#2-step-exporter) · **3** · [4](#4-step-sidecar) · [5](#5-step-pane) · [6](#6-step-loop) · [7](#7-step-one-exporter) · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 3 |
+| **id** | `step-roundtrip` |
+| **title** | Subset round-trip goldens |
+| **dependsOn** | `step-exporter` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** checked-in goldens and `fromDoc → toDoc → fromDoc` tests for every **rt-*** row except those that need sidecar-only (those stay step 4). Linked-doc **export form** may use a synthetic `pageId` (no catalog).
+
+If a type is unstable, **cut it from [subset.md](../MDGate/subset.md)** and drop the `rt-*` row — do not `replace(/\s+/g, '')` to pass.
+
+#### Work
+
+1. Goldens under `apps/web/src/host/mdgate/goldens/`.
+2. Vitest: `rt-paragraph`, `rt-headings`, `rt-list`, `rt-code`, `rt-link`, `rt-linked-doc`.
+3. Update [subset.md](../MDGate/subset.md) whitespace Actual from goldens.
+4. Bold/italic/inline code: if they survive, add a `rt-marks` golden or document under loss.
+
+#### Do not
+
+- Pane.
+- Apply ops.
+- Custom fences.
+
+#### Test scenarios
+
+1. **rt-paragraph** — **Given** one `affine:paragraph`. **When** `fromDoc → toDoc → fromDoc`. **Then** second markdown equals golden modulo subset whitespace. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+2. **rt-headings** — **Given** `type: h1` and `type: h2` paragraphs (seed-like). **When** round-trip. **Then** Store still has h1/h2 types; markdown matches golden. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+3. **rt-list** — **Given** bulleted list + one nested item. **When** round-trip. **Then** golden match; sidecar ids follow subset (item vs container). **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+4. **rt-code** — **Given** `affine:code` with a language. **When** round-trip. **Then** fences survive. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+5. **rt-link** — **Given** a paragraph with an inline URL. **When** round-trip. **Then** link in markdown; golden match. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+6. **rt-linked-doc** — **Given** `affine:embed-linked-doc` with a `pageId`. **When** `fromDoc` (+ post-process if needed). **Then** markdown has a path or title **and** `<!-- venus:doc:… -->` with that id. Round-trip as far as the adapter allows; document remainder in subset. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+#### Done
+
+All `rt-*` M2 rows green. Goldens in git. Subset whitespace Actual matches goldens.
+
+---
+
+### 4. step-sidecar
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · [2](#2-step-exporter) · [3](#3-step-roundtrip) · **4** · [5](#5-step-pane) · [6](#6-step-loop) · [7](#7-step-one-exporter) · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 4 |
+| **id** | `step-sidecar` |
+| **title** | Sidecar stability, opaque, loss |
+| **dependsOn** | `step-roundtrip` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** proof that ids survive re-export and insert-above, and that opaque/loss do not jitter into fake changes.
+
+#### Work
+
+1. Vitest `side-stable`, `side-shift`.
+2. Opaque: include `affine:image` (bytes from `e2e/fixtures/dot.png` via store blob API in Node if possible) **or** a flavour recon marked opaque. `fromDoc` twice → opaque slice equal (`opaque-untouched`).
+3. `loss-color` if the schema can set color; else document “no color API on 0.22.4” in subset and skip with a named skip reason in the test file (fail if silently omitted).
+4. Confirm markdown has no per-block id comments.
+
+#### Do not
+
+- Git `assets/`.
+- Apply no-op tests (`ap-opaque-noop` is M6).
+
+#### Test scenarios
+
+1. **side-stable** — **Given** three paragraphs, `fromDoc` twice with no Store mutation. **When** compare sidecars. **Then** same `id`s; ranges differ only if subset whitespace exemption applies (prefer identical). **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+2. **side-shift** — **Given** export of `b1,b2`. **When** `addBlock` **before** `b1`, export again. **Then** `b1` id unchanged; `b1.start` increased. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+3. **opaque-untouched** — **Given** subset paragraph + opaque block. **When** `fromDoc` twice. **Then** opaque slice byte-equal; subset `rt-*` still holds. **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+4. **loss-color** — **Given** a colored paragraph **or** documented skip. **When** `fromDoc` twice. **Then** golden is the flattened form; second export equals first. **How:** `pnpm test`. **Autotest:** required (or skip with subset citation). **Manual:** none.
+
+#### Done
+
+`side-stable`, `side-shift`, `opaque-untouched`, `loss-color` (or skip) green.
+
+---
+
+### 5. step-pane
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · [2](#2-step-exporter) · [3](#3-step-roundtrip) · [4](#4-step-sidecar) · **5** · [6](#6-step-loop) · [7](#7-step-one-exporter) · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 5 |
+| **id** | `step-pane` |
+| **title** | Read-only markdown pane in the layout |
+| **dependsOn** | `step-sidecar` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** host chrome: a markdown pane next to the editor (outline stays). Initial fill from `fromDoc(session.store)`. Not `contenteditable`. `data-testid="venus-md-pane"`. `mount-editor` still has no adapter import.
+
+#### Work
+
+1. `mount-md-pane.js`: attach to a host `div`; set text from exporter; `readOnly` / `pre` / non-editable.
+2. `App.tsx`: `.md-pane-host` (left or under editor; outline remains right). Do not remove outline.
+3. Unmount stops any loop (loop may be step 6; at least no leak).
+4. Playwright: pane visible on `pnpm test:e2e`; contains seed H1 text after load.
+
+#### Do not
+
+- CodeMirror.
+- Fetch keck export for the pane.
+- Hide outline.
+
+#### Test scenarios
+
+1. **Pane visible**
+   - **Given** `pnpm test:e2e` (memory, Vite `:5173`).
+   - **When** the app loads.
+   - **Then** `[data-testid="venus-md-pane"]` is visible; its text includes `Why Venus`; the element is not `contenteditable=true`.
+   - **How:** Playwright `e2e/m2-pane.spec.ts` (or first test in that file). **Autotest:** required. **Manual:** open `pnpm --filter @venus/web dev`, see markdown beside the page.
+
+2. **Outline still there**
+   - **Given** the same load.
+   - **When** you look at the outline host.
+   - **Then** outline H1 `Why Venus` still exists (M0 smoke still passes).
+   - **How:** existing `m0-smoke.spec.ts` / `m0-outline.spec.ts` still green. **Autotest:** required. **Manual:** optional.
+
+#### Done
+
+Pane shows seed markdown. M0 e2e still pass.
+
+---
+
+### 6. step-loop
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · [2](#2-step-exporter) · [3](#3-step-roundtrip) · [4](#4-step-sidecar) · [5](#5-step-pane) · **6** · [7](#7-step-one-exporter) · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 6 |
+| **id** | `step-loop` |
+| **title** | Single-flight fromDoc on Store updates |
+| **dependsOn** | `step-pane` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** while the pane is mounted, Store updates (local typing) retrigger `fromDoc` via [single-flight](../MDGate/live-pane.md). Replace the whole string. Full export only (no splice).
+
+#### Work
+
+1. Subscribe to Store / Y.Doc updates; implement `dirty` / `running` loop.
+2. Unmount: unsubscribe; `running` must not call setState on unmounted pane.
+3. Optional Vitest fake-timers: many events during a slow `fromDoc` → one follow-up, not N jobs.
+4. Playwright `e2e-pane`: type in the note; pane text equals a fresh `fromDoc` (or contains the typed string) after wait.
+
+#### Do not
+
+- Incremental splice.
+- Update git sidecar.
+- Require Docker.
+
+#### Test scenarios
+
+1. **e2e-pane (autotest)**
+   - **Given** memory Vite app, pane open.
+   - **When** you click the note and type a unique string (e.g. `m2-hello`).
+   - **Then** within **5 seconds** the pane text includes that string; pane still not `contenteditable`.
+   - **How:** `pnpm test:e2e` `e2e/m2-pane.spec.ts`. **Autotest:** required.
+
+2. **e2e-pane (manual)**
+   - **Given** `pnpm --filter @venus/web dev`.
+   - **When** you type in WYSIWYG.
+   - **Then** the markdown pane updates without a page reload; you cannot type in the pane.
+   - **How:** person in Chrome or Firefox. Record in yaml at verify if you skip here.
+
+3. **Coalesce (autotest, optional but recommended)**
+   - **Given** a fake exporter that takes 50ms.
+   - **When** 20 Store events fire during that run.
+   - **Then** at most **two** exporter calls (initial in-flight + one follow-up), not 20.
+   - **How:** Vitest fake timers on `mount-md-pane`. **Autotest:** recommended. **Manual:** none.
+
+#### Done
+
+Typing in the editor updates the pane. Loop is single-flight. `e2e-pane` green.
+
+---
+
+### 7. step-one-exporter
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · [2](#2-step-exporter) · [3](#3-step-roundtrip) · [4](#4-step-sidecar) · [5](#5-step-pane) · [6](#6-step-loop) · **7** · [8](#8-step-verify)
+
+| | |
+|---|---|
+| **n** | 7 |
+| **id** | `step-one-exporter` |
+| **title** | Pane and tests share from-doc.js |
+| **dependsOn** | `step-loop` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** proof there is not a second markdown dialect in App. Fixture `one-exporter`.
+
+#### Work
+
+1. `mount-md-pane.js` imports `from-doc.js` (same specifier as tests).
+2. Vitest: `readFileSync` of `mount-md-pane.js` contains the exporter specifier; `mount-editor.js` does **not** contain `MarkdownAdapter` / `from-doc`.
+3. Optional: after load, pane text === `fromDoc(store).markdown` (expose `__VENUS_FROM_DOC__` in test only, or compare via Playwright evaluate if you attach the helper on `window` in e2e only).
+
+#### Do not
+
+- Duplicate adapter setup in App.tsx.
+
+#### Test scenarios
+
+1. **one-exporter (autotest)**
+   - **Given** the host sources.
+   - **When** Vitest reads `mount-md-pane.js` and `mount-editor.js`.
+   - **Then** pane file imports the exporter module; `mount-editor.js` has no `MarkdownAdapter` and no `mdgate/from-doc`.
+   - **How:** `pnpm test`. **Autotest:** required. **Manual:** none.
+
+2. **Pane equals helper (autotest)**
+   - **Given** e2e after seed.
+   - **When** you read pane `innerText` and run the same exporter in the page (or compare to a known seed golden substring).
+   - **Then** pane includes the same H1/H2 as `fromDoc` of that store.
+   - **How:** extend `m2-pane.spec.ts`. **Autotest:** required. **Manual:** none.
+
+#### Done
+
+`one-exporter` green. Editor mount still ignorant of markdown.
+
+---
+
+### 8. step-verify
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-adapter) · [2](#2-step-exporter) · [3](#3-step-roundtrip) · [4](#4-step-sidecar) · [5](#5-step-pane) · [6](#6-step-loop) · [7](#7-step-one-exporter) · **8**
+
+| | |
+|---|---|
+| **n** | 8 |
+| **id** | `step-verify` |
+| **title** | M2 close-out |
+| **dependsOn** | `step-one-exporter` |
+| **kind** | implement |
+| **status** | pending ([board](./M2.state.yaml)) |
+
+**Adds:** nothing in the product. Marks the board `done`. Person in browser + full export suite.
+
+Add [runbook](../../runbook.md) **Manual testing (M2 close-out)** and [scenarios/markdown-projection.md](../../scenarios/markdown-projection.md) listing the specs.
+
+#### Work
+
+1. Runbook M2 section: Vite memory path; optional Compose (pane still from Store, not export GET).
+2. Scenarios page for markdown projection.
+3. Walk manual checklist. Fill [M2.state.yaml](./M2.state.yaml) evidence.
+4. Confirm **no** `ap-*` tests are required to close M2.
+
+#### Do not
+
+- Start M3 git in this step.
+- Close M2 if any export fixture row is skipped without subset citation.
+
+#### Test scenarios
+
+1. **Manual path**
+   - **Given** `pnpm --filter @venus/web dev` (memory).
+   - **When** you load the app, read the markdown pane (seed headings), type a unique word in WYSIWYG, confirm the pane updates, confirm you cannot type in the pane, refresh (memory: typed word **gone**, seed back — same as M0).
+   - **Then** all of that holds. Optional: with Compose + `VITE_SYNC_URL`, refresh **keeps** the word **and** the pane still matches (M1 persist); not required to close M2.
+   - **How:** person in Chrome or Firefox. Yaml: browser + date. **Autotest:** no. **Manual:** required.
+
+2. **Smoke (autotest)**
+   - **Given** the repo.
+   - **When** `pnpm test` and `pnpm test:e2e`.
+   - **Then** all `mdgate/*.test.ts` M2 rows pass; `e2e/m2-pane.spec.ts` passes; existing `m0-*.spec.ts` still pass.
+   - **How:** CI/local commands. **Autotest:** required. **Manual:** none.
+
+3. **Export suite complete**
+   - **Given** [fixtures.md](../MDGate/fixtures.md) M2 table.
+   - **When** you check each id: `rt-paragraph`, `rt-headings`, `rt-list`, `rt-code`, `rt-link`, `rt-linked-doc`, `side-ids`, `side-stable`, `side-shift`, `opaque-untouched`, `loss-color`, `one-exporter`, `e2e-pane`.
+   - **Then** each has a passing test or a subset-cited skip (`loss-color` only).
+   - **How:** map ids → files in yaml evidence. **Autotest:** the tests themselves. **Manual:** reviewer ticks the table.
+
+4. **M1 still green (if Docker)**
+   - **Given** Compose postgres + octobase up.
+   - **When** `pnpm test:e2e:m1`.
+   - **Then** still passes (pane must not break hydrate/two-tabs).
+   - **How:** `pnpm test:e2e:m1`. **Autotest:** required **when** closing M2 on a machine with Compose; if CI has no Docker, local evidence in yaml. **Manual:** none.
+
+#### Done
+
+Board step 8 `done`. M2 README **Exit** holds. Handoff to M3: same `from-doc.js` on a pin; do not `fromDoc` the live Store for git.
+
+---
+
+## Order of work (calendar)
+
+| When | Steps |
+|---|---|
+| Day 1 | 1 `step-recon-adapter` → 2 `step-exporter` |
+| Day 2 | 3 `step-roundtrip` |
+| Day 3 | 4 `step-sidecar` |
+| Day 4 | 5 `step-pane` → 6 `step-loop` |
+| Day 5 | 7 `step-one-exporter` → 8 `step-verify` |
+
+If `fromDoc` is unstable on a subset type, **stop and cut the type** in subset.md. Do not ship a jittering pane.
+
+## Risks
+
+| Risk | What to do in M2 |
+|---|---|
+| Adapter import / Vite TS | Same M0 `.js` host pattern; do not let `tsc` follow affine `.ts` |
+| `fromDoc` jitter | Golden + subset Actual; cut types |
+| Pane uses GET export | Fail: Store only |
+| Double dialect | step 7 static import check |
+| M0 e2e layout break | Keep outline; pane is extra host |
+| Linked-doc without catalog | Synthetic pageId; resolution is M4 |
+| Scope creep into apply | No `ap-*` in this plan |
+
+## Handoff to M3
+
+M3 may assume:
+
+- `from-doc.js` + sidecar builder; export fixtures green.
+- Pane is replaceable; loop is single-flight.
+- **Disk** sidecar and `wiki/` do **not** exist yet. Pin then convert ([LiveSnapshot](../LiveSnapshot/README.md)); do not `fromDoc` the live Store for git.
+- Apply / lease / After spaces are **not** done.
+
+M3 exit is clone `wiki/` and read markdown. M2 exit is “WYSIWYG and a read-only pane stay aligned on a documented subset.”
+
+## Invariants (M2 only)
+
+1. One workspace, one page, page mode.
+2. Markdown is a projection of the live Store, not a replica ([datamodel](../datamodel/README.md)).
+3. Sidecar is RAM (and test goldens), not Postgres, not git.
+4. No lease, no CodeMirror, no comment-commits.
+5. Outline remains in-page headings.
+6. `mount-editor` stays unaware of the adapter.

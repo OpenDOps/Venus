@@ -1,6 +1,6 @@
 # Venus implementation plan
 
-How to build the design in [venus-design.md](./venus-design.md) without taking all of AFFiNE: which packages to use, how they bind, and in what order. Installed symbols (Actual imports, pins, Vite notes): [api-map.md](./api-map.md).
+How to build the design in [venus-design.md](./venus-design.md) without taking all of AFFiNE: which packages to use, how they bind, and in what order. Stores: [datamodel](./datamodel/README.md). Dataflow: [architecture.md](./architecture.md). CRDT stack: [CRDT](./CRDT/README.md). Pin + git snapshotter: [LiveSnapshot](./LiveSnapshot/README.md). Words: [glossary.md](./glossary.md). Installed symbols (Actual imports, pins, Vite notes): [api-map.md](./api-map.md).
 
 ## Principle
 
@@ -54,9 +54,9 @@ Postgres       (Compose `postgres`)  docs + blobs
 
 Client: Venus `OctoBaseKeckProvider` (`yjs` + `y-protocols` + subprotocol `AFFiNE`). There is no npm OctoBase client. Do not invent a new CRDT.
 
-Server: keck in Docker, Postgres in another Docker. Venus services (lease, git) sit beside them and read snapshots through y-octo / keck export.
+Server: keck in Docker, Postgres in another Docker. Venus services (lease, git) sit beside them and read the Y.Doc via keck **export** (M1 proves `GET /api/block/venus-m0/export`). Optional y-octo decode. That GET is not `T0` until something pins it.
 
-Keep the provider interface swappable from day one: the design depends on Yjs binaries and spaces, not OctoBase-specific block APIs. **M1 implements OctoBase keck only** (not stock `y-websocket`). The **cloud** path is still Hocuspocus / y-websocket + own Postgres (no OctoBase). y-octo may still sit on the server for merge/snapshots.
+Keep the provider interface swappable from day one: the design depends on Yjs binaries and spaces, not OctoBase-specific block APIs. **M1 implements OctoBase keck only** (not stock `y-websocket`). The **cloud** path is still Hocuspocus / y-websocket + own Postgres (no OctoBase). y-octo may still sit on the server for merge/export. [CRDT — seam](./CRDT/README.md#seam).
 
 ### Git — libgit2 or `simple-git`, one repo on disk
 
@@ -99,13 +99,13 @@ CodeMirror 6. Private buffer. Not Yjs. Parse/apply through `MarkdownAdapter` + b
 
 ### Review overlay
 
-Custom UI on a **read-only** BlockSuite page:
+Custom UI on BlockSuite pages that are **review spaces**, not the published `Store`:
 
-- **After** — preview CRDT of the pending comment-commit (how it will look).
-- **Before** — parent/`T0` CRDT with a **right-rail** of comments pinned to text (Google Docs / Jira).
-- **Diff** — hunk overlay.
+- **After** — commit After CRDT in OctoBase (how it will look). Editable; later edits are the **next** comment-commit ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
+- **Before** — parent/`T0` CRDT (readonly space) with a **right-rail** of comments (Google Docs / Jira).
+- **Diff** — hunk overlay on those two docs.
 
-Do not put hunks or threads in the block schema. Hunk cards may sit in the rail or beside Diff.
+Do not put hunks or threads in the published block schema. Hunk cards may sit in the rail or beside Diff.
 
 ### Identity (v1)
 
@@ -131,12 +131,13 @@ catalog.node.docId  →  OctoBase space
 catalog.node.gitPath → wiki/spec/crdt/lease.md
 ```
 
-On accept (comment-commit) or snapshot flush:
+On accept (comment-commit) or snapshot flush ([LiveSnapshot](./LiveSnapshot/README.md)):
 
-1. `MarkdownAdapter.fromDoc` + write block-id sidecar (frontmatter or `wiki/.venus/ids/<docId>.json`).
-2. Write `wiki/<gitPath>`.
-3. `git add` / `git mv` if `gitPath` changed since last commit.
-4. `git commit` — **autocomment** for WYSIWYG snapshots; **required review message** for markdown accept.
+1. **Pin** dirty docs (Yjs update v1 + catalog) into Venus memory. Live CRDT is not paused.
+2. `MarkdownAdapter.fromDoc` **on the pin** + write block-id sidecar (frontmatter or `wiki/.venus/ids/<docId>.json`).
+3. Write `wiki/<gitPath>`.
+4. `git add` / `git mv` if `gitPath` changed since last commit.
+5. `git commit` — **autocomment** for WYSIWYG snapshots; **required review message** for markdown accept.
 
 Sidecar (recommended) rather than HTML comments in the body:
 
@@ -168,19 +169,21 @@ const adapter = new MarkdownAdapter(transformer, store.provider);
 const { file } = await adapter.fromDoc(store);
 ```
 
-**Import (proposal → snapshot → ops):**
+**Import (proposal → hunks → ops):**
+
+Do **not** `toDocSnapshot` the whole buffer and treat that tree as the diff. Diff **markdown vs `markdown_T0`**, attribute with the frozen sidecar, then parse **hunk slices** only. [MDGate apply](./MDGate/apply.md).
 
 ```ts
-const proposed = await adapter.toDocSnapshot({ file: markdown, assets });
-// diff proposed snapshot vs T0 snapshot by block id
-// apply: addBlock / deleteBlock / updateBlock / move — not replace the whole Y.Doc
+// hunks = attribute(diff(markdown_T0, proposed), sidecar_T0)
+// for each hunk: adapter on hunk.new / hunk.old (scratch), not the whole file
+// apply: addBlock / deleteBlock / updateBlock / move — not replace the Y.Doc
 ```
 
 Never `Y.applyUpdate` a freshly parsed doc over the live doc. That drops ids and concurrent (or post-lease) identity. Diff by id, emit BlockSuite ops.
 
 ### Markdown adapter gate (build this, do not debate it)
 
-Yjs merging a block tree is already BlockSuite’s job. Venus’s share promise is **git markdown an agent can edit**. That lives or dies in `MarkdownAdapter` plus the sidecar, not in CRDT math. This is **implementation work**, not an open product hole.
+Yjs merging a block tree is already BlockSuite’s job. Venus’s share promise is **git markdown an agent can edit**. That lives or dies in `MarkdownAdapter` plus the sidecar, not in CRDT math. This is **implementation work**, not an open product hole. The design lives in **[MDGate](./MDGate/README.md)** (`fromDoc` + [apply](./MDGate/apply.md)). This section is the accept bar the design must meet.
 
 If we skip it:
 
@@ -201,7 +204,7 @@ OctoBase AGPL is a **distribution** constraint ([licensing.md](../legal/licensin
 
 Until that suite is green: no alternatives/stacks; do not tell agents “edit the `.md` in git and it will apply.” v1 agent path is lease → private buffer → hunks → accept (still through the adapter). Clone-and-PR import is later.
 
-**Order:** after BlockSuite mounts and syncs, the next slice is **adapter + sidecar + snapshot writer**, not the review DAG. Review UI without a faithful exporter produces commented diffs of adapter jitter.
+**Order:** after BlockSuite mounts and syncs, **[MDGate](./MDGate/README.md)** (including [subset](./MDGate/subset.md) / [fixtures](./MDGate/fixtures.md)), then **adapter + sidecar + snapshot writer**, not the review DAG. Apply is [apply.md](./MDGate/apply.md) (markdown vs `T0` → hunks → ops) before M6. Review UI without a faithful exporter produces commented diffs of adapter jitter.
 
 ### 4. Linked docs
 
@@ -214,7 +217,7 @@ Resolve on import: id comment → catalog `docId` → path relative to the curre
 
 ```text
 acquire(docId, holder)
-  → OctoBase: read snapshot clock + snapshot
+  → keck: GET …/export (or state vector); pin as T0
   → write Lease on review space
   → awareness: { docId, frozen: true, holder }
   → clients: store.readonly = true (or editor readonly extension)
@@ -222,16 +225,16 @@ acquire(docId, holder)
 
 Heartbeat on the lease. Steal requires confirm. See [lease-freeze-rationale.md](./lease-freeze-rationale.md).
 
-Review space: one OctoBase space `venus:review:<docId>` or a single `venus:review` doc keyed by `docId`. Comments are a Y.Array (sequence CRDT). Hunk bodies are Y.Map last-writer values.
+Review session space: `venus:review:<docId>` (lease, threads, hunk **values**). Each commit also has **Before** and **After** OctoBase spaces (BlockSuite Y.Docs, same block ids as `T0`). Comments are a Y.Array (sequence CRDT). Hunk bodies are Y.Map last-writer values on the session space, not on After.
 
 ### 6. Git history ↔ revert
 
 ```text
 git log -- wiki/<path>
   → pick sha
-  → read markdown + sidecar at sha
-  → adapter.toDocSnapshot
-  → open as review commit vs current T0
+  → read markdown at sha as markdown_prop
+  → current pin is T0 (md + sidecar)
+  → [apply.md](./MDGate/apply.md): diff files, hunks, review vs T0
   → accept applies ops + new git commit
 ```
 
@@ -248,33 +251,38 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ### M1 — OctoBase loop (week)
 
-**Status:** in progress. Steps 1–3 done (2026-08-30). Step-by-step: [M1/plan.md](./M1/plan.md). Board: [M1/M1.state.yaml](./M1/M1.state.yaml).
+**Status:** done (2026-08-30). Step-by-step: [M1/plan.md](./M1/plan.md). Board: [M1/M1.state.yaml](./M1/M1.state.yaml).
 
 - **Postgres** in Docker (`postgres:16`). **OctoBase keck** in a **second** Docker (`octobase`, `DATABASE_URL` → Postgres). Browser talks Yjs over WebSocket (`AFFiNE` subprotocol) to keck only.
 - Thin JS client `OctoBaseKeckProvider` behind `SyncProvider`. Not stock `y-websocket` in this milestone.
 - Two browser tabs edit the same page.
 - Blobs: one image upload (bytes in Postgres via keck HTTP).
-- y-octo snapshot API reachable from Venus (keck `GET /api/block/venus-m0/export`).
+- **Doc export:** Venus (or `curl`) can `GET /api/block/venus-m0/export` (current Y.Doc, not markdown, not `T0`).
 
 **Exit:** refresh / second client sees the same page.
 
 ### M2 — Markdown projection (week)
 
-- Read-only markdown pane: `MarkdownAdapter.fromDoc` on updates.
-- Block-id sidecar generated on export.
-- **Adapter gate fixture suite** (see [Markdown adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)).
-- No editable markdown yet.
+**Status:** not started. Step-by-step: [M2/plan.md](./M2/plan.md). Board: [M2/M2.state.yaml](./M2/M2.state.yaml). Contract: [MDGate](./MDGate/README.md) ([subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live-pane](./MDGate/live-pane.md)). Stores: [datamodel](./datamodel/README.md) — markdown is a **RAM projection**; Postgres stays Yjs; git sidecar is M3. Hang the pane on [architecture.md](./architecture.md#markdown-projection-add-here-before-coding-m2). Fixture accept bar: [adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it).
 
-**Exit:** suite green on the documented subset; WYSIWYG and markdown stay aligned on one client; markdown pane is replaceable (no caret).
+- Read-only markdown pane: `MarkdownAdapter.fromDoc` on the **synced Store** ([live-pane.md](./MDGate/live-pane.md) single-flight loop). Not keck `GET …/export`.
+- Block-id sidecar in **RAM** (and test goldens). No `wiki/.venus/ids/`, no Postgres markdown.
+- **Export fixture suite** (`rt-*`, `side-*`, opaque, loss, `one-exporter`, `e2e-pane`). **Apply rows (`ap-*`) are M6.**
+- No git, lease, CodeMirror, or editable markdown.
+
+**Exit:** [fixtures.md](./MDGate/fixtures.md) **export** rows green; WYSIWYG and markdown stay aligned on one client; pane is replaceable (no caret); one shared exporter.
 
 ### M3 — Git snapshotter (week)
 
+Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). Same `from-doc.js` as [M2](./M2/README.md) on a **pin** — do not `fromDoc` the live Store for git.
+
 - Init `wiki/` repo.
 - Catalog v0: one folder, one doc, fixed path.
-- Idle and/or “Flush”: export md, **one** git commit of the full diff, **autocomment** (`snapshot: <title>`). No typed why.
+- Dirty set: only docs whose clock moved since last git (M3: the one page).
+- Idle and/or “Flush”: **pin** Yjs bytes (sidecar replica or GET export), **then** `fromDoc` + sidecar, **one** git commit, **autocomment** (`snapshot: <title>`). No typed why. Convert the pin, not the live `Store`.
 - UI: `git log` for that file (show autocomment vs later comment-commits).
 
-**Exit:** clone `wiki/` elsewhere and read the page as markdown; casual WYSIWYG did not require a review comment.
+**Exit:** clone `wiki/` elsewhere and read the page as markdown; casual WYSIWYG did not require a review comment; typing during flush still syncs between tabs.
 
 ### M4 — Folder tree + links + product header (1–2 weeks)
 
@@ -298,10 +306,12 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ### M6 — Comment-commit (markdown only) (2 weeks)
 
-- Diff `T0` vs parse(buffer) by block id → hunks.
+Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks; not whole-file `toDoc`).
+
+- Diff `markdown_T0` vs buffer; attribute with frozen sidecar → hunks. Overlay on **Before** WYSIWYG (Cursor-style).
 - Submit **requires** a comment + optional selection pin on **Before** (right rail).
-- Review UI: **After / Before / Diff**; Before has pinned comments (Google Docs / Jira).
-- Accept → BlockSuite ops → git comment-commit → release.
+- Review UI: **After / Before / Diff** on those OctoBase docs; Before has pinned comments (Google Docs / Jira). After is persisted, not a scratch Store.
+- Accept → BlockSuite ops by hunk `blockId` (sequence order) → git comment-commit → archive After/Before → release.
 - WYSIWYG must still only produce snapshot+autocomment (no comment-commit from typing).
 
 **Exit:** a human markdown edit becomes a git commit with a real why and a visible After/Before; WYSIWYG snapshots stay autocommented.
@@ -324,19 +334,55 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 **Exit:** revert a page to last Tuesday through the same review UI.
 
+## v1 dogfood — document the product
+
+v1 of this plan does **not** need the runner or MCP to be useful. It needs to be the place **this product is documented** — for PMs and other managers who will never open Cursor, and for programmers who clone git.
+
+**Audience split (force this):** managers live in Venus (tree, WYSIWYG, later accept). Programmers live in Cursor against **accepted wiki git**. If documenting Venus requires an IDE, v1 has failed the flow.
+
+### Minimum useful (after M4)
+
+Ship M2 → M3 → M4, then **author the product in the wiki**, not only in `docs/` as a side tree.
+
+| Need | Milestone |
+|---|---|
+| Honest markdown on disk | M2 adapter gate + M3 snapshot git |
+| Folders PMs can navigate (spec, design, product, aims) | M4 catalog + tree + header |
+| Casual writing without a review ceremony | WYSIWYG → snapshot + autocomment |
+| Programmers read the same pages | `git clone` / pull of `wiki/` |
+
+**Exit for dogfood:** a manager can create and edit pages in the tree; a second browser sees them; a clone of `wiki/` is readable markdown. Venus’s own pitch, product plan, and design notes can live (or be mounted) as wiki pages. `docs/` in this git may still be the engineering notebook until that move; the **product** docs that managers own must have a wiki home.
+
+Do not wait for M7–M8. Do not wait for Hugo. Clone + live wiki is v1 documentation.
+
+### Meaning-accept (after M6)
+
+When a spec page **changes intention**, v1 must use comment-commit: After / Before / Diff + required human-language why. That is the PM review cycle (CodeSpeak-shaped, on spec). Casual typos stay snapshots.
+
+**Exit:** a manager can accept (or reject) a spec change without opening Cursor or reading a chat. Git log on that file has a real why.
+
+### Not in v1 dogfood
+
+Runner, two-agent DoD, MCP, Hugo, alternatives/stacks. Identity can stay display name + id ([Identity (v1)](#identity-v1)). Named people (not `user1`) so a PM can see who holds a lease.
+
+Header in M4 should already show **current page**. As soon as M5 exists, show **who holds the lease**. That is manager chrome, not programmer chrome.
+
 ## Suggested repo layout
 
 ```text
 Venus/
-  docker-compose.yml        # postgres + octobase (+ web from M1 step 8)
+  docker-compose.yml        # postgres + octobase + web
   deploy/octobase/          # Dockerfile: keck from pinned git SHA
+  deploy/web/               # nginx + static host
   apps/web/                 # BlockSuite host + tree + review UI
-  crates/venus-sidecar/     # y-octo + git2: snapshot, export, commit
+  crates/venus-sidecar/     # y-octo + git2: decode export, then md + commit
   packages/catalog/         # catalog schema + ops
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or separate repo)
-  docs/drafts/pre-design/   # these docs
+  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans
+  docs/devops/              # Compose now; Kubernetes later
+  docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```
 
 OctoBase stays an **external Docker image** (AGPL). Do not vendor it into `apps/web`. Postgres is a **second** image.
@@ -346,7 +392,7 @@ OctoBase stays an **external Docker image** (AGPL). Do not vendor it into `apps/
 | Risk | Mitigation |
 |---|---|
 | OctoBase JS provider is incomplete | Yjs-protocol shim; keep provider behind one interface |
-| MarkdownAdapter drops block ids / jitter | Sidecar + **fixture suite before M6** ([adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)) |
+| MarkdownAdapter drops block ids / jitter | **[MDGate](./MDGate/README.md)**; **export fixtures before M2 exit**; **apply fixtures before M6** ([adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)) |
 | Adapter cannot express a block | Opaque raw block; markdown commit must not rewrite it |
 | OctoBase AGPL | Accept for server/sidecar; keep Venus app code separate |
 | y-octo / Yjs version skew | Pin versions to the pair AFFiNE currently ships |
@@ -365,9 +411,13 @@ Everything after that is Venus. Do not block M1 on review design.
 
 ## First implementation slice (when coding starts)
 
-1. Playground page editor.
-2. OctoBase sync of that one doc (Postgres + keck in Compose).
-3. Read-only markdown pane + **adapter fixture suite**.
-4. Then catalog + git snapshotter, then **folder tree + product header**, then lease.
+1. Playground page editor. **Done** — [M0](./M0/README.md).
+2. OctoBase sync of that one doc (Postgres + keck in Compose). **Done** — [M1](./M1/README.md).
+3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M6.
+4. Then catalog + git snapshotter ([LiveSnapshot](./LiveSnapshot/README.md)), then **folder tree + product header**, then lease.
 
-Do not start M6 until the adapter gate is green. Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
+Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M6 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
+
+**v1 documenting this product:** after M4, dogfood the wiki as the manager-facing spec store; after M6, spec-intention changes use comment-commit. Details: [v1 dogfood](#v1-dogfood--document-the-product).
+
+After the wiki spine (M8): runner, MCP, accept inbox, shared git hop — [product-plan](../product/product-plan.md). That file is product, not this milestone list. Flow invariants to force: [product-plan — Force these](../product/product-plan.md#force-these-or-it-is-not-the-flow).

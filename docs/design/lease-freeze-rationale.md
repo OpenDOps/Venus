@@ -78,13 +78,13 @@ Freeze is easy to hear as “the page is dead.” It is not.
 
 | Allowed | Forbidden |
 |---|---|
-| Read **Before** (`T0`) + **comment rail** | Type in **published** WYSIWYG (After-live) |
-| Read **After** preview / Diff | Second markdown editor |
-| Comment on pins (Google Docs / Jira rail) | Apply hunks to the published CRDT except via accept |
-| Accept / reject / request regenerate | Folder-level published edits of this page’s body |
-| Attach alternative or stacked commits (post-v1) | Merge markdown as a CRDT |
+| Read **Before** (`T0` / parent After) + **comment rail** | Type in **published** WYSIWYG |
+| Edit **After** proposal CRDT (OctoBase space) | Merge markdown as a CRDT |
+| Comment on pins (Google Docs / Jira rail) | Apply hunks to the **published** CRDT except via accept |
+| Accept / reject / request regenerate (draft only) | Folder-level published edits of this page’s body |
+| Next comment-commit **over** a submitted After | Silent rewrite of a submitted commit’s hunks |
 
-The wait state **is** the review UI. Mutating the published tree without a **comment-commit** (markdown) is forbidden during the lease. WYSIWYG **snapshot+autocomment** only when there is no lease.
+The wait state **is** the review UI. Mutating the **published** tree without a **comment-commit** is forbidden during the lease. WYSIWYG **snapshot+autocomment** only on published, when there is no lease. After-space typing is review (sequence), not a snapshot.
 
 Comment-only pins **before** a lease do not freeze the page. Freeze starts when someone needs to write markdown or attach hunks.
 
@@ -102,7 +102,7 @@ Freeze must not become a stuck lock.
 - Steal: explicit confirm. Current holder’s dirty buffer is discarded unless they submitted a draft commit.
 - Holder may **submit draft commits and keep the lease** (agent loop) or **submit and release**.
 
-Submitted review commits are on the review space, not in the holder’s browser. A crash does not lose a submitted proposal; it only loses the unsaved CodeMirror buffer.
+Submitted review commits (session record + Before/After **spaces**) are in OctoBase, not only the holder’s browser. A crash does not lose a submitted After CRDT; it only loses an unsaved CodeMirror buffer that was never submitted.
 
 ## What we are not claiming
 
@@ -115,5 +115,7 @@ Freeze does **not** mean:
 ## Decision
 
 **Adopt Policy Freeze.** One markdown writer, frozen published page, review as the multiplayer surface, CRDT + git advanced only on accept.
+
+That is the **current** exclusive mode, designed for a Cursor-like loop (prompt → wait → review → accept), not a Notion-like live page while an agent patches. Whole-page freeze can be **extended later** (narrower leases, other modes) once that loop is boring. Product framing: [comparisons.md](../marketing/comparisons.md#versus-cursor).
 
 That is how Venus stays a CRDT wiki for humans and a markdown/git wiki for humans and LLMs, without pretending those two representations can merge.

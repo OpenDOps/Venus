@@ -12,7 +12,9 @@
     "test:e2e": "pnpm --filter @venus/web test:e2e",
     "test:e2e:m1": "pnpm --filter @venus/web test:e2e:m1",
     "sync:up": "docker compose up --build postgres octobase",
-    "sync:down": "docker compose down"
+    "sync:down": "docker compose down",
+    "compose:up": "docker compose up --build",
+    "compose:down": "docker compose down"
   },
   "pnpm": {
     "overrides": {

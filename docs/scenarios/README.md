@@ -35,8 +35,9 @@ Do not `docker compose down -v` between M1 specs. One Playwright worker for M1.
 | [Blobs](./blobs.md) | Blob HTTP, Postgres | image upload, second tab, reload |
 | [Doc export](./doc-export.md) | curl → keck export | Vitest `snapshot.test.ts` (skip Reachable/Decodes if keck is down) |
 | [Compose stack](./compose.md) | postgres, octobase, web | Vitest `compose.test.ts`; A→B on `:8080` optional |
+| Markdown projection | Host pane, Store `fromDoc` | Not yet — [M2/plan](../design/M2/plan.md); [fixtures](../design/MDGate/fixtures.md) export rows |
 
-Milestone DoD prose stays in [M0/plan](../design/M0/plan.md) and [M1/plan](../design/M1/plan.md). When a spec and the plan disagree, the **spec file** is what CI runs.
+Milestone DoD prose stays in [M0/plan](../design/M0/plan.md), [M1/plan](../design/M1/plan.md), and [M2/plan](../design/M2/plan.md). When a spec and the plan disagree, the **spec file** is what CI runs. Markdown-projection specs (`mdgate/*.test.ts`, `e2e/m2-pane.spec.ts`) are created during M2; add `scenarios/markdown-projection.md` at [M2 verify](../design/M2/plan.md#8-step-verify).
 
 ## Docs shape (not a folder per component)
 

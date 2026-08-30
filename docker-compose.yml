@@ -1,7 +1,7 @@
-# M1 step 2: Postgres (docs + blobs) and OctoBase keck (WS/HTTP).
-# keck image is AGPL-3.0 — see deploy/NOTICE.
-# Do not add a web service here (step 8). Do not publish 5432.
-# Never omit DATABASE_URL (keck would fall back to SQLite). Never USE_MEMORY_SQLITE.
+# M1: Postgres (docs + blobs), OctoBase keck (WS/HTTP), Venus web (nginx).
+# keck image is AGPL-3.0 — see deploy/NOTICE. Web image is not AGPL.
+# Do not publish 5432. Never omit DATABASE_URL (keck would fall back to SQLite).
+# Never USE_MEMORY_SQLITE. Operators: docs/devops/compose.md
 
 services:
   postgres:
@@ -33,6 +33,28 @@ services:
       KECK_PORT: "3000"
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web/Dockerfile
+    depends_on:
+      octobase:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
 volumes:
   pg-data:

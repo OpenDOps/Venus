@@ -339,7 +339,7 @@ Board yaml is closer to a review session than to the block tree: workflow, not p
 
 ## Phasing (do not block the wiki)
 
-Spec-driven is the product direction; it still sits on a working spec store.
+Spec-driven is the product direction; it still sits on a working spec store. What to add so this is a first-class development/orchestration app (MCP, runner, shared git, accept inbox): [product-plan](../../product/product-plan.md).
 
 | Slice | Ships |
 |---|---|

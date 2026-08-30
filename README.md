@@ -27,12 +27,18 @@ pnpm test
 pnpm build
 ```
 
-What those do, what Vitest covers, and what is not automated yet: **[docs/runbook.md](docs/runbook.md)**.
+What those do, what Vitest covers, and what is not automated yet: **[docs/runbook.md](docs/runbook.md)**. Test catalog: **[docs/scenarios](docs/scenarios/README.md)**. Compose / later Kubernetes: **[docs/devops](docs/devops/README.md)**.
 
 ## Docs
 
-- [Runbook](docs/runbook.md) — install, `dev`, `test`, `build`
+- [Runbook](docs/runbook.md) — install, `dev`, `test`, `build`, Compose
+- [DevOps](docs/devops/README.md) — Compose stack; Kubernetes later
+- [Design index](docs/design/README.md) — map of the design folder
 - [Design](docs/design/venus-design.md) — product and data model (lease, freeze, git snapshots)
+- [Product plan](docs/product/product-plan.md) — loop shorter than Notion + a PR
+- [Pains](docs/product/pains.md) — gaps Venus closes (agent wiki, SDD vs Scrum)
+- [Architecture](docs/design/architecture.md) — dataflow (sync, persist, doc export, markdown later)
+- [Scenarios](docs/scenarios/README.md) — implemented tests by feature
 - [Comparisons](docs/marketing/comparisons.md) — vs PM tools and CodeSpeak
 - [Plans](docs/drafts/pre-design/venus-plan.md) — spec → plan → DoD → implement → human-accepted docs
 - [Pitch](docs/marketing/pitch.md) — what Venus is (the project heart)

@@ -6,9 +6,9 @@
 | **Milestone** | [M1 in the implementation plan](../venus-implementation-plan.md#m1--octobase-loop-week) |
 | **Duration** | About a week |
 | **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
-| **Board** | [M1.state.yaml](./M1.state.yaml) — steps 1–3 `done` |
+| **Board** | [M1.state.yaml](./M1.state.yaml) — steps 1–9 `done` |
 
-Parent design: [venus-design.md](../venus-design.md). Tool choices and bindings: [venus-implementation-plan.md](../venus-implementation-plan.md). Licensing: [licensing.md](../../legal/licensing.md). M0 host: [M0/plan.md](../M0/plan.md). Installed symbols: [api-map.md](../api-map.md).
+Parent design: [venus-design.md](../venus-design.md). Dataflow: [architecture.md](../architecture.md). CRDT stack: [CRDT](../CRDT/README.md). Words: [glossary.md](../glossary.md). Tool choices: [venus-implementation-plan.md](../venus-implementation-plan.md). Licensing: [licensing.md](../../legal/licensing.md). M0 host: [M0/plan.md](../M0/plan.md). Installed symbols: [api-map.md](../api-map.md).
 
 This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
 
@@ -26,7 +26,7 @@ All of these must be true at once:
 2. With sync env enabled, type in the editor, **reload**: the typed text is still there (opposite of M0).
 3. Two tabs (or two windows) on the same origin edit `doc:home`; each sees the other’s typing without refresh.
 4. One **image** uploaded in tab A is visible in tab B (blob store, not only a local object URL).
-5. A **y-octo** (or equivalent Yjs-binary) snapshot of that doc is reachable from this repo (`curl` or a small native binary). Not markdown.
+5. HTTP **doc export** of the seeded Y.Doc (`curl` of `GET /api/block/venus-m0/export`, Yjs update v1). Current tree, not a pinned version. Not markdown. Not `T0`.
 6. `SyncProvider` is still the only editor-facing seam. `mount-editor` does not import the server.
 7. No `@affine/core`, nbstore, GraphQL, or copilot.
 8. OctoBase keck stays an **external AGPL container**, not a dependency of the web app. [licensing.md](../../legal/licensing.md).
@@ -38,7 +38,7 @@ M0 + M1 together are “simple BlockSuite + OctoBase deployment”: Compose with
 
 | Later | Why not M1 |
 |---|---|
-| Markdown pane, adapter fixtures, sidecars of block ids | M2 |
+| Markdown pane, adapter fixtures, sidecars of block ids | M2 — [M2/plan.md](../M2/plan.md). Design: [MDGate](../MDGate/README.md) |
 | `wiki/` git, flush, autocomment | M3 |
 | Folder tree, catalog CRDT, product header | M4 |
 | Lease, freeze, CodeMirror | M5 |
@@ -67,16 +67,17 @@ Do not build a wiki sidebar, kanban, or a second TOC. Outline stays the in-page 
 
 ## Target tree
 
-Only create what M1 needs. Do **not** add empty `packages/catalog`, `packages/review`, or `wiki/`. A **small** `crates/venus-sidecar` (snapshot only) is in scope; do not add git2 yet.
+Only create what M1 needs. Do **not** add empty `packages/catalog`, `packages/review`, or `wiki/`. A **small** `crates/venus-sidecar` (decode keck **export** only) is in scope; do not add git2 yet.
 
 ```text
 Venus/
-  docker-compose.yml              # step 2: postgres + octobase; step 8 adds web
+  docker-compose.yml              # postgres + octobase + web
   deploy/
     NOTICE                        # AGPL: OctoBase keck image
     octobase/Dockerfile           # build keck from pinned git SHA
+    web/Dockerfile                # nginx + apps/web/dist; no OctoBase COPY
+    web/nginx.conf
   crates/venus-sidecar/           # optional: y-octo decode of keck export
-  scripts/m1-recon-spike.mjs      # throwaway; delete before M1 exit
   apps/web/
     src/host/
       workspace.js                # hydrate: wait sync, seed if empty
@@ -92,6 +93,10 @@ Venus/
       m1-blob.spec.ts
       m1-smoke.spec.ts
   docs/design/api-map.md          # shared; sync Actuals filled in step 1
+  docs/design/architecture.md     # dataflow (not M1 DoD)
+  docs/design/glossary.md
+  docs/design/CRDT/              # stack + wire
+  docs/design/MDGate/           # adapter contract; M2 implements it
   docs/design/M1/
     …
 ```
@@ -100,7 +105,7 @@ Venus/
 
 ```text
 Tab A / Tab B  (BlockSuite Store → Y.Doc)
-        │  Yjs update binary (y-protocols/sync)
+        │  each CRDT update (y-protocols/sync)
         ▼
 SyncProvider (kind octobase)
         │  WebSocket + subprotocol AFFiNE
@@ -112,9 +117,17 @@ Postgres       (Compose service `postgres`)  named volume
         ├── docs (Yjs updates)
         └── blobs (image bytes)
 
+curl / sidecar / later Venus  (not a browser tab)
+        │  GET /api/block/venus-m0/export
+        ▼
+OctoBase keck   same Postgres  →  current Y.Doc as update v1
+                keck does not ask the tabs for this
+
 keck HTTP: POST/GET /api/blobs/venus-m0
-           GET /api/block/venus-m0/export
+           GET /api/block/venus-m0/export   # doc export (step 7); not T0
 ```
+
+Full diagram: [architecture.md](../architecture.md). Wire detail: [CRDT](../CRDT/README.md).
 
 Ids:
 
@@ -149,7 +162,7 @@ keck’s **M1 store is Postgres**, in a **separate container** from keck. Same d
 | **MySQL / Redis / S3** | Out of M1 |
 | **Flush** | keck batches doc writes (~1s) and `full_migrate`s on socket close. After a spike write, wait **≥2s** before restarting, or the persist test will flake. |
 
-y-octo is MIT (`0.1.0`): `Doc::try_from_binary_v1`, `encode_update_v1`. M1 snapshot is keck `GET /api/block/venus-m0/export` (Yjs update v1); a sidecar is optional decode, not a second store.
+y-octo is MIT (`0.1.0`): `Doc::try_from_binary_v1`, `encode_update_v1`. M1 **doc export** is keck `GET /api/block/venus-m0/export` (Yjs update v1 of the **current** tree). A sidecar is optional **decode of the export**, not a second store. That GET is not a named version, not lease `T0`, and not a git snapshot commit. [glossary](../glossary.md).
 
 ## Steps summary
 
@@ -157,15 +170,15 @@ What each step **adds** to the product (not how to test it — that is under eac
 
 | # | id | Adds |
 |---|---|---|
-| 1 | `step-recon-sync` | **Done.** [api-map](../api-map.md) + **OctoBase keck**. Spike proved two `Y.Doc`s on `venus-m0`. |
-| 2 | `step-server` | Compose **`postgres` + `octobase`**. Restart without `-v` does not wipe the doc. |
-| 3 | `step-provider` | A live `SyncProvider` the App can pass in. Editor mount stays ignorant of the server. Memory provider remains the no-env default. |
-| 4 | `step-hydrate` | Load order: connect → wait until synced → seed only if the page is empty. Refresh restores typed text (opposite of M0). |
-| 5 | `step-two-clients` | Two tabs share one CRDT over the socket. Typing in A appears in B without reload. |
-| 6 | `step-blobs` | One image goes through `blobSync` to HTTP storage. The other tab and a reload still show the pixels. |
-| 7 | `step-snapshot` | `GET /api/block/venus-m0/export` (Yjs binary). Not markdown. Later lease `T0` will reuse this. |
-| 8 | `step-compose` | Same Compose file adds **`web`**: `postgres` + `octobase` + `web`. |
-| 9 | `step-verify` | Close-out: person in Chrome/Firefox plus Playwright smoke. Marks the board `done`. |
+| 1 | [`step-recon-sync`](#1-step-recon-sync) | **Done.** [api-map](../api-map.md) + **OctoBase keck**. Spike proved two `Y.Doc`s on `venus-m0`. |
+| 2 | [`step-server`](#2-step-server) | Compose **`postgres` + `octobase`**. Restart without `-v` does not wipe the doc. |
+| 3 | [`step-provider`](#3-step-provider) | A live `SyncProvider` the App can pass in. Editor mount stays ignorant of the server. Memory provider remains the no-env default. |
+| 4 | [`step-hydrate`](#4-step-hydrate) | Load order: connect → wait until synced → seed only if the page is empty. Refresh restores typed text (opposite of M0). |
+| 5 | [`step-two-clients`](#5-step-two-clients) | Two tabs share one CRDT over the socket. Typing in A appears in B without reload. |
+| 6 | [`step-blobs`](#6-step-blobs) | One image goes through `blobSync` to HTTP storage. The other tab and a reload still show the pixels. |
+| 7 | [`step-snapshot`](#7-step-snapshot) | **Done.** `GET …/export` — current Y.Doc over HTTP. Not markdown. Not `T0`. |
+| 8 | [`step-compose`](#8-step-compose) | **Done.** Same Compose file adds **`web`**: `postgres` + `octobase` + `web`. |
+| 9 | [`step-verify`](#9-step-verify) | **Done.** Close-out: person in Chrome/Firefox plus Playwright smoke. Marks the board `done`. |
 
 ---
 
@@ -175,16 +188,18 @@ Do them in order (1–9). A step is not started until its `dependsOn` steps are 
 
 ### 1. step-recon-sync
 
+[Back to overall summary](#steps-summary). Steps: **1** · [2](#2-step-server) · [3](#3-step-provider) · [4](#4-step-hydrate) · [5](#5-step-two-clients) · [6](#6-step-blobs) · [7](#7-step-snapshot) · [8](#8-step-compose) · [9](#9-step-verify)
+
 | | |
 |---|---|
 | **n** | 1 |
 | **id** | `step-recon-sync` |
-| **title** | Map sync server, JS client, blobs, snapshot |
+| **title** | Map sync server, JS client, blobs, doc export |
 | **dependsOn** | (none; M0 closed) |
 | **kind** | implement |
 | **status** | **done** ([board](./M1.state.yaml); breakpoint `human`) |
 
-**Adds:** a decision and a map, not a feature in the app. You know which process to run, which JS client talks Yjs update v1, where blobs go, and how to fetch a snapshot. A two-`Y.Doc` spike proves the wire works before BlockSuite is involved.
+**Adds:** a decision and a map, not a feature in the app. You know which process to run, which JS client talks Yjs update v1, where blobs go, and how to **HTTP-export** the current Y.Doc. A two-`Y.Doc` spike proves the wire works before BlockSuite is involved.
 
 Documentation plus a spike, not product UI. M1 dies if you code against AFFiNE Cloud while keck speaks Yjs, or if you seed before `synced`.
 
@@ -193,7 +208,7 @@ Documentation plus a spike, not product UI. M1 dies if you code against AFFiNE C
 1. Read OctoBase README / keck building guide (`cargo run --bin keck`, `/api/docs` with `JWST_DEV=1`). Note last commit date and whether the tree still builds on this machine.
 2. Decide **kind**. Write it in [api-map.md](../api-map.md) **Chosen backend**. Product persist is **Postgres in Docker**; keck is a **second** container. Do not choose SQLite as the store. Do not implement `y-websocket` in M1 (the seam kind stays on the interface for a later swap).
 3. Spike (throwaway, delete before exit or never commit): connect a `Y.Doc` to the server; send `Y.encodeStateAsUpdate`; apply a remote update. Log bytes. No BlockSuite UI required. A host-SQLite keck is allowed **only** for this spike.
-4. Find blob HTTP (keck swagger). Find snapshot: keck REST **or** dump the Yjs update to a file and decode with y-octo. Blobs live in the same Postgres as docs once step 2 lands.
+4. Find blob HTTP (keck swagger). Find **doc export**: keck `GET /api/block/:workspace/export` (Yjs update v1 of the current tree) **or** dump a Yjs update to a file and decode with y-octo. That is not a pinned snapshot. Blobs live in the same Postgres as docs once step 2 lands.
 5. Fill every **Actual** cell in [api-map.md](../api-map.md). Record WS URL, room naming (`venus-m0` / `doc:home`), and the client class.
 6. Confirm `store.blobSync` / `BlobSource` on affine 0.22.4 (`TestWorkspace` blob engine). Record image flavour (`affine:image` vs attachment).
 
@@ -207,8 +222,8 @@ Documentation plus a spike, not product UI. M1 dies if you code against AFFiNE C
 
 1. **Map complete**
    - **Given** the repo after this step, with no leftover “likely” cells for sync.
-   - **When** a reviewer opens [api-map.md](../api-map.md) **Chosen backend** and the **Names — sync, blobs, snapshot** Actual column.
-   - **Then** all of these are concrete strings (not empty, not “recon: …”): `kind`, why, **Server start** (one command), **Client package** (npm name + class), WS URL, room/workspace id (`venus-m0`) and space/doc id (`doc:home`), blob endpoint or “Venus PUT /blobs/:id”, **Snapshot command**.
+   - **When** a reviewer opens [api-map.md](../api-map.md) **Chosen backend** and the **Names — sync, blobs, export** Actual column.
+   - **Then** all of these are concrete strings (not empty, not “recon: …”): `kind`, why, **Server start** (one command), **Client package** (npm name + class), WS URL, room/workspace id (`venus-m0`) and space/doc id (`doc:home`), blob endpoint or “Venus PUT /blobs/:id”, **Export command**.
    - **How:** read the file. Fail if any of those fields are still the template italic placeholders.
 
 2. **Spike syncs**
@@ -219,7 +234,7 @@ Documentation plus a spike, not product UI. M1 dies if you code against AFFiNE C
 
 #### Done
 
-Chosen backend is **OctoBase keck** (`kind: octobase`), not stock `y-websocket`. Pin, WS URL, blob REST, snapshot curl, `BlobSource` / `affine:image`, and Chosen backend are in [api-map.md](../api-map.md). Spike: two Node `Y.Doc`s on `ws://127.0.0.1:3000/collaboration/venus-m0` with subprotocol `AFFiNE`; A set `spike.k=v`, B saw `v` in 192ms (`scripts/m1-recon-spike.mjs` — delete before M1 exit). That spike talked to a **host** keck using **SQLite** (`/tmp/venus-keck/data/jwst.db`). **Step 2 replaces that with Compose Postgres + a keck container.** keck SHA `276e0e94719a652483119c5fea16be13293ee21c`. Do not use `USE_MEMORY_SQLITE`.
+Chosen backend is **OctoBase keck** (`kind: octobase`), not stock `y-websocket`. Pin, WS URL, blob REST, export curl, `BlobSource` / `affine:image`, and Chosen backend are in [api-map.md](../api-map.md). Spike (deleted in step 9): two Node `Y.Doc`s on `ws://127.0.0.1:3000/collaboration/venus-m0` with subprotocol `AFFiNE`; A set `spike.k=v`, B saw `v` in 192ms. That spike talked to a **host** keck using **SQLite** (`/tmp/venus-keck/data/jwst.db`). **Step 2 replaced that with Compose Postgres + a keck container.** keck SHA `276e0e94719a652483119c5fea16be13293ee21c`. Do not use `USE_MEMORY_SQLITE`.
 
 DoD evidence:
 
@@ -231,6 +246,8 @@ DoD evidence:
 ---
 
 ### 2. step-server
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · **2** · [3](#3-step-provider) · [4](#4-step-hydrate) · [5](#5-step-two-clients) · [6](#6-step-blobs) · [7](#7-step-snapshot) · [8](#8-step-compose) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -332,6 +349,8 @@ Optional root scripts `"sync:up"` / `"sync:down"`. Do not start these from `@ven
 
 ### 3. step-provider
 
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · **3** · [4](#4-step-hydrate) · [5](#5-step-two-clients) · [6](#6-step-blobs) · [7](#7-step-snapshot) · [8](#8-step-compose) · [9](#9-step-verify)
+
 | | |
 |---|---|
 | **n** | 3 |
@@ -378,6 +397,8 @@ Optional root scripts `"sync:up"` / `"sync:down"`. Do not start these from `@ven
 ---
 
 ### 4. step-hydrate
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · [3](#3-step-provider) · **4** · [5](#5-step-two-clients) · [6](#6-step-blobs) · [7](#7-step-snapshot) · [8](#8-step-compose) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -429,6 +450,8 @@ This is the host change M0 did not have. M0 `store.load(() => addBlock…)` alwa
 
 ### 5. step-two-clients
 
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · [3](#3-step-provider) · [4](#4-step-hydrate) · **5** · [6](#6-step-blobs) · [7](#7-step-snapshot) · [8](#8-step-compose) · [9](#9-step-verify)
+
 | | |
 |---|---|
 | **n** | 5 |
@@ -467,6 +490,8 @@ This is the host change M0 did not have. M0 `store.load(() => addBlock…)` alwa
 ---
 
 ### 6. step-blobs
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · [3](#3-step-provider) · [4](#4-step-hydrate) · [5](#5-step-two-clients) · **6** · [7](#7-step-snapshot) · [8](#8-step-compose) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -518,27 +543,38 @@ Implementation plan: “Blobs: one image upload.” Binding: `collection.blobSyn
 
 ### 7. step-snapshot
 
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · [3](#3-step-provider) · [4](#4-step-hydrate) · [5](#5-step-two-clients) · [6](#6-step-blobs) · **7** · [8](#8-step-compose) · [9](#9-step-verify)
+
 | | |
 |---|---|
 | **n** | 7 |
 | **id** | `step-snapshot` |
-| **title** | y-octo snapshot API reachable from Venus |
+| **title** | HTTP export of the current Y.Doc |
 | **dependsOn** | `step-hydrate` |
 | **kind** | implement |
 
-**Adds:** an out-of-band Yjs binary of `doc:home` that Venus can fetch without the browser. That is the snapshot clock later milestones call `T0`. It is **not** `MarkdownAdapter` and not a button in the editor.
+**Adds:** an out-of-band **read** of `doc:home`. Venus (or `curl`) fetches the Yjs binary **without the browser**. Live WS (steps 3–6) is enough for two tabs; this is for a process that is not in that session. Lease `T0` **reuses this GET**; M1 does not pin. It is **not** `MarkdownAdapter` and not a button in the editor. [glossary](../glossary.md).
 
-Implementation plan: “even if only a `curl` / native call.”
+Implementation plan: “even if only a `curl` / native call.” Board id stays `step-snapshot`.
+
+**Not in this step:**
+
+| Later | What it is |
+|---|---|
+| Lease `T0` | Pin **this** export (or a state vector) at acquire. M5. |
+| Git snapshot commit | Markdown + autocomment of WYSIWYG. M3. |
+| `MarkdownAdapter` | Projection. [M2](../M2/README.md) — [MDGate](../MDGate/README.md). |
 
 #### Work
 
-1. Snapshot is keck REST: `curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs` (already in api-map). Optional: `crates/venus-sidecar` with y-octo `0.1.0` `Doc::try_from_binary_v1` / `encode_update_v1` if you want a native decode in-repo; not required if Node `Y.applyUpdate` covers **Decodes**.
-2. Document the exact command in api-map **Snapshot command** (example: `curl -sS …` or `cargo run -p venus-sidecar -- snapshot --doc doc:home`).
-3. Test: after seed (and optional typed text), the snapshot bytes are **non-empty** and a second decode round-trip succeeds. Node can `Y.applyUpdate(new Y.Doc(), bytes)` **or** the Rust binary exits 0. Put the test next to the sidecar or as a Vitest that shells out (skip if no Rust in CI — then the test must run in Compose CI later; for M1, local is enough, same as M0 e2e).
-4. Do not wire snapshot into the editor UI.
+1. Export is keck REST: `curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs` (api-map **Export command**). Optional: `crates/venus-sidecar` with y-octo `0.1.0` `Doc::try_from_binary_v1` / `encode_update_v1` to **decode the export** in-repo; not required if Node `Y.applyUpdate` covers **Decodes**.
+2. Keep that exact command in api-map **Export command**. Do not invent a second store or a browser round-trip.
+3. Test: after seed (and optional typed text), the **export** bytes are **non-empty** and a decode round-trip succeeds. Node can `Y.applyUpdate(new Y.Doc(), bytes)` **or** the Rust binary exits 0. Put the test next to the sidecar or as a Vitest that shells out (skip if no Rust in CI — then the test must run in Compose CI later; for M1, local is enough, same as M0 e2e).
+4. Do not wire export into the editor UI. Do not add a snapshot button.
 
 #### Do not
 
+- Treat this GET as freeze, `T0`, or git history.
 - Export markdown or block-id sidecars (M2).
 - Depend on AFFiNE’s `@affine/native` N-API package.
 
@@ -546,7 +582,7 @@ Implementation plan: “even if only a `curl` / native call.”
 
 1. **Reachable**
    - **Given** sync server up, `doc:home` hydrated at least once (seed present — run hydrate or the spike that left a page on the server).
-   - **When** you run the exact command in api-map **Snapshot command** (example: `curl -sSSf … -o /tmp/home.bin` or `cargo run -p venus-sidecar -- snapshot --doc doc:home > /tmp/home.bin`).
+   - **When** you run the exact command in api-map **Export command** (example: `curl -sSSf … -o /tmp/home.bin` or `cargo run -p venus-sidecar -- export --doc doc:home > /tmp/home.bin`).
    - **Then** the process **exit code is 0**, and the output file (or stdout redirected) has **length > 2** bytes (larger than a trivial empty Yjs update; seeded BlockSuite pages are typically hundreds of bytes or more).
    - **How:** a shell test or Vitest `execFileSync` in `crates/venus-sidecar` / `apps/web/src/host/snapshot.test.ts`. Skip in CI only if documented; M1 local must pass. Fail if the command is still the empty template.
 
@@ -559,6 +595,8 @@ Implementation plan: “even if only a `curl` / native call.”
 ---
 
 ### 8. step-compose
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · [3](#3-step-provider) · [4](#4-step-hydrate) · [5](#5-step-two-clients) · [6](#6-step-blobs) · [7](#7-step-snapshot) · **8** · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -602,11 +640,13 @@ Implementation plan: “Docker Compose: `postgres` + `octobase` + `venus-web`.�
 
 ### 9. step-verify
 
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-sync) · [2](#2-step-server) · [3](#3-step-provider) · [4](#4-step-hydrate) · [5](#5-step-two-clients) · [6](#6-step-blobs) · [7](#7-step-snapshot) · [8](#8-step-compose) · **9**
+
 | | |
 |---|---|
 | **n** | 9 |
 | **id** | `step-verify` |
-| **title** | Browser + smoke + snapshot |
+| **title** | Browser + smoke + doc export |
 | **dependsOn** | `step-two-clients`, `step-blobs`, `step-snapshot`, `step-compose` |
 | **kind** | test |
 
@@ -631,7 +671,7 @@ Use a real browser (Chrome or Firefox), not a screenshot and not Playwright head
 5. **Second tab.** Open the same URL in a second tab. It shows `hello` without typing. Type `tab-b` in B; A shows `tab-b` without reload.
 6. **Image.** In A, insert an image (slash / paste). It renders. B shows the same image. Reload A; image remains.
 7. **WS.** DevTools → Network → WS: a sync socket is open (not “no WS” like M0).
-8. **Snapshot.** Run the api-map snapshot command; it succeeds.
+8. **Export.** Run the api-map **Export command** (`GET …/export`); it succeeds. No tab is required for this step.
 9. **No AFFiNE shell.** `apps/web/package.json` still has no `@affine/core`. `mount-editor.js` still has no sync imports.
 10. **Memory mode (optional sanity).** Unset sync env, `pnpm dev`: refresh **drops** text (M0 still works for people without Docker).
 
@@ -662,9 +702,9 @@ If a step fails, M1 is not done. Fix provider, hydrate, blobs, or the server; do
    - **Then** both files passed in that run (not skipped). Equivalent: manual items 4–5 already passed under **Manual path**.
    - **How:** do not close M1 if hydrate/two-tabs are skipped due to “no Docker in CI” unless local evidence is in the yaml.
 
-4. **Snapshot**
+4. **Export**
    - **Given** the same session as **Manual path** (or immediately after smoke, server still up, `doc:home` still seeded).
-   - **When** you run api-map **Snapshot command** again.
+   - **When** you run api-map **Export command** again (`GET /api/block/venus-m0/export`).
    - **Then** exit 0 (same as step 7 **Reachable**).
    - **How:** one command in the verify checklist; yaml evidence is the command string + “exit 0”.
 
@@ -694,19 +734,22 @@ If `postgres` or `octobase` will not start from this repo, **stop and fix Compos
 | `yjs` duplicate major | Keep root override `13.6.32` |
 | Blobs only in-memory | Second tab / refresh fail — HTTP blob store required |
 | AGPL in the web bundle | OctoBase not in `apps/web/package.json` |
-| Snapshot needs markdown | Wrong milestone — binary only |
+| Export treated as markdown / `T0` | Export is **binary only** of the current tree; do not pin or render md |
 | Custom elements / HMR | Same M0 guard; two tabs are two documents, not HMR |
 
 ## Handoff to M2
 
+[MDGate](../MDGate/README.md) is written. M2 **code** starts at [M2/plan.md](../M2/plan.md).
+
 M2 may assume:
 
 - Live `SyncProvider` + blob HTTP; refresh and second client work.
-- Snapshot bytes of `doc:home` can be fetched (lease `T0` will reuse this, not invent a second store).
+- The current `doc:home` Y.Doc can be fetched over HTTP (`GET …/export`) without a browser. Lease `T0` and git flush will **reuse this GET**, not invent a second store. M1 does not pin the bytes.
 - Still no git, lease UI, catalog, or markdown pane.
-- `MarkdownAdapter.fromDoc` on the **synced** store is the next slice, plus the adapter fixture suite.
 
-M2 exit is WYSIWYG and a read-only markdown pane staying aligned. M1 exit is “the same Y.Doc in two places.”
+Hang the pane on the **synced Store**, not keck export ([architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2)). Export fixtures: [fixtures.md](../MDGate/fixtures.md).
+
+M2 exit is WYSIWYG and a read-only markdown pane staying aligned on a documented subset. M1 exit is “the same Y.Doc in two places.”
 
 ## Invariants (M1 only)
 

@@ -36,7 +36,7 @@ All of these must be true at once:
 |---|---|
 | OctoBase, y-websocket, two tabs | M1 |
 | IndexedDB “so refresh keeps text” | Optional even in M1; Postgres (via OctoBase keck) is the refresh source there |
-| Markdown pane / adapter fixtures | M2 |
+| Markdown pane / adapter fixtures | [M2](../M2/README.md) |
 | `wiki/` git repo, flush, autocomment | M3 |
 | Folder tree UI, catalog CRDT | M4 — outline is **in-page headings only** |
 | Lease, freeze, CodeMirror | M5 |
