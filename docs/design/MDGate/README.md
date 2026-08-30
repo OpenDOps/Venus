@@ -1,6 +1,6 @@
 # Markdown adapter gate (MDGate)
 
-**Status:** `fromDoc`, [live-pane](./live-pane.md), [apply](./apply.md), [subset](./subset.md), and [fixtures](./fixtures.md) are written. Recon must still fill **Actual** whitespace / adapter imports (api-map).
+**Status:** `fromDoc`, [live-pane](./live-pane.md), [apply](./apply.md), [subset](./subset.md), and [fixtures](./fixtures.md) are written. **Shared exporter** is `apps/web/src/host/mdgate/from-doc.js`. **Step 3** `rt-*` goldens are in `apps/web/src/host/mdgate/goldens/`.
 
 **M2 coding** starts at [M2/plan.md](../M2/plan.md). **M2 exit:** export fixture rows green. **M6:** apply rows green. Architecture hang-point: [architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2).
 

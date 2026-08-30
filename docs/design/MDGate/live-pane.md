@@ -2,7 +2,7 @@
 
 **Status:** design. Implement in [M2/plan.md](../M2/plan.md). Contract: [subset.md](./subset.md), [fixtures.md](./fixtures.md). Parent: [README.md](./README.md). Hang the pane on the **synced Store**, not keck export ([architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2)).
 
-This is the **spectator**: read-only markdown aligned with live WYSIWYG. No caret. Not the leased CodeMirror buffer. Not git convert ([LiveSnapshot](../LiveSnapshot/README.md)).
+This is the **spectator**: read-only **highlighted** markdown aligned with live WYSIWYG. No caret. highlight.js paints the exporter string ([M2/plan.md](../M2/plan.md) step-pane). Not the leased CodeMirror buffer. Not git convert ([LiveSnapshot](../LiveSnapshot/README.md)).
 
 ## Invariant
 
@@ -35,7 +35,7 @@ loop:
   running = true
   ids = dirtyIds; dirtyIds = ∅; dirty = false
   export (full fromDoc, or incremental — see below)
-  set pane text (replace or splice)
+  paint with highlight.js (markdown grammar) → set pane innerHTML
   running = false
   if dirty: loop()    // pick up changes that landed while we computed
 ```
@@ -50,7 +50,7 @@ Each loop iteration:
 
 1. `MarkdownAdapter.fromDoc` on the **live** Store (same transformer/middlewares as git/`T0`).
 2. Rebuild RAM `{ id, start, end }` from that string.
-3. **Replace** the pane contents. No caret to preserve.
+3. **Replace** the pane contents: run **highlight.js** on that string (`core` + markdown grammar) and set `innerHTML`. No caret to preserve. `innerText` must still equal the `fromDoc` markdown (source highlight, not a rendered preview).
 
 Discard the previous string and previous RAM sidecar. Do not patch git’s sidecar. Do not map “old disk offsets” onto the new tree — ids are on the CRDT; this is a new photograph.
 

@@ -43,9 +43,10 @@ The sidecar is a range map on **`markdown_T0`**, not a parse of the proposal:
 
 | Text diff lands… | Hunk |
 |---|---|
-| Inside `b1`’s `[start, end)` | `modify` `blockId=b1` |
-| In a **gap** between `b1` and `b2` (or before first / after last) | `insert` `blockId=null` `afterBlockId=b1` (or start of note) |
-| Covers all of `b2`’s range, nothing left | `delete` `blockId=b2` |
+| Inside `b1`’s `[start, end)` with **non-newline** change (or a real delete of that block’s text) | `modify` / `delete` `blockId=b1` |
+| In a **gap**, new bytes include **non-newline** markdown | `insert` `blockId=null` `afterBlockId=b1` (or start of note) |
+| Only `\n` added or removed (gap **or** empty-paragraph slice) | **no hunk** ([subset empty/stringify](./subset.md#empty-paragraphs-and-stringify-gaps); `ap-noop-ws`) |
+| Covers all of `b2`’s **non-empty** range, nothing left | `delete` `blockId=b2` |
 | `b3`’s slice removed here and inserted there (same text) | `move` `blockId=b3` |
 | No overlap with any range that changed | **no hunk** — including opaque blocks |
 
@@ -103,6 +104,7 @@ Same pipeline: historical `.md` is `markdown_prop`; current pin is `T0`. Diff fi
 ## Fixture bar (with [README.md](./README.md))
 
 - Markdown-only whitespace that `fromDoc` would also emit is **not** a hunk.
+- Extra or fewer **blank lines** in a gap (stringify padding around empty paragraphs included) is **not** a hunk. Insert requires non-newline content in the gap.
 - Insert-before is a hunk with `afterBlockId`, not “paragraph 3 is now paragraph 4.”
 - Untouched opaque block: no hunk, apply no-op.
 - Re-export after apply keeps ids the writer did not delete.

@@ -114,13 +114,25 @@ Recon notes (2026-08-29, this machine: Darwin arm64, rustc 1.85.0, keck binary l
 
 Fill Actual in [M2 `step-recon-adapter`](./M2/plan.md#1-step-recon-adapter). Append recon notes; do not delete. If this section disagrees with [M2/plan.md](./M2/plan.md) **Chosen stack**, **this file wins**.
 
+Recon notes (2026-08-30, Node Vitest, `MemoryNoopProvider`, BlockSuite **0.22.4**):
+
+- Import `@blocksuite/affine/shared/adapters` (re-export of `@blocksuite/affine-shared/adapters`). Class `MarkdownAdapter` extends `BaseAdapter<string>`.
+- Constructor: `new MarkdownAdapter(job: Transformer, provider: ServiceProvider)`. `job` is `store.getTransformer(middlewares)`; `provider` is `store.provider` (DI: block markdown matchers from store extensions).
+- **Export:** `fromDoc(store: Store)` on `BaseAdapter` → `{ file: string, assetsIds: string[] } | undefined`. Internally `job.docToSnapshot` then `fromDocSnapshot`. Errors are swallowed (`console.error`, return `undefined`) — tests must treat `undefined` as fail.
+- **Import:** `toDoc({ file })` on `BaseAdapter` → a new `Store` (or `undefined` on error). `toDocSnapshot({ file })` mints new block ids (`nanoid`) and a new `affine:page` titled **Untitled**.
+- Middlewares used for recon (same set as the implementation-plan sample): `titleMiddleware(workspace.meta.docMetas)`, `docLinkBaseURLMiddleware(workspace.id)`, `embedSyncedDocMiddleware('content')`. In Node, `docLinkBaseURLMiddleware` uses base `'.'` (no `window`).
+- `titleMiddleware` puts the page title in the markdown as an ATX h1 (`# Venus` for the seed). That is **not** the note’s H1 (`# Why Venus`).
+- Seed `fromDoc` golden: `apps/web/src/host/mdgate/goldens/seed.fromDoc.md`. EOF is exactly one trailing `\n`. Empty paragraphs are **blank lines** (not ` \n`). Bulleted lists stringify as GFM `*`, nested item indented two spaces — not `-`.
+- Shared exporter: `apps/web/src/host/mdgate/from-doc.js` `fromDoc(store, workspace)` → `{ markdown, sidecar }`. Linked-doc post-process appends `<!-- venus:doc:<pageId> -->`. Adapter wiring stays in `markdown-adapter.js`. Tests: `from-doc.test.ts`, `roundtrip.test.ts` (`rt-*` goldens).
+
 | Design name | Likely | Actual import | Notes |
 |---|---|---|---|
-| MarkdownAdapter | `@blocksuite/affine/shared/adapters` `MarkdownAdapter` | | Constructor + `fromDoc` / `toDoc` or `toDocSnapshot` names. |
-| Transformers | `titleMiddleware`, `docLinkBaseURLMiddleware`, `embedSyncedDocMiddleware` | | Which of these M2 actually passes. “None” is allowed if recon proves it. |
-| Exporter | Venus `apps/web/src/host/mdgate/from-doc.js` | | Shared `{ markdown, sidecar }` helper. Pane and later pin convert import this. |
-| Sidecar | `{ docId, clock, blocks: [{ id, start, end }] }` UTF-16 `[start,end)` | | RAM only in M2. Not in the `.md` body. |
-| Pane host | `mount-md-pane.js`, `data-testid="venus-md-pane"` | | Read-only. Not CodeMirror. |
+| MarkdownAdapter | `@blocksuite/affine/shared/adapters` `MarkdownAdapter` | `MarkdownAdapter` from `@blocksuite/affine/shared/adapters` | `new MarkdownAdapter(store.getTransformer(middlewares), store.provider)`. `fromDoc(store)` → `{ file, assetsIds }`. `toDoc({ file })` / `toDocSnapshot({ file })`. |
+| Transformers | `titleMiddleware`, `docLinkBaseURLMiddleware`, `embedSyncedDocMiddleware` | same three from `@blocksuite/affine/shared/adapters` | Recon passes all three. `titleMiddleware(workspace.meta.docMetas)`; `docLinkBaseURLMiddleware(workspace.id)` (`venus-m0`); `embedSyncedDocMiddleware('content')`. |
+| Exporter | Venus `apps/web/src/host/mdgate/from-doc.js` | `fromDoc` / `roundTripFromDoc` from `apps/web/src/host/mdgate/from-doc.js` | `fromDoc` → `{ markdown, sidecar }`. Linked-doc: append `<!-- venus:doc:<pageId> -->` after the adapter link. `roundTripFromDoc` strips the page-title heading before `toDoc`, restores title. Goldens: `goldens/rt-*.md`. Tests: `from-doc.test.ts`, `roundtrip.test.ts`. |
+| Sidecar | `{ docId, clock, blocks: [{ id, start, end }] }` UTF-16 `[start,end)` | `{ docId, clock, blocks }` from `fromDoc` | `docId` = `store.doc.id` (`doc:home`). `clock` = lib0 `toBase64(Y.encodeStateVector(store.spaceDoc))`. First row is the page title when `titleMiddleware` emits `# ${title}\n`. Empty paragraphs take the last N newlines before the next non-empty block (stringify may emit extra `\n` around them — those stay gaps). Extra blank lines between ranges are gaps. RAM only. Not in the `.md` body. |
+| Pane host | `mount-md-pane.js`, `data-testid="venus-md-pane"` | | Read-only `<pre><code>`. Not CodeMirror. Step 5. |
+| Highlight.js | `highlight.js/lib/core` + `languages/markdown` + one theme CSS | | Fill version in [M2 `step-pane`](./M2/plan.md#5-step-pane). Paints `fromDoc` source. Not in `from-doc.js`. |
 
 ## Forbidden imports
 

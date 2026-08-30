@@ -265,7 +265,7 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 **Status:** not started. Step-by-step: [M2/plan.md](./M2/plan.md). Board: [M2/M2.state.yaml](./M2/M2.state.yaml). Contract: [MDGate](./MDGate/README.md) ([subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live-pane](./MDGate/live-pane.md)). Stores: [datamodel](./datamodel/README.md) — markdown is a **RAM projection**; Postgres stays Yjs; git sidecar is M3. Hang the pane on [architecture.md](./architecture.md#markdown-projection-add-here-before-coding-m2). Fixture accept bar: [adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it).
 
-- Read-only markdown pane: `MarkdownAdapter.fromDoc` on the **synced Store** ([live-pane.md](./MDGate/live-pane.md) single-flight loop). Not keck `GET …/export`.
+- Read-only markdown pane: `MarkdownAdapter.fromDoc` on the **synced Store** ([live-pane.md](./MDGate/live-pane.md) single-flight loop). **highlight.js** paints that string as source (not CodeMirror, not a rendered preview). Not keck `GET …/export`.
 - Block-id sidecar in **RAM** (and test goldens). No `wiki/.venus/ids/`, no Postgres markdown.
 - **Export fixture suite** (`rt-*`, `side-*`, opaque, loss, `one-exporter`, `e2e-pane`). **Apply rows (`ap-*`) are M6.**
 - No git, lease, CodeMirror, or editable markdown.

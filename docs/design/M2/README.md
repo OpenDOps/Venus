@@ -1,8 +1,8 @@
 # M2 — Markdown projection
 
-Read-only markdown pane on the **synced Store**: `MarkdownAdapter.fromDoc` + RAM sidecar, [live-pane](../MDGate/live-pane.md) loop. **Export fixture suite** green ([fixtures.md](../MDGate/fixtures.md) M2 rows). **No git, lease, apply, catalog, or editable markdown.**
+Read-only markdown pane on the **synced Store**: `MarkdownAdapter.fromDoc` + RAM sidecar, [live-pane](../MDGate/live-pane.md) loop, **highlight.js** source paint. **Export fixture suite** green ([fixtures.md](../MDGate/fixtures.md) M2 rows). **No git, lease, apply, catalog, or editable markdown.**
 
-**Status:** not started. Board: [M2.state.yaml](./M2.state.yaml) — steps 1–8 `pending`.
+**Status:** in progress. Board: [M2.state.yaml](./M2.state.yaml) — steps 1–3 `done`; 4–8 `pending`.
 
 This folder is the implementation contract for the M2 slice in [venus-implementation-plan.md](../venus-implementation-plan.md). The wiki plan runner does not exist yet, so the plan lives here. Contract: [MDGate](../MDGate/README.md). Stores: [datamodel](../datamodel/README.md) (projection is RAM; Postgres stays Yjs; git is M3). Dataflow: [architecture.md](../architecture.md#markdown-projection-add-here-before-coding-m2).
 

@@ -29,10 +29,11 @@ Do **not** require Compose for the subset round-trip. One exporter: the same `fr
 |---|---|---|---|
 | `rt-paragraph` | Stable subset | One `affine:paragraph` | `fromDoc → toDoc → fromDoc` equals golden modulo [whitespace](./subset.md#whitespace-rules) |
 | `rt-headings` | Headings as `paragraph` + `type` h1/h2 | Seed-like h1, body, h2 | Same; outline types still h1/h2 in the Store |
-| `rt-list` | Lists | Bulleted + one nested item | Byte-stable; sidecar has an id per listed rule |
+| `rt-list` | Lists | Bulleted + one nested item | Byte-stable; sidecar has an id per listed rule. **Actual** bullets are GFM `*` (not `-`) |
 | `rt-code` | Fenced code | `affine:code` with language | Fences survive |
 | `rt-link` | Inline link | Paragraph with a URL mark | Link in markdown; round-trip |
-| `rt-linked-doc` | Linked-doc form | `affine:embed-linked-doc` | Path + `<!-- venus:doc:… -->` (post-process if needed) |
+| `rt-linked-doc` | Linked-doc form | `affine:embed-linked-doc` | Export: adapter URL + `<!-- venus:doc:… -->`. `toDoc` does **not** restore the card ([subset](./subset.md#linked-doc-export-vs-todoc)) |
+| `rt-marks` | Inline marks | Bold, italic, inline code | Round-trip golden `**bold** *italic* \`code\`` |
 | `side-ids` | Sidecar ids | Three paragraphs `b1,b2,b3` | Every range maps `id` → slice; slices concatenate with gaps to the file; **no** ids in the markdown body |
 | `side-stable` | Re-export keeps ids | `fromDoc`, mutate nothing, `fromDoc` again | Same ids, ranges may follow whitespace rule only |
 | `side-shift` | Insert above does not rename | Export; `addBlock` **before** `b1`; export | `b1` still `b1`; its `start` moved |
@@ -49,9 +50,9 @@ Build `markdown_T0` + `sidecar_T0` from a Store. Edit a **copy** of the markdown
 
 | Id | Proves | Edit | Assert |
 |---|---|---|---|
-| `ap-noop-ws` | Whitespace is not a hunk | Change only exempt whitespace | **Zero** hunks; Store ids and text unchanged |
+| `ap-noop-ws` | Whitespace is not a hunk | Change only exempt whitespace, including extra/fewer `\n` in a **gap** next to an empty paragraph | **Zero** hunks; Store ids and text unchanged (seed spacers still there) |
 | `ap-modify` | Diff inside a range | Change text inside `b1` | One `modify` `blockId=b1`; `b2` untouched |
-| `ap-insert-before` | Gap insert | Insert a paragraph **between** `b1` and `b2` | `insert` `afterBlockId=b1`; `b2` still `b2` (not “paragraph 3”) |
+| `ap-insert-before` | Gap insert | Insert a **non-empty** paragraph **between** `b1` and `b2` (not blank lines only) | `insert` `afterBlockId=b1`; `b2` still `b2` (not “paragraph 3”) |
 | `ap-delete` | Range removed | Delete `b2`’s slice | `delete` `blockId=b2`; `b1`/`b3` remain |
 | `ap-opaque-noop` | Untouched opaque | Edit only a subset paragraph; opaque present | No hunk on opaque id; opaque bytes on re-export match T0 opaque slice |
 | `ap-reexport-ids` | Ids survive apply | `ap-modify` then `fromDoc` | `b1` still `b1` |

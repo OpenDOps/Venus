@@ -17,22 +17,55 @@ columns:
 steps:
   step-recon-adapter: # 1
     n: 1
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Map complete
+        status: pass
+        evidence: "2026-08-30 docs/design/api-map.md Names — markdown adapter Actuals filled: MarkdownAdapter from @blocksuite/affine/shared/adapters; fromDoc/toDoc/toDocSnapshot; titleMiddleware + docLinkBaseURLMiddleware + embedSyncedDocMiddleware"
+      - name: Seed fromDoc
+        status: pass
+        evidence: "2026-08-30 pnpm --filter @venus/web test src/host/mdgate/from-doc.test.ts: seed contains Why Venus / Empty host; golden apps/web/src/host/mdgate/goldens/seed.fromDoc.md; toDoc defined; list form * not -"
   step-exporter: # 2
     n: 2
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Helper exists
+        status: pass
+        evidence: "2026-08-30 apps/web/src/host/mdgate/from-doc.js fromDoc → { markdown, sidecar }; side-ids: three paragraphs, CRDT ids, slice(start,end) is that block, no <!-- id --> in body"
+      - name: Gaps
+        status: pass
+        evidence: "2026-08-30 from-doc.test.ts gaps: extra blank line between Alpha/Bravo is markdown.slice(a.end, b.start) (neither range); subset Gaps rule holds"
   step-roundtrip: # 3
     n: 3
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: rt-paragraph
+        status: pass
+        evidence: "2026-08-30 goldens/rt-paragraph.md; roundtrip.test.ts first===second"
+      - name: rt-headings
+        status: pass
+        evidence: "2026-08-30 goldens/rt-headings.md; imported types h1,text,h2"
+      - name: rt-list
+        status: pass
+        evidence: "2026-08-30 goldens/rt-list.md; sidecar two affine:list items * outer /   * inner"
+      - name: rt-code
+        status: pass
+        evidence: "2026-08-30 goldens/rt-code.md; ```javascript fence survives"
+      - name: rt-link
+        status: pass
+        evidence: "2026-08-30 goldens/rt-link.md; [docs](https://example.com/path)"
+      - name: rt-linked-doc
+        status: pass
+        evidence: "2026-08-30 goldens/rt-linked-doc.md export has <!-- venus:doc:doc:lease -->; toDoc remainder documented in subset (html fence, not embed-linked-doc)"
+      - name: rt-marks
+        status: pass
+        evidence: "2026-08-30 goldens/rt-marks.md; **bold** *italic* `code` round-trips"
   step-sidecar: # 4
     n: 4
     state: pending

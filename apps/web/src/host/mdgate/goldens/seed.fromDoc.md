@@ -1,0 +1,59 @@
+# Venus
+
+
+
+# Why Venus
+
+A thin host around BlockSuite: one workspace, one page.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Empty host
+
+Type in a real page on localhost before later milestones attach.
