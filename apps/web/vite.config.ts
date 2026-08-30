@@ -260,6 +260,16 @@ export default defineConfig({
     vanillaExtractPlugin({ unstable_mode: 'transform' }),
     react(),
   ],
+  server: {
+    // keck CORS lists :5173 only. Playwright M1 uses :5174; same-origin /api
+    // avoids that. WS still talks to keck directly (not CORS).
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     // esbuild minify emits invalid JS from lit-html regexes that contain backticks.
     minify: false,

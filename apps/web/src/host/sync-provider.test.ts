@@ -14,8 +14,8 @@ const hostDir = dirname(fileURLToPath(import.meta.url));
 const importOf = (pkg: string) =>
   new RegExp(`(?:from|import)\\s+['"]${pkg}(?:/[^'"]*)?['"]`);
 
-test('default provider is memory no-op and connects after load', () => {
-  const { docId, store, provider } = createM0Workspace();
+test('default provider is memory no-op and connects before seed', async () => {
+  const { docId, store, provider } = await createM0Workspace();
   expect(provider).toBeInstanceOf(MemoryNoopProvider);
   expect(provider.kind).toBe('memory');
   expect(provider.synced).toBe(true);
@@ -23,7 +23,7 @@ test('default provider is memory no-op and connects after load', () => {
   expect(store.spaceDoc.guid).toBeTruthy();
 });
 
-test('a second SyncProvider can be passed without touching mount-editor', () => {
+test('a second SyncProvider can be passed without touching mount-editor', async () => {
   const calls: { op: string; docId: string; ydoc?: Doc }[] = [];
   const provider: SyncProvider = {
     kind: 'memory',
@@ -39,7 +39,7 @@ test('a second SyncProvider can be passed without touching mount-editor', () => 
     },
   };
 
-  const { docId, store, provider: used } = createM0Workspace(provider);
+  const { docId, store, provider: used } = await createM0Workspace(provider);
   expect(used).toBe(provider);
   expect(calls).toEqual([{ op: 'connect', docId, ydoc: store.spaceDoc }]);
 
@@ -66,10 +66,11 @@ test('Seam holds: editor host files do not import live sync clients', () => {
     expect(src, name).not.toMatch(importOf('y-protocols'));
     expect(src, name).not.toMatch(importOf('lib0'));
     expect(src, name).not.toMatch(/octobase-keck-provider/);
+    expect(src, name).not.toMatch(/blob-source/);
   }
 });
 
-test('Env switch: unset VITE_SYNC_URL is memory and constructs no WebSocket', () => {
+test('Env switch: unset VITE_SYNC_URL is memory and constructs no WebSocket', async () => {
   const Ws = globalThis.WebSocket;
   const constructed: unknown[] = [];
   // @ts-expect-error stub
@@ -85,7 +86,7 @@ test('Env switch: unset VITE_SYNC_URL is memory and constructs no WebSocket', ()
     expect(fromEnv).toBeInstanceOf(MemoryNoopProvider);
     expect(fromEnv.kind).toBe('memory');
 
-    const { provider } = createM0Workspace();
+    const { provider } = await createM0Workspace();
     expect(provider.kind).toBe('memory');
     expect(constructed).toEqual([]);
   } finally {
@@ -93,7 +94,7 @@ test('Env switch: unset VITE_SYNC_URL is memory and constructs no WebSocket', ()
   }
 });
 
-test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until connect', () => {
+test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until connect', async () => {
   const Ws = globalThis.WebSocket;
   const constructed: unknown[] = [];
   class StubSocket {
@@ -121,10 +122,33 @@ test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until 
     expect(fromEnv.kind).toBe('octobase');
     expect(constructed).toEqual([]);
 
-    fromEnv.connect('doc:home', createM0Workspace().store.spaceDoc);
+    fromEnv.connect('doc:home', (await createM0Workspace()).store.spaceDoc);
     expect(constructed).toEqual([[url, ['AFFiNE']]]);
     fromEnv.disconnect('doc:home');
   } finally {
     globalThis.WebSocket = Ws;
+  }
+});
+
+test('Env switch: same-origin needs location.host and does not open a socket yet', () => {
+  expect(() => providerFromEnv({ VITE_SYNC_URL: 'same-origin' })).toThrow(
+    /window\.location/,
+  );
+
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  Object.defineProperty(globalThis, 'location', {
+    configurable: true,
+    value: { protocol: 'http:', host: '127.0.0.1:8080' },
+  });
+  try {
+    const fromEnv = providerFromEnv({ VITE_SYNC_URL: 'same-origin' });
+    expect(fromEnv).toBeInstanceOf(OctoBaseKeckProvider);
+    expect(fromEnv).toMatchObject({
+      kind: 'octobase',
+      url: 'ws://127.0.0.1:8080/collaboration/venus-m0',
+    });
+  } finally {
+    if (desc) Object.defineProperty(globalThis, 'location', desc);
+    else Reflect.deleteProperty(globalThis, 'location');
   }
 });

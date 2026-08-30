@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { expectedCollaborationWs } from './keck-ws';
 
 const NOTE = 'affine-note affine-paragraph rich-text';
-const KECK_WS = 'ws://127.0.0.1:3000/collaboration/venus-m0';
+const KECK_WS = expectedCollaborationWs();
 
 async function waitForEditor(page: Page) {
   const pageErrors: string[] = [];

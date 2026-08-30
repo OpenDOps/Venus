@@ -1,0 +1,16 @@
+.git
+.cursor
+node_modules
+**/node_modules
+**/dist
+**/.vite
+apps/web/e2e
+apps/web/playwright-report
+apps/web/test-results
+apps/web/playwright.config.ts
+**/*.test.ts
+docs
+deploy/octobase
+*.md
+.DS_Store
+data

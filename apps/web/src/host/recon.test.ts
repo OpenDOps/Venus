@@ -13,6 +13,7 @@ const ACTUAL_IMPORTS = [
   '@blocksuite/affine/std/effects',
   '@blocksuite/affine/fragments/outline',
   '@blocksuite/affine/shared/services',
+  '@blocksuite/affine/sync',
 ];
 
 test.each(ACTUAL_IMPORTS)('resolves %s', (spec) => {

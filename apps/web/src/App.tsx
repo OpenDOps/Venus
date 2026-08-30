@@ -1,23 +1,60 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { mountEditor } from './host/mount-editor.js';
 import { mountOutline, waitForEditorHost } from './host/mount-outline.js';
-import { providerFromEnv } from './host/providers/from-env.js';
+import { providerFromEnv, blobSourcesFromEnv } from './host/providers/from-env.js';
 import { createM0Workspace } from './host/workspace.js';
 
+type Session = Awaited<ReturnType<typeof createM0Workspace>>;
+
 export function App() {
-  const { store, docId, provider } = useMemo(() => {
-    const created = createM0Workspace(providerFromEnv());
-    window.__VENUS_PROVIDER_KIND__ = created.provider.kind;
-    return created;
-  }, []);
+  const [session, setSession] = useState<Session | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const outlineRef = useRef<HTMLDivElement>(null);
+  const sessionRef = useRef<Session | null>(null);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    void createM0Workspace(providerFromEnv(), {
+      signal: ac.signal,
+      blobSources: blobSourcesFromEnv(),
+    })
+      .then((created) => {
+        if (ac.signal.aborted) {
+          created.provider.disconnect(created.docId);
+          return;
+        }
+        window.__VENUS_PROVIDER_KIND__ = created.provider.kind;
+        window.__VENUS_PAGE_FLAVOUR__ = created.store.root?.flavour;
+        sessionRef.current = created;
+        setSession(created);
+      })
+      .catch((err) => {
+        if (
+          ac.signal.aborted ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          return;
+        }
+        console.error(err);
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      ac.abort();
+      const current = sessionRef.current;
+      if (current) {
+        current.provider.disconnect(current.docId);
+        sessionRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const editorEl = editorRef.current;
     const outlineEl = outlineRef.current;
-    if (!editorEl || !outlineEl) return;
+    if (!session || !editorEl || !outlineEl) return;
 
+    const { store } = session;
     const { editor, unmount } = mountEditor(editorEl, store);
     let unmountOutline = () => {};
     let cancelled = false;
@@ -35,9 +72,16 @@ export function App() {
       cancelled = true;
       unmountOutline();
       unmount();
-      provider.disconnect(docId);
     };
-  }, [store, docId, provider]);
+  }, [session]);
+
+  if (error) {
+    return <div className="m0-shell">{error}</div>;
+  }
+
+  if (!session) {
+    return <div className="m0-shell" />;
+  }
 
   return (
     <div className="m0-shell">

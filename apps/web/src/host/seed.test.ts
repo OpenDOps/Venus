@@ -9,14 +9,16 @@ import {
 } from './seed.js';
 import { createM0Workspace } from './workspace.js';
 
-function noteChildren(store: ReturnType<typeof createM0Workspace>['store']) {
+function noteChildren(
+  store: Awaited<ReturnType<typeof createM0Workspace>>['store'],
+) {
   const note = store.root?.children.find((c) => c.flavour === 'affine:note');
   expect(note).toBeDefined();
   return note!.children;
 }
 
-test('visible structure: title, H1, H2', () => {
-  const { store } = createM0Workspace();
+test('visible structure: title, H1, H2', async () => {
+  const { store } = await createM0Workspace();
   expect(store.root?.props.title?.toString()).toBe(SEED_TITLE);
 
   const children = noteChildren(store);
@@ -38,8 +40,8 @@ test('visible structure: title, H1, H2', () => {
   expect(children.length).toBe(3 + SEED_SPACER_COUNT + 2);
 });
 
-test('constructor undo does not delete the page tree', () => {
-  const { store } = createM0Workspace();
+test('constructor undo does not delete the page tree', async () => {
+  const { store } = await createM0Workspace();
   expect(store.canUndo).toBe(false);
   store.undo();
   expect(store.root?.flavour).toBe('affine:page');
