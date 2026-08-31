@@ -4,7 +4,7 @@ How Venus **runs**: containers, ports, volumes, later cluster deploy. Product ru
 
 | File | Status |
 |---|---|
-| [compose.md](./compose.md) | **M1.** `postgres` + `octobase` + `web` |
+| [compose.md](./compose.md) | **M1/M2:** `postgres` + `octobase` + `web`. **After M3.0:** `postgres` + `hub` + `web`. |
 | [kubernetes.md](./kubernetes.md) | **Not in M1.** Same three processes behind Ingress |
 
 Do not put keck REST (blobs, export) here — that is [api-map](../design/api-map.md). Do not split [architecture](../design/architecture.md) into one page per container.

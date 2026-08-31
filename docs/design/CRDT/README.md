@@ -4,7 +4,11 @@ Prototype **stack and dataflow** for the live page. Product meaning of the CRDT 
 
 This is **not** a second CRDT. BlockSuite already owns a Y.Doc. Venus syncs that doc. Proof: [scenarios](../../scenarios/README.md).
 
+**M1 (done)** proved the wire on OctoBase **keck**. **[M3.0](../M3.0/README.md)** replaces keck with a Venus-owned **hub** (same `AFFiNE` + y-protocols). Live CRDT HA: [M3.0/high-availability.md](../M3.0/high-availability.md). Do not switch to nbstore, Hocuspocus, or stock `y-websocket` server.
+
 ## Stack (M1)
+
+M1 Actuals stay. After M3.0, **Sync server** is Compose `hub`; persist tables are Venus `crdt_*`; client kind may be `venus`. The rest of this file is the M1 proof unless marked.
 
 | Piece | What we use | Not |
 |---|---|---|
@@ -13,7 +17,7 @@ This is **not** a second CRDT. BlockSuite already owns a Y.Doc. Venus syncs that
 | Sync seam | `SyncProvider` (`memory` \| `octobase` \| `y-websocket`) | Server imports in `mount-editor.js` |
 | M1 client | `OctoBaseKeckProvider`: `y-protocols/sync` + `lib0`, `new WebSocket(url, ['AFFiNE'])` | npm OctoBase client; stock `y-websocket` `WebsocketProvider` |
 | Sync server | OctoBase **keck** (Compose `octobase`) | Host `cargo run`; AFFiNE Cloud / nbstore |
-| Persist | **Postgres 16** (Compose `postgres`, volume `pg-data`) | SQLite, IndexedDB as source of truth |
+| Persist | **Hosted:** Postgres 16 (Compose `postgres`). **On device:** OctoBase local store | IndexedDB as hosted refresh truth |
 | Blobs | keck `POST`/`GET /api/blobs/venus-m0` (bytes in the same Postgres) | `blob:` URLs only |
 | Doc export | `GET /api/block/venus-m0/export` → Yjs update v1 | Markdown, `T0`, git |
 | Optional decode | y-octo `0.1.0` or Node `Y.applyUpdate` | `@affine/native` |
@@ -27,13 +31,11 @@ The **protocol** is Yjs update v1 (`y-protocols/sync`). That is what “y-websoc
 M1 **does not** run the `y-websocket` npm server. keck’s handshake requires `Sec-WebSocket-Protocol: AFFiNE`. Stock `WebsocketProvider` cannot set that, so it will not connect.
 
 ```text
-M1 (this repo)     browser ── AFFiNE WS ── keck ── Postgres
-Cloud (later)      same SyncProvider kind 'y-websocket'
-                   browser ── y-websocket/Hocuspocus ── own Postgres
-                   OctoBase gone; y-octo optional for merge/export
+Hosted (this repo / cloud)   browser ── AFFiNE WS ── keck ── Postgres
+On device                    app ── OctoBase local store (optional sync to keck)
 ```
 
-Do not write “y-websocket saves into OctoBase.” OctoBase keck **is** the WS front. Postgres is the store. Cloud **replaces** keck; it does not sit behind it. Tests: [sync seam](../../scenarios/sync-seam.md).
+M1: keck **is** the WS front. Hosted persist is Postgres. **After M3.0:** the hub is the WS front; same Postgres instance, Venus tables. Cloud does **not** sit behind Hocuspocus or nbstore. Tests: [sync seam](../../scenarios/sync-seam.md).
 
 ## Share between clients
 
@@ -90,5 +92,6 @@ keck does **not** ask browsers. This is not a named version. A **pin** keeps an 
 
 - Markdown adapter, pane, or sidecar ids — [MDGate](../MDGate/README.md), then [M2](../M2/README.md).
 - **What spaces and git hold** — [datamodel](../datamodel/README.md).
-- Pin + git snapshotter — [LiveSnapshot](../LiveSnapshot/README.md), then M3.
+- Venus hub (replace keck) — [M3.0](../M3.0/README.md).
+- Pin + git snapshotter — [LiveSnapshot](../LiveSnapshot/README.md), then M3 (after M3.0).
 - Lease freeze — M5.

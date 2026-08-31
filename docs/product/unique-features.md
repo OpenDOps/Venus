@@ -44,7 +44,7 @@ Live collab is a **block CRDT** (WYSIWYG for PMs, high-level engineers, CTOs). A
 
 MDGate + snapshotter make the two stores **one spec**. Do not teach agents Yjs.
 
-**Use of that store:** people may keep Cursor as the IDE. Venus is the **share place**: commit → team sees WYSIWYG and can change it → you pull back. Not a dump. Not “replace the IDE.” Detail: [product-plan.md](./product-plan.md) (Dual store is honest, Product use: share). Pain: [pains.md](./pains.md) (§1, §11).
+**Use of that store:** people may keep Cursor as the IDE. Venus is the **share place**: commit → team sees WYSIWYG and can change it → you pull back. Not a dump. Not “replace the IDE.” Cursor is still good at **writing** markdown; it is bad at **accepting** a doc (preview has no diff — [pains.md](./pains.md) §14). Detail: [product-plan.md](./product-plan.md) (Dual store is honest, Product use: share). Pain: [pains.md](./pains.md) (§1, §11, §14).
 
 ## 3. Agentic-native (user-to-agent)
 
@@ -58,7 +58,7 @@ Notion Agent types the live page. Linear bots click tickets. That category alrea
 
 Spec / plan / DoD / docs **apply is human-only**. Agents draft under a **lease**; the published page is frozen. They never type the live CRDT. Truth is a **meaning-accept** (human-language description of the spec change, once the human understands it) — not mute apply, not page-history undo.
 
-That is the CodeSpeak-shaped review cycle aimed at **spec**, not code. Detail: [product-plan.md](./product-plan.md) (Force these). Comparison: [comparisons.md](../marketing/comparisons.md) (Versus Notion).
+That is the CodeSpeak-shaped review cycle aimed at **spec**, not code. Humans review on the **rendered** After / Before / Diff — not source-only marks. Cursor’s markdown preview has **no diff**; accept lives in source. That is a **real pain Venus must close** ([pains.md](./pains.md) §14). Detail: [product-plan.md](./product-plan.md) (Force these). Comparison: [comparisons.md](../marketing/comparisons.md) (Versus Cursor).
 
 ## 5. Skip + merge check (spec is the done bar)
 
@@ -145,7 +145,7 @@ Detail: [product-plan.md](./product-plan.md) (Agentic-native). Comparison: [comp
 |---|---|
 | Live collab typing | Notion, Google Docs. Venus is **brainstorm → session-bound commit → LLM wiki structure**, not a second Docs. |
 | WYSIWYG / CRDT editor | Notion, AFFiNE, BlockSuite |
-| Markdown in git | Git, Tina, GitBook, every `docs/` folder |
+| Markdown in git | Git, Tina, GitBook, every `docs/` folder. Cursor **writes** this well. **Accept in preview** is Venus (Cursor preview has no diff). |
 | Implement code from a prompt | Cursor (CLI is enough) |
 | Diff review, linters, tests | GitHub, Cursor |
 | CodeGraph / Aider as CLIs | Those tools. Venus is the **bind**, not a second analyzer |

@@ -1,8 +1,8 @@
-# OctoBase and pinning
+# OctoBase and pinning (M1 recon)
 
-What pinned keck (`276e0e94719a652483119c5fea16be13293ee21c`) actually does. Policy: [README.md](./README.md). Pins and endpoints: [api-map.md](../api-map.md).
+What pinned keck (`276e0e94719a652483119c5fea16be13293ee21c`) actually does. **M1 only.** Product collab after [M3.0](../M3.0/README.md) is the **Venus hub**, not this process. Live CRDT HA: [M3.0/high-availability.md](../M3.0/high-availability.md). Snapshotter HA: [high-availability.md](./high-availability.md). Pins and endpoints (M1 Actuals): [api-map.md](../api-map.md).
 
-Venus does **not** fork keck for a pin-WAL. Cloud replaces keck anyway ([CRDT — seam](../CRDT/README.md#seam)).
+Do **not** copy keck fleet / `jwst` dirty into M3. Venus does **not** put convert or git inside keck (or the hub), and does **not** pause persist for a pin. Dirty on the product path is a **Postgres upsert** on hub persist ([LiveSnapshot HA](./high-availability.md#how-dirty-is-marked), [M3.0 dirty](../M3.0/high-availability.md#dirty-mark-postgres-not-a-hub-hook)).
 
 ## Y.Text `Format` (live A→B)
 
@@ -57,9 +57,26 @@ Source: `jwst-rpc` `context.rs` (`apply_change`, `save_update`), `jwst-storage` 
 | Pause Postgres writes until pin copy finishes, then flush | No API. `save_update` ticks every 1s regardless of HTTP export |
 | Export the live memory doc as a named snapshot | `GET …/export` rebuilds from **Postgres**, so it can trail the live doc by the persist batch |
 | Atomic pin of many workspaces | One GET per workspace id |
-| Notify Venus of dirty `docId`s | No; Venus tracks clocks / replica updates |
+| Notify Venus of dirty `(workspace_id, docId)` | **Stock:** no. **Venus:** Postgres trigger on persist (preferred). keck `storeHook` only if SQL cannot map grain |
 
 So: “hold the persist buffer during pin, still sync clients, flush when pin ends” is **not** a keck feature. Live sync already ignores persist. The missing piece is only a **consistent copy of now** for Venus, which the snapshotter owns. At thousands of wikis that copy is a **dirty-set cut**, not one replica per page: [high-availability.md](./high-availability.md).
+
+## Dirty mark (Postgres, not a keck hook)
+
+keck already writes Yjs to **Postgres `jwst`**. Venus `dirty` is the same instance. **Preferred:** an `AFTER INSERT/UPDATE` trigger on the persist tables upserts `dirty(workspace_id, docId, clock)`. Stock keck persist stays; Format overlay stays. No `storeHook` in Rust if SQL can map workspace/guid → page.
+
+Contract: [high-availability.md — how dirty is marked](./high-availability.md#how-dirty-is-marked).
+
+| Rule | |
+|---|---|
+| **When** | Persist row lands in `jwst`, not apply/broadcast |
+| **What** | UPSERT `{ workspace_id, docId, clock }` — one row, coalesce |
+| **Who writes `jobs`** | Venus observer |
+| **Trigger** | Tiny. No `jobs` locks. No HTTP. Must not fail persist if `dirty` is missing (or install only after `dirty` exists) |
+| **`storeHook`** | Fallback only if `jwst` rows cannot express `docId` / clock |
+| **Do not** | Pause `save_update`; skip `update_doc` during convert; convert in keck; Venus process tailing WAL; Kafka in front of dirty |
+
+M1/M2 used replica / idle GET. Product dirty is the M3.0 SQL trigger on hub persist.
 
 ## How Venus should pin against this keck
 
@@ -69,6 +86,42 @@ So: “hold the persist buffer during pin, still sync clients, flush when pin en
 
 M1 already documents: wait ≥2s after a write before restarting keck if you need persist. Same number is a decent lower bound before GET-export as a pin if the replica is not used.
 
-## Cloud
+## Cloud and devices (M1)
 
-Hocuspocus / y-websocket + own Postgres can implement copy-on-write persist later. The Venus pin interface stays: `{ docId, bytes, clock }[]` then convert. Do not leak keck `save_update` into `SyncProvider`.
+M1 hosted: keck + Postgres (`jwst`). **After M3.0:** Venus hub + Postgres (`crdt_*`); on device later is one hub + local SQLite, not OctoBase. Not Hocuspocus. Pin interface stays `{ docId, bytes, clock }[]` then convert. Do not leak persist buffers into `SyncProvider`. Dirty is Postgres on persist. Observer still produces `jobs`.
+
+## Keck fleet (M1 recon — superseded)
+
+**Do not implement this as the product fleet.** Same shape lives on the **hub**: [M3.0/high-availability.md](../M3.0/high-availability.md). Keep the notes below only to explain why two kecks on one `workspace_id` were split-brain.
+
+Stock keck is **one process**: live `Workspace` and `save_update` HashMap are **RAM**. Broadcast is in-process. `GET …/export` reads **Postgres**, not that RAM. Two kecks applying the **same** `workspace_id` at once is split-brain (two live docs, persist ~1s apart, clients do not see each other).
+
+**Best hosted design:** many keck pods, **at most one live owner per `workspace_id`**, shared Postgres (`jwst` + Venus tables).
+
+Cookie / IP sticky is **wrong**: two browsers on the same wiki can land on different pods. Route on **`workspace_id`** (WS path `/collaboration/:workspace_id`, blob/export prefix).
+
+```text
+clients ──► gateway (hash or lease: workspace_id → keck pod)
+                 │
+                 ▼
+            keck owner (RAM apply + broadcast + persist ~1s)
+                 │
+                 ▼
+            Postgres jwst   (shared)     SQL trigger → Venus dirty
+```
+
+| Piece | Rule |
+|---|---|
+| **Shard key** | `workspace_id` (wiki). Consistent hash **or** a short TTL **lease** (etcd/Postgres) so failover is explicit. |
+| **Live owner** | Exactly one keck has the in-memory Workspace for that id. All WS for that wiki go there. |
+| **Postgres** | Shared. Refresh and failover **hydrate from SQL** (trail the persist batch, ~1s). |
+| **Blobs / export** | May be served by any pod (SQL). Simplest: send them to the same owner as WS. |
+| **Dirty** | Postgres trigger on persist (shared `jwst` + `dirty`). One owner → one write → one upsert. |
+| **Drain** | On SIGTERM, flush `save_update` then drop the lease so the next owner loses less than a full batch. |
+| **Do not** | Two owners; Redis as a second CRDT; Kafka in front of Yjs; replicate keck RAM. |
+
+**Failover:** owner dies → clients reconnect → gateway picks a new owner → load `jwst`. Unflushed RAM updates can be lost (same as killing one keck today). That is snapshot **and** collab lag of the persist window, not a second architecture.
+
+**Not the convert fleet.** Snapshotter **workers** stay `SKIP LOCKED` on Venus `jobs` — no keck sticky. **Observers** are ≥2 replicas that batch `dirty` and `INSERT jobs ON CONFLICT DO NOTHING` — not `hash(workspace_id) % replicaCount`. Git working trees may still stick `workspace_id → worker` if there is no remote. Detail: [HA — snapshotter fleet](./high-availability.md#snapshotter-fleet-competing-consumers-not-hash-shards).
+
+**On device:** one OctoBase process. HA is sync/backup to hosted keck, not a local keck ring.

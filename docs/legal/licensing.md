@@ -6,13 +6,11 @@ This is an engineering summary of public license texts as of 29 August 2026. It 
 
 ## Decision
 
-- **BlockSuite, Yjs, and y-octo** are acceptable in both an open-source Venus and a later commercial/cloud Venus.
-- **OctoBase is AGPL-3.0.** It is acceptable **for prototyping** (local / single-server, source available).
-- **OctoBase should be replaced** before Venus is offered as a **cloud service** (hosted SaaS, closed or MIT/Apache product). Do not couple the cloud architecture to OctoBase APIs.
+- **BlockSuite, Yjs, and y-octo** are acceptable in open-source and commercial Venus.
+- **OctoBase is AGPL-3.0.** [M1](../design/M1/README.md) used keck as a prototype merge buffer. **[M3.0](../design/M3.0/README.md) replaces keck** with a Venus-owned **hub** (new files MIT/Apache). Do not ship keck on the product path after M3.0.
+- If someone still runs a **public** hosted keck (M1 image, overlays): treat it as an AGPL network program and publish that keck source. A **closed** SaaS that includes keck is the gray/combined-work case. This is **not legal advice.**
 
-The live contract Venus actually needs is **Yjs update binaries + spaces (docs) + blobs**. OctoBase is one implementation of that contract, not the product.
-
-Replacement targets for cloud: **Yjs + y-websocket or Hocuspocus** (or equivalent), with **y-octo** as an optional MIT Rust helper for merge/snapshots. Keep a swappable provider so the prototype can use OctoBase without painting the cloud into AGPL.
+The live contract is **Yjs update binaries + spaces (docs) + blobs**. M1 implemented that with keck. After M3.0 the hub implements it. There is no Hocuspocus / nbstore cloud target.
 
 ## Current licenses
 
@@ -21,7 +19,7 @@ Replacement targets for cloud: **Yjs + y-websocket or Hocuspocus** (or equivalen
 | **BlockSuite** (`@blocksuite/affine`, `@blocksuite/store`, adapters) | [MPL-2.0](https://github.com/toeverything/blocksuite) | Weak, **file-level** | Editor in prototype and cloud |
 | **Yjs** | MIT | None | Browser CRDT (BlockSuite already uses it) |
 | **y-octo** | [MIT](https://crates.io/crates/y-octo) | None | Server merge / snapshots; OK in cloud |
-| **OctoBase** | [AGPL-3.0](https://github.com/toeverything/OctoBase) | Strong, including **network / SaaS** | Prototype only; replace for cloud |
+| **OctoBase** | [AGPL-3.0](https://github.com/toeverything/OctoBase) | Strong, including **network / SaaS** | **M1 keck only.** Product after M3.0 does not ship it. If you still run the M1 image: disclose overlays |
 
 Toeverything’s OctoBase README states they will switch to MPL (or looser) after production-ready. That has not happened (still pre-1.0). **Do not plan the cloud license around a relicensing with no date.**
 
@@ -60,9 +58,9 @@ Typical reading:
 | MIT/Apache Venus that **embeds** OctoBase in one binary/product | Not compatible |
 | Closed-source or closed-source SaaS that includes OctoBase | What AGPL is meant to block, unless the whole combined work is published under AGPL |
 
-“Venus talks to unmodified OctoBase over WebSocket, so they are two programs” is a **gray** argument. Do not bet a closed cloud on it.
+“Venus talks to unmodified OctoBase over WebSocket, so they are two programs” is a **gray** argument. Dirty **notify** from keck to Venus is a tighter coupling than unmodified WS. Do not assume a closed Venus app is safe without counsel.
 
-If OctoBase stays in a **public** cloud, the conservative path is: license that server stack **AGPL-3.0** and publish source. Venus’s product decision is instead to **replace OctoBase** for cloud so Venus itself can be MIT/Apache (or closed) without that coupling.
+If OctoBase stays in a **public** cloud: publish **keck** source (including overlays). Venus application files are not automatically AGPL; do not treat that as a court holding.
 
 ## y-octo and Yjs (MIT)
 
@@ -70,41 +68,36 @@ Both may be used in prototype and cloud, including closed commercial products, w
 
 ## Product shapes
 
-| Venus you ship | BlockSuite | y-octo / Yjs | OctoBase |
+| Venus you ship | BlockSuite | y-octo / Yjs | OctoBase keck |
 |---|---|---|---|
-| Prototype (local / single-server) | Yes | Yes | **Yes** (convenience) |
-| Open source, AGPL, self-hosted, OctoBase still inside | Yes | Yes | Yes, but not the cloud plan |
-| Open source, MIT/Apache | Yes | Yes | **No** as a product dependency |
-| Commercial cloud (hosted), source public or closed | Yes | Yes | **Replace** |
-| Closed-source app / closed SaaS | Yes | Yes | **Replace** |
+| M1 prototype (Compose `octobase`) | Yes | Yes | **Yes** — AGPL image |
+| Product after M3.0 (Compose `hub`) | Yes | Yes | **No** as a shipped binary |
+| Open source MIT/Apache hub, no keck | Yes | Yes | **No** |
+| Open source, AGPL, OctoBase inside | Yes | Yes | **Yes** (not the product path) |
+| Hosted cloud **with** leftover keck | Yes | Yes | **Yes** — disclose keck source |
+| Closed SaaS **with** keck | Yes | Yes | **Gray** — counsel; conservative publish keck |
 
-## What “replace OctoBase” means
-
-Keep the same client contract:
+## Product collab after M3.0
 
 ```text
 BlockSuite Store (Y.Doc)
-        │  Yjs update binary
+        │  Yjs update binary  (AFFiNE WS)
         ▼
-sync provider (swappable)
-        │
+Venus hub  (hosted Docker; MIT/Apache Venus code)
+        │  persist ~1s; SQL trigger → dirty
         ▼
-server: persist updates + snapshots + blobs
-        └── Venus: snapshot at lease, markdown export (y-octo OK here)
+Postgres crdt_* + blobs  (hosted)
+        └── Venus snapshotter beside the hub (not inside it)
 ```
 
-| Phase | Sync / store |
-|---|---|
-| Prototype | OctoBase (WebSocket, spaces, blobs) **or** `y-websocket` if OctoBase’s JS provider is too raw |
-| Cloud | Not OctoBase. Prefer **Hocuspocus** or **y-websocket** (MIT) + own persistence (Postgres, S3 blobs). Optional **y-octo** for merge/compact/snapshot |
-
-Do not call OctoBase-specific block APIs from Venus. Depend on Yjs binaries, doc ids, and blobs so the swap is a provider change.
+Do not call OctoBase **block** APIs from the web bundle. Depend on Yjs binaries, space ids, blobs, and the dirty trigger. M1 keck recon: [octobase.md](../design/LiveSnapshot/octobase.md).
 
 ## Venus’s own license
 
-- If the repo still contains OctoBase as a shipped dependency: treat the **combined** server as AGPL-shaped, or isolate OctoBase so it is clearly prototype-only and not in the cloud image.
-- If OctoBase is out of the cloud stack: Venus may be **Apache-2.0 or MIT** (BlockSuite remains MPL on its own files).
-- Prefer choosing Venus’s license **after** the cloud sync component is picked, not around OctoBase’s hoped-for MPL relicensing.
+- **Hub** source (M3.0+) is Venus-owned (MIT/Apache on new files). It is not an OctoBase fork.
+- Hosted **keck** (including overlays) is AGPL-shaped if you still run it: offer that source to users of the service.
+- Venus files that are not OctoBase may use another license; a closed hosted **combined** product **with keck** is gray ([above](#octobase-agpl-30)).
+- Do not plan around OctoBase relicensing to MPL.
 
 ## References
 

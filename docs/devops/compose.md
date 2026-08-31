@@ -1,6 +1,8 @@
 # Compose
 
-M1 product runtime: **three services**, one file, [docker-compose.yml](../../docker-compose.yml) at the repo root. Postgres is the only database. keck is AGPL (`deploy/NOTICE`). The web image does **not** contain OctoBase source.
+**Today (M1/M2):** **three services**, one file, [docker-compose.yml](../../docker-compose.yml) at the repo root. Postgres is the only database. keck is AGPL (`deploy/NOTICE`). The web image does **not** contain OctoBase source.
+
+**After [M3.0](../design/M3.0/README.md):** same three-process shape, collab front is **`hub`** instead of `octobase`. Product Compose is **`postgres` + `hub` + `web`**. keck stays under `deploy/octobase/` as history; do not build it on the product path. Hub HA: [M3.0/high-availability.md](../design/M3.0/high-availability.md).
 
 ## Services
 

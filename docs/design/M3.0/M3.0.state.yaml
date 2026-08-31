@@ -1,0 +1,71 @@
+# Board for docs/design/M3.0/plan.md
+# Canonical workflow state. Not a second copy of the step prose.
+planId: m30-venus-hub
+docId: null # design-folder plan; no BlockSuite page yet
+authors:
+  plannerAgentId: null
+  dodAgentId: null
+  implementerAgentId: null
+dodAccepted:
+  gitSha: null
+  acceptedBy: null
+columns:
+  implement: {}
+  autotests: {}
+  review: {}
+  done: {}
+steps:
+  step-recon-hub: # 1
+    n: 1
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-store: # 2
+    n: 2
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-ws: # 3
+    n: 3
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-compose-hub: # 4
+    n: 4
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-provider: # 5
+    n: 5
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-parity: # 6
+    n: 6
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-ha-owner: # 7
+    n: 7
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-dirty: # 8
+    n: 8
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-verify: # 9
+    n: 9
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []

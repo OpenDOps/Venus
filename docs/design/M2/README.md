@@ -19,4 +19,4 @@ Shared: [api-map.md](../api-map.md) (adapter Actuals filled in `step-recon-adapt
 
 **Exit:** [fixtures](../MDGate/fixtures.md) **export** rows green; WYSIWYG and markdown stay aligned on one client; pane is replaceable (no caret).
 
-**Next:** [high-availability.md](../LiveSnapshot/high-availability.md) **Acceptance** (accepted 2026-08-30) gates [M3 — Git snapshotter](../venus-implementation-plan.md#m3--git-snapshotter-week). Do not write `wiki/` until an M3 plan exists. Convert helper: [pin-convert.md](../MDGate/pin-convert.md). Do not start apply (`ap-*`) until [M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks).
+**Next:** [M3.0 — Venus hub](../M3.0/README.md) (replace keck). Then [M3 — Git snapshotter](../venus-implementation-plan.md#m3--git-snapshotter-week), gated on M3.0 **closed** and [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the hub). Do not write `wiki/` until M3.0 is done and an M3 plan exists. Convert helper: [pin-convert.md](../MDGate/pin-convert.md). Do not start apply (`ap-*`) until [M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks).

@@ -15,4 +15,4 @@ Shared: [api-map.md](../api-map.md) (sync / blob / **export** Actuals filled in 
 
 **Exit:** refresh and a second client see the same page (including one uploaded image). **Postgres in Docker** (via keck in a **second** container) is the refresh source; IndexedDB is optional and not required to close M1. SQLite is not the product store.
 
-**Next:** [M2 — Markdown projection](../M2/README.md) ([plan](../M2/plan.md)). Contract: [MDGate](../MDGate/README.md).
+**Next (done):** [M2 — Markdown projection](../M2/README.md). **After M2:** [M3.0 — Venus hub](../M3.0/README.md) replaces this keck loop.

@@ -2,32 +2,32 @@
 
 **Status:** design. Map: [README.md](./README.md). Git side: [git.md](./git.md). Prototype wire: [CRDT](../CRDT/README.md). Apply / hunks: [MDGate apply](../MDGate/apply.md). Product: [venus-design.md](../venus-design.md).
 
-All live trees are BlockSuite `Store` / `Y.Doc` (`store.spaceDoc`). Venus does **not** add a markdown Y.Text. Persist is **Postgres** via keck (`DATABASE_URL`). SQLite is not the product store.
+All live trees are BlockSuite `Store` / `Y.Doc` (`store.spaceDoc`). Venus does **not** add a markdown Y.Text. Persist is **Postgres** via the hub (`DATABASE_URL`). M1 used keck. SQLite is not the hosted product store.
 
 ## Workspace vs spaces
 
-Prototype binding ([implementation plan](../venus-implementation-plan.md#1-collection--octobase-workspace)):
+Prototype binding ([implementation plan](../venus-implementation-plan.md#1-collection--hub-workspace)):
 
 ```text
-Venus workspace     TestWorkspace.id / keck room prefix
-Published page      one OctoBase space = docId = catalog.node.docId
+Venus workspace     TestWorkspace.id / hub room prefix
+Published page      one hub space = docId = catalog.node.docId
 ```
 
-M1 collapsed this: keck room `venus-m0` **is** the one page `doc:home`. Later, one workspace contains many spaces. Create each space **once**, then sync.
+M1 collapsed this: room `venus-m0` **is** the one page `doc:home`. Later, one workspace contains many spaces. Create each space **once**, then sync.
 
-Cloud: same space ids behind Hocuspocus / y-websocket + own Postgres. Do not encode OctoBase-specific block APIs into Venus records.
+Cloud and devices: same space ids on the hub (hosted Postgres or later on-device SQLite). Do not encode JWST **block** APIs into Venus records; Yjs binaries + space ids + blobs.
 
 ## Space kinds
 
 | Kind | Space id (prototype) | Concurrent writes | Notes |
 |---|---|---|---|
-| **Published page** | `docId` (random OctoBase space id) | Yes, when **no** lease | Only accepted `affine:*` blocks. Freeze = readonly during lease. |
+| **Published page** | `docId` (random hub space id) | Yes, when **no** lease | Only accepted `affine:*` blocks. Freeze = readonly during lease. |
 | **Catalog** | `venus:catalog` | Yes (folder moves) | Live wiki tree. Not a docs-framework TOC. |
 | **Review session** | `venus:review:<docId>` | Comments yes; hunk **values** last-writer | Lease, threads, commit records. **Not** the proposal tree. |
 | **Commit Before** | `venus:review:<docId>:c:<commitId>:before` | No | Readonly clone of parent clock. |
 | **Commit After** | `venus:review:<docId>:c:<commitId>:after` | **Yes** until accept/reject | Proposal tree. Same **block ids** as published/`T0`. |
 
-Blobs (images): keck `POST`/`GET /api/blobs/<workspace>` → same Postgres. Not a fourth kind of Y.Doc.
+Blobs (images): hub `POST`/`GET /api/blobs/<workspace>` → same Postgres. Not a fourth kind of Y.Doc.
 
 Do **not** put `proposedText`, `hunkStatus`, or `rationale` on the published page.
 
@@ -38,7 +38,7 @@ One `affine:page` tree per `docId` ([venus-design — published document](../ven
 - `docId` — space id; stable across rename/move.
 - `blockId` — stable on that Y.Doc; git sidecar names spans, it does not own ids ([MDGate](../MDGate/README.md)).
 
-Refresh: reconnect, wait `synced`, Postgres via keck is source of truth. IndexedDB is optional cache.
+Refresh: reconnect, wait `synced`, Postgres via the hub is source of truth. IndexedDB is optional cache.
 
 ## Catalog
 
@@ -93,7 +93,7 @@ Commit
 
 ## Commit Before and After
 
-Each review commit has two **persisted** BlockSuite documents in OctoBase (Postgres via keck). Not a scratch `Store` in one tab.
+Each review commit has two **persisted** BlockSuite documents on the hub (Postgres). Not a scratch `Store` in one tab.
 
 ```text
 Published (frozen during lease)    ids b1, b2, …     no proposal fields
@@ -111,7 +111,7 @@ User types on After_A (after submit)
 
 **Sequence, not in-place.** Do not rewrite A’s hunks. Draft regenerate (`generation++`, same `commitId`) is only **before first submit**.
 
-Materialize After as soon as hunks exist: clone T0 bytes → new space → apply hunk ops → keck persist. Crash must not lose a **submitted** After.
+Materialize After as soon as hunks exist: clone T0 bytes → new space → apply hunk ops → hub persist. Crash must not lose a **submitted** After.
 
 On **accept:** apply the sequence (or id-diff published `T0` vs tip After) onto **published**; `fromDoc` → git comment-commit; set Before/After **readonly** (archive). Rollback of a proposal does not move published.
 
@@ -129,7 +129,7 @@ A **pin** ([LiveSnapshot](../LiveSnapshot/README.md)) is a short-lived copy of Y
 
 | Bytes | Via |
 |---|---|
-| Yjs update v1 for every space above | keck persist (~1s batch) |
-| Blob octets | keck blob HTTP |
+| Yjs update v1 for every space above | Hub persist (~1s batch) |
+| Blob octets | Hub blob HTTP |
 
 No `.md`, no sidecar JSON, no git SHA as the live document. Those are [git.md](./git.md).

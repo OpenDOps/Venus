@@ -152,6 +152,8 @@ Two representations of **one** published spec: the live page (BlockSuite CRDT �
 
 This is [MDGate](../design/MDGate/README.md) plus [LiveSnapshot](../design/LiveSnapshot/README.md). Until the fixture suite is green, the dual store is a claim. The unification idea is useless if git is a dump.
 
+**Accept is on the rendered page.** Cursor is good at markdown **source**. Its preview has **no diff**; commit marks live only in source. Humans understand the spec as WYSIWYG. Meaning-accept is After / Before / Diff on that page ([pains §14](./pains.md#14-cursor-docs-preview-has-no-diff)). M6. Do not ship a better markdown preview inside Cursor.
+
 ## Fewer gates
 
 **Notion + a PR today:** write a page (workspace A) + open a PR (workspace B) + *maybe* update the page. Three human actions, two objects, docs often skipped.
@@ -332,7 +334,7 @@ The team surface is not the page editor. It is a **short** queue — not plan + 
 - Plan ready — only if someone opened a plan.
 - DoD ready — v1 optional / warn.
 
-Each item is description + hunks as evidence. Header chrome: current plan, who holds the lease, next gate, link to PR. Not cycles, points, or kanban. If accept is buried in a wiki tab, people rubber-stamp or skip.
+Each item is description + hunks as evidence. Review those hunks on **WYSIWYG** After / Before / Diff — not source-only marks ([pains §14](./pains.md#14-cursor-docs-preview-has-no-diff)). Header chrome: current plan, who holds the lease, next gate, link to PR. Not cycles, points, or kanban. If accept is buried in a wiki tab, people rubber-stamp or skip.
 
 ### 4. Agent roles as accepted wiki
 

@@ -63,7 +63,7 @@ Do not build a wiki sidebar, kanban, or a second TOC. Outline stays the in-page 
 7. **AGPL isolation.** OctoBase is its **own Docker image/service**. Postgres is a **second** image (`postgres:16`). Neither is in `apps/web/package.json`. Keep MPL notices on BlockSuite.
 8. **No `@affine/core`.** Copying AFFiNE’s `KeckProvider` from old `@affine/workspace` is not a license to import the app shell. A 50-line Y.Doc ↔ WS bridge in `src/host/providers/` is the intended shape.
 9. **Docker is the runtime.** M1 sync is Compose, not `cargo run --bin keck` on the host. Host cargo is recon history only.
-10. **Later milestones keep this runtime.** M2+ assume Compose **`postgres` + `octobase`**. Do not switch the product store to SQLite or merge keck and Postgres into one container.
+10. **Later milestones keep this runtime until M3.0.** M2 assumes Compose **`postgres` + `octobase`**. **[M3.0](../M3.0/README.md)** cuts over to **`postgres` + `hub`** (same two-container rule: persist and collab front stay separate). Do not switch the product store to SQLite or merge the front and Postgres into one container.
 
 ## Target tree
 
@@ -758,4 +758,4 @@ M2 exit is WYSIWYG and a read-only markdown pane staying aligned on a documented
 3. No AFFiNE application shell.
 4. Postgres (via keck) is the refresh source when sync env is on; memory mode remains for tests.
 5. No git, lease, catalog, markdown editor, or product header.
-6. Provider seam stays swappable later (Hocuspocus / `y-websocket`) without rewriting `mount-editor`. M1 implements **only** `octobase`.
+6. Product sync kind is `octobase` (keck). Cloud does not switch to Hocuspocus. M1 implements **`octobase`**.

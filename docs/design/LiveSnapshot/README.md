@@ -1,6 +1,6 @@
 # Live snapshot (pin + git snapshotter)
 
-**Status:** design (one-wiki pin). Implement in [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) **only after** [high-availability.md](./high-availability.md) **Acceptance** (accepted 2026-08-30). Lease `T0` reuses the same pin ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). OctoBase recon: [octobase.md](./octobase.md). Scale (queue, dirty set, pin cut, worker fleet) is that HA file — M3 is a thin instance and must not invert it.
+**Status:** design (one-wiki pin). Implement in [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) **only after** [M3.0](../M3.0/README.md) **is closed** (Venus hub replaces keck) **and** [high-availability.md](./high-availability.md) **Acceptance** (snapshotter beside the hub). 2026-08-31 “OctoBase stays” is superseded. Lease `T0` reuses the same pin ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Live CRDT HA: [M3.0/high-availability.md](../M3.0/high-availability.md). M1 keck recon: [octobase.md](./octobase.md). Scale for git/jobs is this HA file — M3 is a thin instance and must not invert it.
 
 Product rules (two git classes, markdown is a projection): [venus-design.md](../venus-design.md). **Git tree:** [datamodel — git](../datamodel/git.md). Idle / flush-before-lease: [v1-concerns.md](../../drafts/pre-design/v1-concerns.md). Adapter: [MDGate](../MDGate/README.md). Exporter lands in [M2](../M2/README.md); this folder converts a **pin**, not the live Store.
 
@@ -117,7 +117,7 @@ Clone of `wiki/` is ordinary folders + markdown. Folder **nesting** is directori
 
 ## OctoBase
 
-Stock keck **does not** offer “hold persist until pin copy finishes.” It already separates live apply/broadcast from a ~1s persist buffer. Venus puts the pin **beside** keck, not inside it. Forking keck for a pin-WAL is out of scope (AGPL, and cloud replaces keck). Detail: [octobase.md](./octobase.md).
+Stock keck **does not** offer “hold persist until pin copy finishes.” It already separates live apply/broadcast from a ~1s persist buffer. Venus puts the pin **beside** keck. After persist, keck **notifies** dirty; it does not convert. OctoBase **stays** in cloud and on devices. Detail: [octobase.md](./octobase.md).
 
 ## Files
 

@@ -1,6 +1,6 @@
 # API map
 
-One contract for **installed** symbols. Milestone plans ([M0](./M0/plan.md), [M1](./M1/plan.md), [M2](./M2/plan.md), …) use **design names** from [venus-implementation-plan.md](./venus-implementation-plan.md). This file is the Actual column. Do not keep a second map per milestone.
+One contract for **installed** symbols. Milestone plans ([M0](./M0/plan.md), [M1](./M1/plan.md), [M2](./M2/plan.md), [M3.0](./M3.0/plan.md), …) use **design names** from [venus-implementation-plan.md](./venus-implementation-plan.md). This file is the Actual column. Do not keep a second map per milestone.
 
 Fill new rows when recon for that slice runs. Do not keep coding against names that are not in this table. If packages disagree with a plan’s hints, **this file wins**.
 
@@ -100,9 +100,11 @@ Recon notes (2026-08-29, this machine: Darwin arm64, rustc 1.85.0, keck binary l
 
 ### Chosen backend (M1 recon)
 
+**Until [M3.0 `step-recon-hub`](./M3.0/plan.md#1-step-recon-hub) fills this table again:** product Compose is still `postgres` + `octobase` + `web`. M3.0 **overwrites** Chosen backend to **venus hub** (service `hub`, Venus `crdt_*`). Keep the M1 rows below as history; do not delete them. Do not start M3.0 coding against names that are not in this file after that recon.
+
 | | |
 |---|---|
-| **kind** | `octobase` (keck server + Venus thin Yjs client; not stock `y-websocket`) |
+| **kind** | `octobase` (keck server + Venus thin Yjs client; not stock `y-websocket`). **M3.0 product kind:** `venus` (hub; this row is overwritten in recon). |
 | **Why** | keck builds and speaks Yjs update v1 over WS; blobs and export exist on the same process; AGPL stays out of `@venus/web`. Stock `y-websocket` cannot set the `AFFiNE` subprotocol. AFFiNE Cloud/nbstore is a different protocol. |
 | **Server start** | From the Venus root: `docker compose up --build` (postgres + octobase + web) or `docker compose up --build postgres octobase` (keck only, `pnpm sync:up`). keck listens `http://127.0.0.1:3000`. Web listens **http://127.0.0.1:8080**. `DATABASE_URL=postgres://venus:venus@postgres:5432/jwst?sslmode=disable` (set in Compose; must not be omitted). Do not set `USE_MEMORY_SQLITE`. Optional: `JWST_DEV=1` for `/api/docs/`. Image build overlays `deploy/octobase/patches/value.rs` and `publisher.rs` (`Value::Format` for Y.Text marks). **Not DoD:** host `cargo run --bin keck` (recon used SQLite at `/tmp/venus-keck/data/jwst.db`). |
 | **Client package** | `yjs@13.6.32` + `y-protocols@1.0.7` + `lib0@0.2.117`. Class: `OctoBaseKeckProvider`. `new WebSocket('ws://127.0.0.1:3000/collaboration/venus-m0', ['AFFiNE'])`. |

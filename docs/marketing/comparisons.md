@@ -92,7 +92,7 @@ Cursor is the **code** implementer (CLI first; IDE optional). Venus is the **spe
 |---|---|---|
 | Surface | Product repo (files, PR). **CLI** is enough for the loop; IDE is optional | Spec wiki (CRDT + git markdown) + runner that **kicks** CLI |
 | Agent loop | Prompt → dirty buffer → review → accept | Same loop: lease → private markdown → After/Before/Diff → human accept |
-| What you accept | Code diff; why is in the chat | Human-language description of the **spec** change, once you understand it (hunks are the evidence) |
+| What you accept | Code diff; why is in the chat. **Docs:** preview has **no diff**; marks only in source; you flip preview/source to read and to accept | Human-language description of the **spec** change, once you understand it. Hunks on **WYSIWYG** After/Before/Diff — the rendered page ([pains §14](../product/pains.md#14-cursor-docs-preview-has-no-diff)) |
 | Tracking | Chat + git; why is not on the hunks | Descriptions pinned to hunks; git message is that why. Index packs that timeline with the clause ([agentic-comparison — why](./agentic-comparison.md#why--timeline-main-feature)) |
 | Multiplayer during the loop | You and the agent; other files stay yours | Page freeze for everyone on that `docId`; other pages stay live; comment rail stays |
 | Story complete | PR merged / tests green | Spec diff **accepted**; PR is the implementer path, not done |

@@ -429,7 +429,7 @@ DoD evidence:
 | **kind** | implement |
 | **status** | **done** ([board](./M0.state.yaml)) |
 
-The implementation plan requires a swappable provider **from day one** (Yjs binaries + spaces, not OctoBase APIs). M0 still has **no** real sync.
+Product wire is **`octobase`**. The `SyncProvider` kind union may still list `y-websocket`; it is not a Hocuspocus cloud target. M0 still has **no** real sync.
 
 #### Work
 

@@ -2,7 +2,7 @@
 
 Venus is a **spec-driven development** tool. The wiki is the spec store (two honest representations of each published page):
 
-1. **Live collaborative document** — a BlockSuite block tree, synced as a Yjs/y-octo CRDT through OctoBase.
+1. **Live collaborative document** — a BlockSuite block tree, synced as a Yjs CRDT through the **Venus hub** (M1 proved the wire on OctoBase keck; [M3.0](./M3.0/README.md) replaces keck).
 2. **Git markdown tree** — ordinary folders and `.md` files that humans and LLMs can clone, read, and review without the editor.
 
 Those two representations are **not two replicas**. The CRDT is the live published page. Markdown on disk is a **projection** of that page ([glossary](./glossary.md) — markdown projection vs git snapshot commit). Dataflow: [architecture.md](./architecture.md).
@@ -25,7 +25,7 @@ Related:
 - Installed symbols: [api-map.md](./api-map.md)
 - Markdown adapter gate: [MDGate](./MDGate/README.md) (design). Code: [M2](./M2/README.md).
 - Markdown cannot be a second CRDT: [cursor_crdt_limitations_with_markdown.md](../drafts/pre-design/cursor_crdt_limitations_with_markdown.md)
-- Licensing (BlockSuite MPL vs OctoBase AGPL, prototype vs cloud): [licensing.md](../legal/licensing.md)
+- Licensing (BlockSuite MPL vs OctoBase AGPL on M1 keck; product hub is Venus MIT/Apache): [licensing.md](../legal/licensing.md)
 - Pitch (humans keep intention, agents do the work): [pitch.md](../marketing/pitch.md)
 
 ## Goal
@@ -36,7 +36,7 @@ A spec-driven workspace that is:
 
 - **Collaborative** for humans in a Notion-style WYSIWYG editor (BlockSuite).
 - **Sharable as files** for humans and agents (git folders + markdown).
-- **Reviewable like Cursor** when someone (human or agent) edits source: one lease, frozen published page, commented diffs, accept / rollback / reply. Each review commit has **Before and After CRDTs in OctoBase**. Edits to After before apply are a **new** comment-commit in the sequence, not a silent rewrite. Alternative **picker** UI is post-v1 ([v1-concerns.md](../drafts/pre-design/v1-concerns.md)).
+- **Reviewable like Cursor** when someone (human or agent) edits source: one lease, frozen published page, commented diffs, accept / rollback / reply. Each review commit has **Before and After CRDTs on the hub**. Edits to After before apply are a **new** comment-commit in the sequence, not a silent rewrite. Alternative **picker** UI is post-v1 ([v1-concerns.md](../drafts/pre-design/v1-concerns.md)).
 - **Runnable as plans:** spec → plan (planner agent) → DoD (**other** agent) → both human-accepted on the same lease/review path as spec → implement / **spec-bound analyzer review** of the product diff (CodeGraph CLI and/or Aider: landed ↔ plan ↔ docs; not bug-hunt only) / autotests / PR review → human-accepted doc updates. Wiki git and product git are **separate remotes or submodules** ([code-bind](./Agents/code-bind.md)). The board is yaml + the plan page; GitHub/Plane are optional mirrors. See [venus-plan.md](../drafts/pre-design/venus-plan.md).
 - **Autodocumenting:** aims of the software and generated API markdown live in the same spec tree; Hugo publishes only accepted git. See [venus-plan.md](../drafts/pre-design/venus-plan.md).
 
@@ -45,9 +45,9 @@ It is not a second AFFiNE. It is a thinner product on the same editor and CRDT e
 ## Non-goals (v1)
 
 - Merging two markdown buffers, or treating `.md` as a live CRDT.
-- Concurrent WYSIWYG on the **published** page while a markdown lease is held (After is a sibling OctoBase CRDT; [datamodel — commit Before/After](./datamodel/crdt.md#commit-before-and-after)).
+- Concurrent WYSIWYG on the **published** page while a markdown lease is held (After is a sibling hub CRDT; [datamodel — commit Before/After](./datamodel/crdt.md#commit-before-and-after)).
 - Storing pending hunks, rationales, or review threads on published blocks.
-- Forking AFFiNE Cloud (NestJS, GraphQL, payments, copilot). OctoBase + y-octo are the backend.
+- Forking AFFiNE Cloud (NestJS, GraphQL, payments, copilot). The hub + Postgres + y-octo are the backend (not nbstore).
 - Full Notion databases, edgeless/whiteboard as a first-class surface.
 - **Aider or CodeGraph as wiki copilot** or as the implementer. The selected analyzer works the **product** tree at a pinned SHA and reviews plan-step diffs. Cursor writes code. Spec publish stays lease + human ([code-bind](./Agents/code-bind.md)).
 - **UI** for picking among alternatives / deep stacks (v2). The **data** already stores Before/After CRDTs and `parentCommitId` ([v1-concerns.md](../drafts/pre-design/v1-concerns.md) is the wedge for one visible commit).
@@ -57,7 +57,7 @@ It is not a second AFFiNE. It is a thinner product on the same editor and CRDT e
 **Source of truth for layout:** [datamodel](./datamodel/README.md) — [CRDT spaces](./datamodel/crdt.md), [git tree](./datamodel/git.md).
 
 ```text
-Published page + catalog + review + Before/After     OctoBase → Postgres
+Published page + catalog + review + Before/After     hub → Postgres
         │  pin + fromDoc (not a second replica)
         ▼
 wiki/*.md + .venus/ids + assets                      git
@@ -71,21 +71,21 @@ Decision and space ids: [datamodel — commit Before/After](./datamodel/crdt.md#
 
 ## Roles of each AFFiNE tool
 
-Venus is **based on** BlockSuite, OctoBase, and y-octo. It is **another tool** on top of them.
+Venus is **based on** BlockSuite, Yjs, and y-octo. The collab front is a **Venus hub** ([M3.0](./M3.0/README.md)). M1 used OctoBase keck to prove the wire. It is **another tool** on top of the editor, not AFFiNE Cloud.
 
 | Tool | Role in Venus |
 |---|---|
 | **BlockSuite** (`@blocksuite/affine`) | Primary editor: page editor, block schema, selection, outline, linked-doc embeds, markdown adapter. |
 | **Yjs (browser)** | Client CRDT that BlockSuite already uses. Every doc is a Y.Doc. |
-| **y-octo (Rust)** | Server-side Yjs-compatible engine: apply/merge updates, compact snapshots, binary ↔ structured doc, markdown conversion helpers. |
-| **OctoBase** | Prototype WS + blob HTTP (keck). **Own Docker.** Persist is **Postgres in a second Docker**, not SQLite. |
+| **y-octo (Rust)** | Optional server-side Yjs-compatible engine: apply/merge updates, compact snapshots. OK in the hub. |
+| **Venus hub** | WS + blob HTTP + persist. **Own Docker** + **Postgres**. Device later: one hub + local SQLite. Same `AFFiNE` wire as M1. Not OctoBase, not nbstore. |
 | **Venus** | Lease, review commits, git snapshotter, folder catalog, freeze policy. None of this is BlockSuite’s job. |
 
-OctoBase is pre-1.0 and AGPL. **Prototype only:** it is a convenient CRDT workspace so we do not write a sync server from scratch. **Cloud Venus replaces it** (Yjs + y-websocket/Hocuspocus, optional y-octo). We do not take AFFiNE’s full product shell. Details: [licensing.md](../legal/licensing.md).
+OctoBase keck is AGPL and **M1-only**. Product hosted collab after M3.0 is the hub ([licensing.md](../legal/licensing.md)). We do not take AFFiNE’s full product shell.
 
 ## Published document
 
-A page is one BlockSuite doc (one OctoBase space), with the usual `affine:*` tree:
+A page is one BlockSuite doc (one hub space / `docId`), with the usual `affine:*` tree:
 
 ```text
 affine:page
@@ -98,8 +98,8 @@ affine:page
 Requirements on top of BlockSuite’s defaults:
 
 1. **Stable `blockId`s** that survive markdown export → edit → parse. Export writes them into a Venus sidecar map (not as user-visible markdown syntax). Parse diffs by id, not by “paragraph 3.”
-2. **Snapshot clock (`T0`)** — at lease acquire, Venus calls keck **doc export** (or a Yjs state vector) and **pins** that result. The live GET is not `T0`; keeping it is. [glossary](./glossary.md). [architecture.md](./architecture.md).
-3. **Stable `docId`** — the OctoBase space id. The git path can change when the user moves the page; `docId` does not.
+2. **Snapshot clock (`T0`)** — at lease acquire, Venus calls hub **doc export** (or a Yjs state vector) and **pins** that result. The live GET is not `T0`; keeping it is. [glossary](./glossary.md). [architecture.md](./architecture.md).
+3. **Stable `docId`** — the hub space id. The git path can change when the user moves the page; `docId` does not.
 
 Markdown export is lossy for anything the adapter cannot name (colors, some embeds). Editable markdown is only the **round-trippable subset**. Unknown blocks stay opaque in export (HTML/html-comment or a raw block) and are not rewritten by a markdown commit unless the writer touches them.
 
@@ -129,7 +129,7 @@ wiki/
     …
 ```
 
-Live collaboration on that tree is a small CRDT **catalog** in OctoBase ([datamodel — catalog](./datamodel/crdt.md#catalog)):
+Live collaboration on that tree is a small CRDT **catalog** on the hub ([datamodel — catalog](./datamodel/crdt.md#catalog)):
 
 ```text
 Catalog
@@ -141,7 +141,7 @@ Node
   name            // "lease.md" or "crdt"
   parentId        // null = wiki root
   order           // fractional index among siblings
-  docId?          // OctoBase space id when kind=doc
+  docId?          // hub space id when kind=doc
   gitPath         // derived, cached: spec/crdt/lease.md
 ```
 
@@ -196,12 +196,12 @@ Lease
 While leased:
 
 - **Published** BlockSuite is read-only (freeze).
-- Reviewers use [CRDT views](#crdt-views-after-and-before): **After** and **Before** are OctoBase docs ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
+- Reviewers use [CRDT views](#crdt-views-after-and-before): **After** and **Before** are hub docs ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
 - Read-only markdown may refresh from Before or After — it is not a replica.
 - First hunks: holder’s private markdown vs `T0`. After submit, After is editable; those edits are the next comment-commit.
 - Everyone else writes **comments** on the Before view (Google Docs / Jira rail) and workflow (accept / reject).
 
-Acquire pins `T0` via keck **doc export** / y-octo (or a state vector) and serializes markdown **with the block-id map**. The HTTP GET is the current tree; the **kept** bytes (or clock) are `T0`.
+Acquire pins `T0` via hub **doc export** / y-octo (or a state vector) and serializes markdown **with the block-id map**. The HTTP GET is the current tree; the **kept** bytes (or clock) are `T0`.
 
 ## Comment-commits (markdown only)
 
@@ -249,8 +249,8 @@ Commit                         // a review proposal, not yet published git
   threadId
   parentCommitId?              // sequence: this commit is **over** the parent, not a rewrite
   baseClock                    // Before clock (T0, or parent After)
-  beforeDocId                  // OctoBase space — Before CRDT (readonly)
-  afterDocId                   // OctoBase space — After CRDT (editable until accept)
+  beforeDocId                  // hub space — Before CRDT (readonly)
+  afterDocId                   // hub space — After CRDT (editable until accept)
   author                       // user or agent
   message                      // required rationale (the “why”)
   hunks[]                      // immutable at submit; later After edits → new Commit
@@ -266,7 +266,7 @@ Hunk
   diff                         // added / removed
 ```
 
-`old` / `new` are **values**, not text CRDTs. Do not store proposal markdown as a second Y.Text. The **After** tree is a BlockSuite Y.Doc in OctoBase. The lease holder replacing `new` on **draft regenerate** (same commit id, bump `generation`) is only for an unsubmitted draft. After submit, After-edits are a **new** commit ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
+`old` / `new` are **values**, not text CRDTs. Do not store proposal markdown as a second Y.Text. The **After** tree is a BlockSuite Y.Doc on the hub. The lease holder replacing `new` on **draft regenerate** (same commit id, bump `generation`) is only for an unsubmitted draft. After submit, After-edits are a **new** commit ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
 
 ### Alternatives and stacks
 
@@ -337,7 +337,7 @@ Do not replay raw Yjs history as the user-facing version log. Yjs history is for
 
 ## CRDT views (After and Before)
 
-The same page can be shown as BlockSuite in two **OctoBase** docs. After is not a second published replica and not a tab-local scratch Store.
+The same page can be shown as BlockSuite in two **hub** docs. After is not a second published replica and not a tab-local scratch Store.
 
 **1. After** — how the document **will look** if this commit (plus ancestors) is accepted.
 
@@ -346,7 +346,7 @@ The same page can be shown as BlockSuite in two **OctoBase** docs. After is not 
 
 **2. Before** — the document **before** this comment-commit (lease `T0`, or parent After).
 
-- Readonly CRDT of the parent (its own OctoBase space, or a readonly bind of that clone).
+- Readonly CRDT of the parent (its own hub space, or a readonly bind of that clone).
 - **Right rail:** comments pinned to text, like [Google Docs](https://docs.google.com) or Jira — threads on a selection, not hunk cards stuffed into the block tree.
 - Markdown comment-commits **must** use this rail for the required why (and replies). Snapshot autocomments do not need a rail.
 

@@ -4,11 +4,11 @@ How to build the design in [venus-design.md](./venus-design.md) without taking a
 
 ## Principle
 
-Start with a **thin host** around BlockSuite + OctoBase. Add Venus as layers: catalog, git snapshotter, lease, review. Do not start from the AFFiNE web app.
+Start with a **thin host** around BlockSuite. M1 proved the wire on OctoBase **keck**. **[M3.0](#m30--venus-hub-replace-keck-week)** replaces keck with a Venus-owned **hub** (apply + broadcast + persist) before git. Then catalog, snapshotter, lease, review. Do not start from the AFFiNE web app.
 
-OctoBase is pre-1.0 and AGPL. Use it for **prototyping** (local / single-server). **Replace it before Venus is a cloud service.** Keep the sync provider swappable (Yjs binaries, spaces, blobs — not OctoBase-specific APIs). Licensing: [licensing.md](../legal/licensing.md). v1 scope and the git/WYSIWYG rule: [v1-concerns.md](../drafts/pre-design/v1-concerns.md). Spec-driven plans: [venus-plan.md](../drafts/pre-design/venus-plan.md). Pitch: [pitch.md](../marketing/pitch.md).
+`SyncProvider` product kind is `venus` after M3.0 (`octobase` may remain as a wire alias; `memory` for tests). Cloud does **not** switch to Hocuspocus or nbstore. Licensing: [licensing.md](../legal/licensing.md). v1 scope and the git/WYSIWYG rule: [v1-concerns.md](../drafts/pre-design/v1-concerns.md). Spec-driven plans: [venus-plan.md](../drafts/pre-design/venus-plan.md). Pitch: [pitch.md](../marketing/pitch.md).
 
-**Prototype runtime (every milestone from M1 on):** persist is **Postgres in Docker**. OctoBase **keck is a second Docker**. Compose services are `postgres` + `octobase` (+ `web` when the host is containerized). Do not use SQLite as the product store. Do not put keck and Postgres in one container. Cloud Venus still replaces OctoBase (Hocuspocus / y-websocket + own Postgres); that is not M1.
+**Hosted runtime:** persist is **Postgres in Docker**. Collab front is a **second Docker**: M1 **`octobase` (keck)**; **from M3.0 `hub`**. Compose is `postgres` + that front (+ `web`). Do not put the front and Postgres in one container. On-device later: one hub process + local store, sync to hosted hub.
 
 ## Tool choices
 
@@ -31,32 +31,33 @@ Do **not** take `@affine/core` explorer, GraphQL, or copilot. Those pull the who
 
 BlockSuite already owns a Y.Doc per page. Venus does not replace that with a second client CRDT.
 
-### Sync and persistence — OctoBase keck + Postgres (prototype) + y-octo
+### Sync and persistence — Venus hub + Postgres (after M3.0)
 
 | Piece | Use |
 |---|---|
-| **OctoBase keck** | Prototype WS front: space-per-page, blob HTTP, Yjs sync. **Own Docker** (`octobase`). **Not for cloud.** |
-| **Postgres** | Prototype persist for Yjs docs **and** blobs. **Own Docker** (`postgres:16`). Named volume. |
-| **y-octo** | MIT. Server merge (`merge_updates_in_apply_way`), snapshots, binary parse; OK in cloud |
-| **Cloud sync (later)** | Hocuspocus or y-websocket + own persistence; same Yjs provider interface |
+| **Venus hub** (M3.0) | WS front: Yjs apply + broadcast + persist, blob HTTP, export. **Own Docker** (`hub`). MIT/Apache Venus code. Not OctoBase. |
+| **Postgres** | Hosted persist: Venus `crdt_*` + blobs + `dirty` / `workspace_lease`. **Own Docker** (`postgres:16`). Named volume. |
+| **y-octo** | MIT. Optional Rust apply/compact; sidecar decode |
+| **M1 (done)** | OctoBase **keck** proved the wire. Legacy after M3.0. Recon: [octobase.md](./LiveSnapshot/octobase.md) |
+| **On device (later)** | One hub process + local SQLite; sync to hosted hub |
 
-Binding:
+Binding (M3.0+):
 
 ```text
 BlockSuite Store (Y.Doc)
         │  Yjs update binary
         ▼
-OctoBase keck  (Compose `octobase`)  WS + blob HTTP
+Venus hub      (Compose `hub`)  WS + blob HTTP
         │  DATABASE_URL
         ▼
-Postgres       (Compose `postgres`)  docs + blobs
+Postgres       (Compose `postgres`)  crdt_* + blobs
 ```
 
-Client: Venus `OctoBaseKeckProvider` (`yjs` + `y-protocols` + subprotocol `AFFiNE`). There is no npm OctoBase client. Do not invent a new CRDT.
+Client: `yjs` + `y-protocols` + subprotocol `AFFiNE` (M1 `OctoBaseKeckProvider` or `VenusHubProvider`). Do not invent a new CRDT. Do not use nbstore.
 
-Server: keck in Docker, Postgres in another Docker. Venus services (lease, git) sit beside them and read the Y.Doc via keck **export** (M1 proves `GET /api/block/venus-m0/export`). Optional y-octo decode. That GET is not `T0` until something pins it.
+M1: keck in Docker. **M3.0 replaces that process** with the hub; same seam. Venus snapshotter reads export / replica, then pin. Dirty: SQL trigger on hub persist ([M3.0 HA](./M3.0/high-availability.md)). [CRDT — seam](./CRDT/README.md#seam).
 
-Keep the provider interface swappable from day one: the design depends on Yjs binaries and spaces, not OctoBase-specific block APIs. **M1 implements OctoBase keck only** (not stock `y-websocket`). The **cloud** path is still Hocuspocus / y-websocket + own Postgres (no OctoBase). y-octo may still sit on the server for merge/export. [CRDT — seam](./CRDT/README.md#seam).
+**M1 implemented OctoBase keck** (not stock `y-websocket`). **M3.0 implements the Venus hub** (not Hocuspocus, not nbstore).
 
 ### Git — libgit2 or `simple-git`, one repo on disk
 
@@ -69,7 +70,7 @@ Use `isomorphic-git` or `simple-git` in Node, or `git2` in a small Rust sidecar 
 | Need | Tool |
 |---|---|
 | In-page headings | BlockSuite outline widget |
-| Wiki folders | Venus catalog space in OctoBase + a thin tree UI |
+| Wiki folders | Venus catalog space on the hub (Y.Doc) + a thin tree UI |
 | Files on disk | git working tree |
 
 Do not use a docs-framework TOC (Docusaurus, VitePress) as the live tree. Those assume a static build. Do not use AFFiNE’s explorer.
@@ -101,7 +102,7 @@ CodeMirror 6. Private buffer. Not Yjs. Parse/apply through `MarkdownAdapter` + b
 
 Custom UI on BlockSuite pages that are **review spaces**, not the published `Store`:
 
-- **After** — commit After CRDT in OctoBase (how it will look). Editable; later edits are the **next** comment-commit ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
+- **After** — commit After CRDT on the hub (how it will look). Editable; later edits are the **next** comment-commit ([datamodel](./datamodel/crdt.md#commit-before-and-after)).
 - **Before** — parent/`T0` CRDT (readonly space) with a **right-rail** of comments (Google Docs / Jira).
 - **Diff** — hunk overlay on those two docs.
 
@@ -109,17 +110,17 @@ Do not put hunks or threads in the published block schema. Hunk cards may sit in
 
 ### Identity (v1)
 
-Single-workspace local users: display name + id in a config file or OctoBase awareness. Auth can wait. Lease `holder` is that id.
+Single-workspace local users: display name + id in a config file or hub awareness. Auth can wait. Lease `holder` is that id.
 
 ## Bindings (the actual glue)
 
-### 1. Collection ↔ OctoBase workspace
+### 1. Collection ↔ hub workspace
 
 ```text
-DocCollection.id        = OctoBase workspace_id
-collection.createDoc()  = create Space with random space_id (OctoBase rule)
+DocCollection.id        = hub workspace_id
+collection.createDoc()  = create space / room with random space_id (mint once)
 doc.spaceDoc / Y.Doc    = Space CRDT
-collection.blobSync     = OctoBase blob store
+collection.blobSync     = hub blob store
 ```
 
 Create spaces **once**, then sync. Never create the same `space_id` independently on two devices.
@@ -127,7 +128,7 @@ Create spaces **once**, then sync. Never create the same `space_id` independentl
 ### 2. Page ↔ git path
 
 ```text
-catalog.node.docId  →  OctoBase space
+catalog.node.docId  →  hub space / docId
 catalog.node.gitPath → wiki/spec/crdt/lease.md
 ```
 
@@ -192,7 +193,7 @@ If we skip it:
 - Unknown blocks (colors, some embeds) get dropped or rewritten → git is not a faithful snapshot.
 - Links without `venus:doc:…` resolution → clone looks fine, apply breaks embeds.
 
-OctoBase AGPL is a **distribution** constraint ([licensing.md](../legal/licensing.md)), not this. Swapping OctoBase for Hocuspocus does not make round-trip correct.
+OctoBase AGPL is a **distribution** constraint for **M1 keck** ([licensing.md](../legal/licensing.md)), not adapter correctness. **M3.0** removes keck from the product path. Neither keck nor the hub makes markdown round-trip correct.
 
 **Fixture suite (M2 exit, before M6):** not a demo.
 
@@ -217,7 +218,7 @@ Resolve on import: id comment → catalog `docId` → path relative to the curre
 
 ```text
 acquire(docId, holder)
-  → keck: GET …/export (or state vector); pin as T0
+  → hub: GET …/export (or state vector); pin as T0
   → write Lease on review space
   → awareness: { docId, frozen: true, holder }
   → clients: store.readonly = true (or editor readonly extension)
@@ -225,7 +226,7 @@ acquire(docId, holder)
 
 Heartbeat on the lease. Steal requires confirm. See [lease-freeze-rationale.md](./lease-freeze-rationale.md).
 
-Review session space: `venus:review:<docId>` (lease, threads, hunk **values**). Each commit also has **Before** and **After** OctoBase spaces (BlockSuite Y.Docs, same block ids as `T0`). Comments are a Y.Array (sequence CRDT). Hunk bodies are Y.Map last-writer values on the session space, not on After.
+Review session space: `venus:review:<docId>` (lease, threads, hunk **values**). Each commit also has **Before** and **After** hub spaces (BlockSuite Y.Docs, same block ids as `T0`). Comments are a Y.Array (sequence CRDT). Hunk bodies are Y.Map last-writer values on the session space, not on After.
 
 ### 6. Git history ↔ revert
 
@@ -272,13 +273,23 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 **Exit:** [fixtures.md](./MDGate/fixtures.md) **export** rows green; WYSIWYG and markdown stay aligned on one client; pane is replaceable (no caret); one shared exporter.
 
+### M3.0 — Venus hub (replace keck) (week)
+
+**Status:** not started. Step-by-step: [M3.0/plan.md](./M3.0/plan.md). Board: [M3.0/M3.0.state.yaml](./M3.0/M3.0.state.yaml). Live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
+
+Replace OctoBase **keck** with a Venus-owned **merge buffer**: apply Yjs, broadcast, persist ~1s to Venus Postgres tables (`crdt_snapshot` / `crdt_update` / `blob`). Same `AFFiNE` + `y-protocols` wire so M1 e2e stay green. One live owner per `workspace_id` (lease). Dirty SQL trigger on persist (no `jobs` yet). No JWST Block REST, no convert/git in the hub, no nbstore.
+
+**Exit:** Compose **`postgres` + `hub` + `web`** (no `octobase`). Refresh / second tab / image / export work. Lease refuses a second owner. `dirty` upserts. Product collab is not AGPL keck.
+
+Do not start M3 `wiki/` until this milestone is **done**.
+
 ### M3 — Git snapshotter (week)
 
-**Status:** not started. **Gate:** [high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (accepted 2026-08-30). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while that file is un-accepted or under revision. An M3 step plan comes **after** this gate; it is not opened in this change.
+**Status:** not started. **Gate:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while M3.0 is open or LiveSnapshot HA is un-accepted. An M3 step plan comes **after** this gate.
 
 Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. Same `from-doc.js` as [M2](./M2/README.md) on a **pin** — do not `fromDoc` the live Store for git.
 
-Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in keck; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
+Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in the hub; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
 Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M5–M6 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M6** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
 
@@ -318,7 +329,7 @@ Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks;
 
 - Diff `markdown_T0` vs buffer; attribute with frozen sidecar → hunks. Overlay on **Before** WYSIWYG (Cursor-style).
 - Submit **requires** a comment + optional selection pin on **Before** (right rail).
-- Review UI: **After / Before / Diff** on those OctoBase docs; Before has pinned comments (Google Docs / Jira). After is persisted, not a scratch Store.
+- Review UI: **After / Before / Diff** on those hub docs; Before has pinned comments (Google Docs / Jira). After is persisted, not a scratch Store.
 - Accept → BlockSuite ops by hunk `blockId` (sequence order) → git comment-commit → archive After/Before → release.
 - WYSIWYG must still only produce snapshot+autocomment (no comment-commit from typing).
 
@@ -352,7 +363,7 @@ v1 of this plan does **not** need the runner or MCP to be useful. It needs to be
 
 ### Minimum useful (after M4)
 
-Ship M2 → M3 → M4, then **author the product in the wiki**, not only in `docs/` as a side tree.
+Ship M2 → **M3.0** → M3 → M4, then **author the product in the wiki**, not only in `docs/` as a side tree.
 
 | Need | Milestone |
 |---|---|
@@ -381,8 +392,9 @@ Header in M4 should already show **current page**. As soon as M5 exists, show **
 
 ```text
 Venus/
-  docker-compose.yml        # postgres + octobase + web
-  deploy/octobase/          # Dockerfile: keck from pinned git SHA
+  docker-compose.yml        # postgres + hub + web (M1: octobase)
+  deploy/hub/               # Dockerfile: Venus merge buffer
+  deploy/octobase/          # M1 keck image (legacy after M3.0)
   deploy/web/               # nginx + static host
   apps/web/                 # BlockSuite host + tree + review UI
   crates/venus-sidecar/     # y-octo + git2: decode export, then md + commit
@@ -395,36 +407,37 @@ Venus/
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```
 
-OctoBase stays an **external Docker image** (AGPL). Do not vendor it into `apps/web`. Postgres is a **second** image.
+After M3.0 the collab image is **Venus hub** (not AGPL). Do not vendor OctoBase into `apps/web`. Postgres is a **second** image. M1 keck Dockerfile may remain under `deploy/octobase/` as history.
 
 ## Risks and how M0–M1 de-risk them
 
 | Risk | Mitigation |
 |---|---|
-| OctoBase JS provider is incomplete | Yjs-protocol shim; keep provider behind one interface |
+| OctoBase JS provider is incomplete | M1 shim; M3.0 hub keeps the same `y-protocols` interface |
 | MarkdownAdapter drops block ids / jitter | **[MDGate](./MDGate/README.md)**; **export fixtures before M2 exit**; **apply fixtures before M6** ([adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)) |
 | Adapter cannot express a block | Opaque raw block; markdown commit must not rewrite it |
-| OctoBase AGPL | Accept for server/sidecar; keep Venus app code separate |
+| OctoBase AGPL | M1 keck only; M3.0 hub is Venus-owned. Keep app code separate either way |
 | y-octo / Yjs version skew | Pin versions to the pair AFFiNE currently ships |
 | Folder move vs dirty git tree | Only `git mv` on publish; catalog may lead git until then |
 | Comment anchors after accept | Rebase optional; v1 review threads die with the session unless copied |
 
-## What “simple BlockSuite + OctoBase deployment” means
+## What “simple BlockSuite + hub deployment” means
 
-M0 + M1 only:
+M0 + M1 proved editor + keck. **M3.0** is the product collab front:
 
-1. Docker Compose: **`postgres` + `octobase` + `venus-web`**. Postgres and keck are **separate** containers.
-2. One workspace, IndexedDB optional, **Postgres** (via keck) is the source for refresh. SQLite is not the product store.
-3. No git, no lease, no catalog.
+1. Docker Compose: **`postgres` + `hub` + `venus-web`**. Postgres and hub are **separate** containers. keck is not required.
+2. One workspace, IndexedDB optional, **Postgres** (via hub) is the source for refresh. SQLite is not the product store.
+3. No git, no lease (product freeze), no catalog — those stay M3+.
 
-Everything after that is Venus. Do not block M1 on review design.
+Everything after M3.0 git is Venus snapshotter. Do not block M3.0 on review design.
 
 ## First implementation slice (when coding starts)
 
 1. Playground page editor. **Done** — [M0](./M0/README.md).
 2. OctoBase sync of that one doc (Postgres + keck in Compose). **Done** — [M1](./M1/README.md).
 3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M6.
-4. **Accept** [high-availability.md](./LiveSnapshot/high-availability.md) (done 2026-08-30). **Then** catalog + git snapshotter ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape). Then **folder tree + product header**, then lease. Do not start M3 code if HA is reopened.
+4. **Venus hub** — [M3.0/plan.md](./M3.0/plan.md). Replaces keck. HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
+5. **Then** git snapshotter ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape), gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance. Then **folder tree + product header**, then lease. Do not start M3 code if M3.0 is open.
 
 Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M6 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
 

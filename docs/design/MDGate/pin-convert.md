@@ -1,6 +1,6 @@
 # Pin then convert — git / lease `T0`
 
-**Status:** helper shipped in M2 (`apps/web/src/host/mdgate/pin-from-doc.js`). Git write of `wiki/` is [M3](../venus-implementation-plan.md#m3--git-snapshotter-week), **gated on** [high-availability.md](../LiveSnapshot/high-availability.md) **Acceptance**. Lease acquire reuses the same convert ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Apply consumes the pair ([apply.md](./apply.md)). Exporter: [README.md](./README.md). Spectator: [live-pane.md](./live-pane.md).
+**Status:** helper shipped in M2 (`apps/web/src/host/mdgate/pin-from-doc.js`). Git write of `wiki/` is [M3](../venus-implementation-plan.md#m3--git-snapshotter-week), **gated on** [M3.0](../M3.0/README.md) **closed** and [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the hub). Pin source after M3.0 is hub export / replica, not keck. Lease acquire reuses the same convert ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Apply consumes the pair ([apply.md](./apply.md)). Exporter: [README.md](./README.md). Spectator: [live-pane.md](./live-pane.md).
 
 This is **Path B**: a frozen CRDT clock → markdown + sidecar. It is not the live pane.
 
