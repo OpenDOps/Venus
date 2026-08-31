@@ -1,6 +1,6 @@
 # Venus comparisons
 
-Pitch: [pitch.md](./pitch.md). Design: [venus-design.md](../design/venus-design.md), [venus-plan.md](../drafts/pre-design/venus-plan.md). Product: [product-plan](../product/product-plan.md), [pains](../product/pains.md). Bound chat vs Notion Agent / Cursor **ask**: [agentic-comparison.md](./agentic-comparison.md).
+Pitch: [pitch.md](./pitch.md). Design: [venus-design.md](../design/venus-design.md), [venus-plan.md](../drafts/pre-design/venus-plan.md). Product: [product-plan](../product/product-plan.md), [pains](../product/pains.md), [unique features](../product/unique-features.md). Bound chat vs Notion Agent / Cursor **ask**: [agentic-comparison.md](./agentic-comparison.md). **Spec-bound PR review** (landed ↔ plan ↔ docs; Notion and Cursor lack it): [below](#spec-bound-pr-review).
 
 ## Versus PM tools (Linear, Jira, Plane, GitHub Issues)
 
@@ -15,6 +15,7 @@ Venus inverts that. **The spec is first-class; the board is a mirror.** Agentic 
 | Plan / DoD | Checklist on the issue, written by whoever | Plan then **other agent** DoD, both human-accepted wiki leases |
 | Parallel humans on the spec | Comments on the ticket | Live CRDT; source edits freeze under a lease |
 | Story complete | Status = Done | Spec (and aims/API) **diff accepted by a human** |
+| PR vs spec | Review hunts bugs; ticket is a link if someone pasted it | **Landed ↔ plan ↔ docs.** Validate code against the spec ([spec-bound PR review](#spec-bound-pr-review)) |
 | Board | The product | `*.state.yaml` + plan page; Issues/Plane optional mirrors |
 
 Use a PM tool for intake, roadmap, and work that is not a spec (triage, sales, “fix the button”). The **spec-first loop** is still required: closing a card without accepting the spec is a bug. Linear can stay the mirror. Venus is the flow, not a worse board.
@@ -39,6 +40,7 @@ If Venus looks like Notion with a copilot, Notion still wins at ops. The job Not
 | Story complete | Workflow finished (row, message, page) | Spec (and aims/API) **diff accepted** |
 | DoD | Whoever wrote the page or the ticket | Other agent writes DoD; implementer cannot; human accept |
 | Best at | Ops on a living workspace | Spec-driven development, LLM wiki, Cursor-like source writes |
+| PR / code vs spec | No product PR. GitHub connector dumps sources into chat | **Landed feature bound to plan, plan bound to docs.** Review validates code against the spec — not only mistakes ([spec-bound PR review](#spec-bound-pr-review)) |
 
 Notion Agent acts as you and edits in place. Custom Agents are named teammates with their own ACL, schedules, and connectors. That is the right product for triage, standups, Q&A, and keeping databases current. It is the wrong default for an LLM wiki whose second author is a model: the agent becomes the record the moment it types. There is no honest git loop, no human-language accept of the spec change, and no rule that the same model cannot write the bar and the work that “satisfies” it. Version history can revert a page; it cannot tell you what you agreed the spec now means, and why.
 
@@ -65,17 +67,42 @@ Cursor is the **code** implementer (CLI first; IDE optional). Venus is the **spe
 | Multiplayer during the loop | You and the agent; other files stay yours | Page freeze for everyone on that `docId`; other pages stay live; comment rail stays |
 | Story complete | PR merged / tests green | Spec diff **accepted**; PR is the implementer path, not done |
 | Spec | README, rules, chat — optional and drift-prone | First-class; agents do not become the record by typing |
-| Role | **Implementer** (and local review). Aider / CodeGraph CLI are **not** this column — they review the Venus-loop **PR or branch** | Heart: intention accepted, then Cursor may run; then those CLIs may **review** |
+| PR review | Diff + whatever you `@`’d. Bug-hunt. Spec is optional context | **Landed ↔ plan ↔ docs.** Validates **against the spec**: mistakes, did we follow it, how close to the goal ([spec-bound PR review](#spec-bound-pr-review)) |
+| Role | **Implementer** (and local review). Aider / CodeGraph CLI are **not** this column — they review the Venus-loop **PR or branch** | Heart: intention accepted, then Cursor may run; then those CLIs **spec-bound review** |
 
 **Freeze is the current design**, tuned for this Cursor-like loop: one source writer, stable `T0`, then a CodeSpeak-like spec accept. It can be **extended later** (narrower leases, other exclusive modes) once the loop is boring. Do not treat whole-page freeze as the forever product, and do not treat it as a bug. Primary design is: you asked, you wait, you accept **the meaning of the spec change** — Cursor’s checkout, CodeSpeak’s review, on the wiki. The extra wiki cost is only the person who did **not** prompt: they review or they open another page. That is checkout, not Cursor; v1 accepts it.
 
 Use **Cursor CLI** (or SDK) to write product code against a **published** contract on a **shared git checkout** — Venus kicks that. Use the IDE if you want to; the loop does not. Use Venus when the spec must survive that run. The accept on that spec is not a mute apply.
 
-**Aider / CodeGraph CLI** are kicked in the Venus **agentic loop** to **review the PR or the implement branch** (comments, impact, map). They are not a second Cursor and not how Venus implements. Product: [Workspace and Aider](../product/product-plan.md#workspace-and-aider).
+**Aider / CodeGraph CLI** are kicked in the Venus **agentic loop** to **review the PR or the implement branch against the specification** — not only mistakes: closeness to the plan’s goal, and whether the code followed the docs. They are not a second Cursor and not how Venus implements. Product: [Workspace and Aider](../product/product-plan.md#workspace-and-aider), [spec-bound PR review](#spec-bound-pr-review).
 
 Bound **chat** on the wiki copies Cursor’s **add selection to chat**, not Cursor’s apply. [agentic-comparison.md](./agentic-comparison.md).
 
 **Bar:** the whole loop must stay **shorter than Notion + a PR** ([product-plan](../product/product-plan.md)). If it does not, Venus is AFFiNE + a GitHub workflow, aimed at a Notion user, justified by a Cursor metaphor.
+
+## Spec-bound PR review
+
+**Strong point Notion and Cursor both lack.** Product: [spec-bound review](../product/product-plan.md#spec-bound-review).
+
+When Venus reviews a PR with CodeGraph CLI (and/or Aider), it **builds a bound pack**. The landed feature is bound to the plan; the plan is bound to the documentation. Review is forced to validate **code against the specification** — not only “did we make a mistake?”
+
+```text
+PR / branch at productSha'     ← what landed
+        bound to
+plan step (accepted wiki)      ← what we said we would do
+        bound to
+spec / aims / API at wikiSha   ← the documentation
+```
+
+| Question | Notion | Cursor | Venus |
+|---|---|---|---|
+| Did we make a mistake? | No product PR. Ops agents type pages. | Yes — diff review, tests, linters | Yes — same, plus CodeGraph impact at the pin |
+| Did we **follow the spec**? | Spec is the live page; no cloneable SHA the PR is judged against | If you `@` a README. Next session, gone | **Required.** Pack is the headings the plan was accepted against |
+| How **close to the goal**? | Ticket or database row, if you linked one | The chat that kicked Composer | The **plan step’s named outcome**, bound to those docs |
+
+Notion’s GitHub connector dumps sources into chat with **no clock** and **no plan object**. Cursor’s review is the **diff plus whatever made it into context**. Neither has landed-feature → plan → documentation as the review working set. That chain is why Venus can ask “are we done with what we meant?” instead of “does this PR look fine?”
+
+Do not sell CodeGraph as a better GitHub bot. The bot without the bind is Cursor’s bug-hunt. The bind without a product pin is Notion’s dump.
 
 ## Versus CodeSpeak
 
@@ -91,7 +118,8 @@ Venus is the **project heart**: a collab spec humans accept. Agents do the work;
 |---|---|---|
 | Source of intent | Extracted from agent chats | Written and **human-accepted** spec / aims (lease) |
 | Spec shape | Structured requirements, shown when relevant | Wiki pages + git markdown (heart you can read front to back) |
-| Bound to | Code (mapping, drift check) | Published spec git; code must catch up, then spec change is accepted |
+| Bound to | Code (mapping, drift check) | Published spec git; **landed feature ↔ plan ↔ docs**; code must catch up, then spec change is accepted |
+| PR review | Reqs mapped to code; spec follows the body | **Validate code against accepted spec** (closeness to goal, follow the docs) — not update spec from HEAD |
 | What you accept | Human-language meaning of the **code** change | Human-language meaning of the **spec** change (comment-commit) |
 | Stale spec | They auto-update reqs to match the system | Forbidden without a human: story not done until spec accept |
 | If code and intent diverge | Prefer **reality of the code**; spec follows | Prefer **intention**; human decides whether the spec (heart) changes |

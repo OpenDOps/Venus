@@ -280,7 +280,7 @@ Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in keck; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
-Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1. Chat-edit (**AB3**) starts only after M5–M6 apply. History/why pack (**AB4**) starts only after comment-commits (M6); do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
+Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M5–M6 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M6** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
 
 - Init `wiki/` repo.
 - Catalog v0: one folder, one doc, fixed path.
@@ -324,6 +324,8 @@ Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks;
 
 **Exit:** a human markdown edit becomes a git commit with a real why and a visible After/Before; WYSIWYG snapshots stay autocommented.
 
+Parallel (**AB4**, not this exit): [history/why pack](./Agents/agentic-binding.md#ab4--history--why-pack) may start **after this** — real comment-commit whys exist. Do not start AB4 because AB1 exists. Spatial AB1 is not pain 7.
+
 ### M7 — Threads, alternatives, stacks (2 weeks)
 
 - Pin-only comment (no hunks) on **Before** (published or `T0`), right rail.
@@ -344,9 +346,9 @@ Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks;
 
 ## v1 dogfood — document the product
 
-v1 of this plan does **not** need the runner or MCP to be useful. It needs to be the place **this product is documented** — for PMs and other managers who will never open Cursor, and for programmers who clone git.
+v1 of this plan does **not** need the runner or MCP to be useful. It needs to be the place **this product is documented** — for PMs, other managers, high-level software engineers, and CTOs who will never open Cursor, and for implementers who clone git.
 
-**Audience split (force this):** managers live in Venus (tree, WYSIWYG, later accept). Programmers live in Cursor against **accepted wiki git**. If documenting Venus requires an IDE, v1 has failed the flow.
+**Audience split (force this):** that audience lives in Venus (tree, WYSIWYG, later accept). Implementers live against **accepted wiki git** (Cursor optional). If documenting Venus requires an IDE, v1 has failed the flow.
 
 ### Minimum useful (after M4)
 

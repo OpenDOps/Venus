@@ -1,6 +1,6 @@
 # Agentic comparison — bound chat
 
-How Venus **asks** and **remembers** the spec vs Notion Agent and Cursor chat. Better for **LLM wiki design** only if the write path stays a checkout and the **multidimensional graph** stays honest (spatial binds + accepted why). Chat-edit is **AB3** ([agentic-binding](../design/Agents/agentic-binding.md#ab3--chat-edit-markdown)) — Cursor apply, not Notion live type. Write loop: [comparisons.md](./comparisons.md). Aider / CodeGraph CLI: **PR or branch review**, not implement ([product-plan](../product/product-plan.md#workspace-and-aider)). Graph: [Agents](../design/Agents/README.md), [LifeIndexing](../design/Agents/LifeIndexing.md), [product-plan](../product/product-plan.md#multidimensional-spec-graph). Pain (why / evolution): [pains §7](../product/pains.md#7-why-is-it-designed-this-way). Pitch: [pitch.md](./pitch.md).
+How Venus **asks** and **remembers** the spec vs Notion Agent and Cursor chat. Better for **LLM wiki design** only if the write path stays a checkout and the **multidimensional graph** stays honest (spatial binds + accepted why). Chat-edit is **AB3** ([agentic-binding](../design/Agents/agentic-binding.md#ab3--chat-edit-markdown)) — Cursor apply, not Notion live type. Write loop: [comparisons.md](./comparisons.md). Aider / CodeGraph CLI: **spec-bound PR or branch review** (landed ↔ plan ↔ docs), not implement ([product-plan](../product/product-plan.md#spec-bound-review)). Graph: [Agents](../design/Agents/README.md), [LifeIndexing](../design/Agents/LifeIndexing.md), [product-plan](../product/product-plan.md#multidimensional-spec-graph). Pain (why / evolution): [pains §7](../product/pains.md#7-why-is-it-designed-this-way). Pitch: [pitch.md](./pitch.md).
 
 The **gesture** is Cursor. The **object** (a page, a block) is Notion. The **index** — a **main product feature** — is the multidimensional spec graph.
 
@@ -41,7 +41,7 @@ On a wiki, the analog of the import graph is [LifeIndexing](../design/Agents/Lif
 |---|---|---|---|---|
 | Point at a span | Selected blocks | Selection / `@` | Selection → `blockId` | Same Bind |
 | Extra context | `@` page, search, connectors | `@` files, codebase, tools | Direct + logical graphs | Same pack on the draft |
-| Why / history | Page history blob | Why in the **chat** | AB4: comment-commit why + comments on the heading | Same chain on the draft |
+| Why / history | Page history blob | Why in the **chat** | Empty until **AB4 after M6**; then comment-commit why + comments | Same chain on the draft |
 | Clock | Live workspace | Files on disk / chat | `last_indexed` SHA | Lease `T0` |
 | What the user sees | Chat; often edits | Quote + citations | Quote; pack hidden | Quote + hunks on Before |
 | After the answer | May edit the page | May edit code | No write | `putHunks` → meaning-accept |
@@ -75,15 +75,15 @@ The graph does **not** get worse if you stream into the live CRDT. The **draft**
 
 **Versus Cursor.** Cursor remains the inner loop (**implementation**). For a **docs folder**, Cursor-on-git is a decent LLM-wiki **read** (grep, `@file`, dump-if-small) and a weak **design memory** (why in chat). Venus is the better wiki when PMs will not live in the IDE, when you need heading-level binds not file-level `@`, and when the next agent must not re-litigate freeze. Add-to-chat is the right **gesture**; graph + lease is the right **object**. Chat-edit should feel like Composer on frozen `T0`, not Agent in Notion.
 
-**Aider / CodeGraph CLI** are not in that inner loop as authors. In Venus they **review the PR or branch** the implementer opened — agentic-loop review, not implementation ([product-plan](../product/product-plan.md#workspace-and-aider)). Do not sell them as “Venus writes code.”
+**Aider / CodeGraph CLI** are not in that inner loop as authors. In Venus they **review the PR or branch against the spec** — landed feature bound to plan, plan bound to docs: mistakes, follow the specification, closeness to the goal ([product-plan](../product/product-plan.md#spec-bound-review), [comparisons](./comparisons.md#spec-bound-pr-review)). Do not sell them as “Venus writes code.”
 
-**Not yet better until shipped.** Until M3 + M6 + AB1 + AB4 exist, this is a design claim. A small wiki still dumps into context. Noisy LLM `contradicts` edges are worse than grep. Dual store without the graph is still a real product (honest git + meaning-accept); it is not yet a better **LLM wiki** than Cursor-on-`wiki/` plus Notion for the PM.
+**Not yet better until shipped.** Spatial (M3 + AB1) is “what else is in force,” not pain 7. Why (M6 + **AB4**) cannot exist until comment-commits exist. Until both axes ship, this is a design claim. A small wiki still dumps into context. Noisy LLM `contradicts` edges are worse than grep. Dual store without the graph is still a real product (honest git + meaning-accept); it is not yet a better **LLM wiki** than Cursor-on-`wiki/` plus Notion for the PM.
 
 **One line:** Notion owns the living page; Cursor owns the code working set; Venus wins LLM wiki **design** only as a **user-to-agent spec graph** — spatial binds + accepted timeline — on honest git.
 
-## Why / timeline (main feature)
+## Why / timeline (main feature — after M6 / AB4)
 
-The spec graph is **multidimensional** — not an add-on to chat. Spatial *and* temporal. Product: [Agents](../design/Agents/README.md), [product-plan](../product/product-plan.md#multidimensional-spec-graph).
+The spec graph is **multidimensional** — not an add-on to chat. Spatial *and* temporal. Product: [Agents](../design/Agents/README.md), [product-plan](../product/product-plan.md#multidimensional-spec-graph). Do not sell spatial AB1 as this feature. AB4 cannot exist until M6.
 
 The pain it closes: people and agents **cannot understand why it is designed this way**. The clause is silent. Notion history is a slider. Cursor why died in last week’s thread. A new PM re-argues freeze. You cannot name the accept to roll back. [pains §7](../product/pains.md#7-why-is-it-designed-this-way).
 
@@ -93,7 +93,7 @@ Snapshot autocomments and hidden change-gists are *what moved*, not why. Do not 
 
 ## Chat-edit (AB3)
 
-Further improvement after bound chat: the same thread can propose markdown for the bound spans. Same gesture as Cursor (selection in chat → model edits **that working set** → you review a diff). Not Notion (tokens land on the live block tree).
+**Starts at checkout (M5–M6), not when bound chat exists.** Ask-only AB2 can sit for a long time with no edit control. Chat-edit is the Cursor apply analog: the same thread may propose markdown for the bound spans → hunks vs `T0` → meaning-accept. Not Notion (tokens land on the live block tree).
 
 Pack still rides along (spatial + temporal), so a rewrite of freeze can see lease **and** the old why. Apply is [M6](../design/venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks), not the spectator pane.
 
@@ -101,11 +101,11 @@ Pack still rides along (spatial + temporal), so a rewrite of freeze can see leas
 
 **Ship (Cursor-shaped ask on a wiki):** highlight markdown or WYSIWYG blocks → add to chat → Bind `{ sha, docId, blockIds }` → expand LifeIndexing pack → model cites headings. Composer shows the quote. Lag vs live is visible.
 
-**Ship (AB3, Cursor-shaped edit):** same thread proposes markdown vs `T0` → hunks on Before → meaning-accept. Pack still includes `constrains` / `contradicts` / `decided-in`.
+**Ship (AB3, Cursor-shaped edit, after M5–M6):** same thread proposes markdown vs `T0` → hunks on Before → meaning-accept. Not an AB2 follow-on. Pack still includes `constrains` / `contradicts` / `decided-in`.
 
-**Ship (AB4, why pack):** bound heading → `decided-in` chain (human why + rail comments). Snapshots stay `changed-at` only. Revert target is a SHA, not a live undo.
+**Ship (AB4, why pack, after M6):** bound heading → `decided-in` chain (human why + rail comments). Not an AB1 follow-on. Snapshots stay `changed-at` only. Revert target is a SHA, not a live undo.
 
-**Ship (AB5, PR / branch review):** after Cursor implements, CodeGraph CLI and/or Aider review **that PR or branch**. Comments and impact. Not a product commit. Not the implementer.
+**Ship (AB5, spec-bound PR review):** after Cursor implements, CodeGraph CLI and/or Aider review **that PR or branch** with the pack **landed ↔ plan ↔ docs**. Comments: mistakes, did we follow the spec, how close to the goal. Not a product commit. Not the implementer. Not a GitHub bot without the bind.
 
 **Refuse (Notion-copilot shaped):** workspace-wide “ask my wiki” with no pin; agent types the published page from the thread; gists as page body; vector “related” as a bind; pack dumped into the composer; an agent that **uses the human wiki UI** as if that were native.
 
@@ -123,4 +123,4 @@ AB1 is an internal index, not a UI. Notion indexes the workspace for Q&A; Cursor
 | [agentic-binding](../design/Agents/agentic-binding.md) | AB1 → AB4 plan |
 | [LifeIndexing](../design/Agents/LifeIndexing.md) | Index contract |
 | [pains §7](../product/pains.md#7-why-is-it-designed-this-way) | Why / evolution pain |
-| [product-plan — Workspace and Aider](../product/product-plan.md#workspace-and-aider) | Aider / CodeGraph: **PR or branch review**, not implement |
+| [product-plan — Workspace and Aider](../product/product-plan.md#workspace-and-aider) | Two gits. **Spec-bound PR review** (landed ↔ plan ↔ docs). Aider / CodeGraph: not implement |

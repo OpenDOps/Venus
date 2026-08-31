@@ -6,13 +6,13 @@ Humans **point** at spec (a markdown selection). Venus **binds** neighborhood fr
 
 | Milestone | Name | Depends on | Design |
 |---|---|---|---|
-| **AB1** | LifeIndexing (reindex on snapshot) | **[M3](../venus-implementation-plan.md#m3--git-snapshotter-week)** closed (`wiki/` SHA + sidecar on disk) | [LifeIndexing.md](./LifeIndexing.md) |
-| **AB2** | Bound chat (selection → pack → LLM) | **AB1**. Selection: [M2 pane](../M2/README.md) and/or WYSIWYG. Cross-page binds get better after [M4](../venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks). | This file |
-| **AB3** | Chat-edit markdown (lease, not live type) | **AB2** + **[M5](../venus-implementation-plan.md#m5--lease--freeze-week)** + **[M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks)** (acquire, hunks, apply, meaning-accept) | This file |
-| **AB4** | History / why pack (temporal graph) | **AB1** + **M6** comment-commits (real why). Enriches AB2/AB3. Does **not** wait for AB3. [M8](../venus-implementation-plan.md#m8--revert--agent-loop-week) revert uses the same chain. | [LifeIndexing — temporal](./LifeIndexing.md#temporal-graph-commits--comments) |
+| **AB1** | LifeIndexing (spatial reindex on snapshot) | **[M3](../venus-implementation-plan.md#m3--git-snapshotter-week)** closed (`wiki/` SHA + sidecar on disk). **Not** pain 7 / not the main feature — that needs AB4. | [LifeIndexing.md](./LifeIndexing.md) |
+| **AB2** | Bound chat (ask-only: pack → answer; **no wiki write**) | **AB1**. Selection: [M2 pane](../M2/README.md) and/or WYSIWYG. Cross-page binds get better after [M4](../venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks). Not a write path. Spatial pack only until AB4. | This file |
+| **AB3** | Chat-edit markdown (lease, not live type) | **[M5](../venus-implementation-plan.md#m5--lease--freeze-week)** + **[M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks)** checkout (acquire, `T0`, hunks, apply, meaning-accept). Reuses the AB2 composer if it exists; **does not start when AB2 ships.** | This file |
+| **AB4** | History / why pack (temporal graph) | **[M6](../venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks)** comment-commits (real why). Writes into the AB1 index. **Does not start when AB1/AB2 ship.** Does **not** wait for AB3. [M8](../venus-implementation-plan.md#m8--revert--agent-loop-week) revert uses the same chain. | [LifeIndexing — temporal](./LifeIndexing.md#temporal-graph-commits--comments) |
 | **AB5** | Code bind + analyzer | Workspace: two remotes / submodules ([code-bind](./code-bind.md)). **Select** CodeGraph CLI, Aider, or both. Map/graph: `productSha`. Review: after plan-step **implement**. Optional pack on AB2. Does **not** wait for AB3. Does **not** delay [M5](../venus-implementation-plan.md#m5--lease--freeze-week). Runner hook: [product-plan](../../product/product-plan.md#2-plan-runner-orchestrator). | [code-bind.md](./code-bind.md) |
 
-Do not start AB1 while M3 has no `wiki/` writer. Do not start AB2 before `last_indexed` exists for the open page. Do not start AB3 before apply is honest (M6 fixture rows). Do not start AB4 before comment-commits exist. Do not start AB5 before a product remote is pinned (and, for spec+code pack, AB1) **and** `codeAnalyzer` is recorded. Do not put AB1 on the pin cut ([LiveSnapshot](../LiveSnapshot/README.md)). Do not implement AB3 as Notion Agent (stream into the published page). Do not implement AB5 as “Aider/CodeGraph in the wiki” or as the implementer.
+Do not start AB1 while M3 has no `wiki/` writer. Do not start AB2 before `last_indexed` exists for the open page. **AB2 must not write the wiki** (not CRDT, not git, not `putHunks`). Do not start AB3 until **M5–M6 checkout** is honest (lease + apply fixtures) — not because AB2 exists. Do not start AB4 until **M6** has real comment-commit whys — not because AB1 exists. Do not start AB5 before a product remote is pinned (and, for spec+code pack, AB1) **and** `codeAnalyzer` is recorded. Do not put AB1 on the pin cut ([LiveSnapshot](../LiveSnapshot/README.md)). Do not implement AB3 as Notion Agent (stream into the published page). Do not implement AB5 as “Aider/CodeGraph in the wiki” or as the implementer.
 
 ## Principle
 
@@ -44,7 +44,7 @@ This chrome is **user-to-agent**, not agent-as-teammate-in-the-page. The environ
 | **M3** | Git SHA, `.venus/ids/`, dirty set, enqueue after `last_flushed`. **AB1 starts here.** |
 | **M4** | Catalog `gitPath`, linked-doc titles — direct graph across pages. AB2 may ship on one page before this. **Record** wiki + product remotes (AB5); not M4 exit. |
 | **M5** | Lease `T0`: pack at that pin’s SHA. **AB2** does not unfreeze. **AB3** **acquires** the lease (freeze is the write contract). |
-| **M6–M8** | Apply / lease holder stay the write path. AB2 does **not** `putHunks`. **AB3** is a lease **holder** in the host chat: same `acquire` / `putHunks` / comment as Cursor MCP. **AB4** indexes those comment-commits + rail comments as the why chain. M8 revert is the write path when the pack names a bad `decided-in`. |
+| **M6–M8** | Apply / lease holder stay the write path. AB2 does **not** `putHunks`. **AB3** is a lease **holder** in the host chat. **AB4 starts here** (indexes comment-commits + rail comments). M8 revert is the write path when the pack names a bad `decided-in`. |
 | **Product-plan MCP** | Same write tools. Bind protocol (`bind_*`) is read. AB3 host chat calls lease tools; it does not invent a third apply. |
 | **AB5 / runner** | Product checkout at `productSha`. CodeGraph CLI and/or Aider is an **external** analyzer (graph/map, step diff). **Select** first. Cursor remains implementer. |
 
@@ -54,7 +54,7 @@ This chrome is **user-to-agent**, not agent-as-teammate-in-the-page. The environ
 
 Index the published wiki **after** each snapshot commit. Incremental on dirty `docId`s; periodic full re-gist when rolling summaries drift. Direct (links) graph + logical (LLM) graph + component/domain tags.
 
-**Gate:** [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) exit — clone `wiki/`, autocomment snapshots, typing during flush still syncs. HA: [high-availability.md](../LiveSnapshot/high-availability.md) (accepted). AB1 is **not** M3 exit.
+**Gate:** [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) exit — clone `wiki/`, autocomment snapshots, typing during flush still syncs. HA: [high-availability.md](../LiveSnapshot/high-availability.md) (accepted). AB1 is **not** M3 exit. AB1 is **spatial only** (“what else is in force”). It is **not** [pains §7](../../product/pains.md#7-why-is-it-designed-this-way) and not the main wiki feature until AB4.
 
 **Exit**
 
@@ -70,6 +70,18 @@ Contract: [LifeIndexing.md](./LifeIndexing.md). Cheap JSON completions are a **s
 
 Select any span in markdown (or the matching WYSIWYG blocks), add it to a chat turn. The engine binds context from AB1 and sends **user text + pack** to an LLM. The reply is grounded in those selections (citations to `docId` / `blockId` / heading).
 
+**This is an enrichment test, not a write path.** The agent does **not** change the wiki. You are measuring whether answers improve when the model sees the bound pack vs the quote alone. That is **not** Notion-with-a-copilot. Notion Agent’s tell is the teammate **typing the live page**. A pinned ask that cannot apply is Cursor **add-to-chat** on a spec SHA.
+
+Ask-only is still easy to **mis-sell**:
+
+| Risk | What to do |
+|---|---|
+| Empty **why** until M6 | Pack spatial binds + `changed-at` only. Do not call snapshot autocomment “rationale.” AB4 comes later. |
+| Users will ask “apply that” | No apply control. Reply is not the spec. AB3 is a **different** milestone, gated on checkout. |
+| One-page wiki ≈ dump | Still require `bind_selection` then `expand_bind`. Dump-after-pin is allowed when small; dump-without-pin is not. |
+| Chat becomes the home screen | Tree + WYSIWYG stay the product. Ask is a tool. |
+| Opportunity cost vs M4–M6 | Allowed after AB1; **not** a reason to slip lease/apply. |
+
 ```text
 pane / editor selection
     → resolve blockIds (sidecar)
@@ -84,7 +96,7 @@ pane / editor selection
 1. Selected blocks + containing heading + page title
 2. Direct: `contains`, `links-to` / `transcludes` 1-hop, inbound
 3. Logical: `depends-on` / `constrains`; surface `contradicts`
-4. **AB4:** `decided-in` (why + comments) for those headings; snapshots only as `changed-at`
+4. **AB4 (after M6):** `decided-in` (why + comments) for those headings; until then snapshots only as `changed-at`
 5. **AB5 (optional):** CodeGraph graph and/or Aider map + cited product files at `productSha` — only if `implements` / user asked code / this is a plan-step diff. Not every turn.
 6. Gists of those nodes; tags as hints
 7. Stop at a token budget. Do not dump the wiki unless it still fits **after** the bound set. Do not dump the product repo.
@@ -100,7 +112,7 @@ pane / editor selection
 - Selecting a span and sending a message produces an answer that can name the bound headings (not only the quoted sentence).
 - A second selection on another heading (same or other page, if M4 exists) adds a second bind to the same turn.
 - If the index lags the live quote, the turn still sends; the pack is last_indexed and the lag is visible.
-- No write to published CRDT or git from this chat.
+- No write to published CRDT or git from this chat. **No apply / putHunks / “insert this” control.** If the model proposes wording, it stays in the thread.
 
 ### Bind protocol (MCP-shaped)
 
@@ -122,7 +134,9 @@ Do not implement Bind as “stuff all markdown into the system prompt” without
 
 ## AB3 — Chat-edit markdown
 
-Further improvement after bound chat: the same thread can **draft** markdown for the bound spans. Publish is Cursor-shaped (dirty buffer → diff → accept), not Notion-shaped (agent types the live page).
+**Gate: M5–M6 checkout**, not “AB2 shipped.” Ask-only enrichment can exist for a long time with no edit button. Chat-edit is the Cursor **apply** analog: private buffer → diff vs `T0` → meaning-accept. Not Notion (tokens on the live tree).
+
+The same composer as AB2, if it exists, may grow a **propose edit** turn. That growth is this milestone. Reuses Bind + pack; calls lease tools. Does not invent a third apply.
 
 ```text
 AB2 thread + Bind
@@ -136,7 +150,7 @@ AB2 thread + Bind
 
 The pack from AB1 is why this is better than Notion-in-place edit: `contradicts` / `constrains` ride with the selection, so a rewrite of freeze can see lease. The lease is why this is not Notion: the published CRDT does not move until accept.
 
-**Depends on:** AB2 (thread + Bind) and M5–M6 (freeze, `T0`, hunks, apply). Do not fake AB3 with pane splice or `Y.applyUpdate` of `toDoc`. Casual WYSIWYG typing stays snapshot+autocomment; chat-edit of **spec meaning** is comment-commit. Typos the human could have typed in WYSIWYG are not this milestone.
+**Depends on:** **M5–M6** (freeze, `T0`, hunks, apply fixtures green). Reuses AB2 Bind/composer if present; if AB2 is not built yet, AB3 still waits on checkout (it is not a shortcut around lease). Do not fake AB3 with pane splice or `Y.applyUpdate` of `toDoc`. Casual WYSIWYG typing stays snapshot+autocomment; chat-edit of **spec meaning** is comment-commit. Typos the human could have typed in WYSIWYG are not this milestone.
 
 **UI**
 
@@ -163,6 +177,8 @@ Do not add `edit_page` that writes Yjs. Do not snapshot-autocomment a chat rewri
 
 ## AB4 — History / why pack
 
+**Gate: M6 comment-commits**, not “AB1 shipped.” Spatial AB1 without this pack is “what else is in force,” not [pains §7](../../product/pains.md#7-why-is-it-designed-this-way). Do not sell AB1 as the main feature. The main feature is spatial **and** temporal; temporal needs accepted why.
+
 The logical graph is **multidimensional**. Spatial binds (AB1) link document parts. Temporal binds link those parts to **commits and comments**: logically explained diffs, not a page-history blob.
 
 ```text
@@ -173,7 +189,7 @@ The logical graph is **multidimensional**. Spatial binds (AB1) link document par
     → model sees evolution; can name the SHA to revert (M8)
 ```
 
-**Depends on:** AB1 (heading ids at SHAs) and M6 (required why on comment-commits). Snapshot-only timeline is `changed-at` without rationale — not enough for this milestone’s exit. Does **not** wait for AB3; it makes AB2’s ask honest for design work.
+**Depends on:** **M6** (required why on comment-commits). Attaches to the AB1 index (heading ids at SHAs). Snapshot-only timeline is `changed-at` without rationale — not this milestone. Does **not** wait for AB3; does **not** start because AB1/AB2 exist. Makes AB2’s ask honest for design work once why exists.
 
 **Exit**
 
@@ -191,7 +207,7 @@ Two git clocks, CodeGraph CLI and/or Aider on the **product** one. Contract: [co
 
 **Aider and CodeGraph CLI review the agentic-loop PR or branch. They do not implement.** Cursor stays the implementer. Neither is a wiki copilot. Lean default remains both, split jobs (graph vs review comments). Pin the CodeGraph binary when this milestone opens.
 
-**Automated review:** after Cursor **implements** (PR or branch at `productSha'`), the runner kicks the selected analyzer(s) on **that PR or branch**. Output is review comments. Not a merge, not meaning-accept, not a spec write, **not implementation**. v1: always run; flags are a **warning**. Later may fail the step. Merge check remains spec current or skip.
+**Automated review:** after Cursor **implements** (PR or branch at `productSha'`), the runner kicks the selected analyzer(s) on **that PR or branch** with a **spec-bound pack** (landed ↔ plan ↔ docs). Output is review comments: mistakes **and** follow-the-spec **and** closeness to the plan’s goal. Not a merge, not meaning-accept, not a spec write, **not implementation**. v1: always run; flags are a **warning**. Later may fail the step. Merge check remains spec current or skip. Product: [spec-bound review](../../product/product-plan.md#spec-bound-review).
 
 **Optional AB2 pack:** `expand_bind` may include CodeGraph citations and/or the Aider map when the recipe asks. Do not enrich every wiki request (that is Notion + GitHub).
 
@@ -202,7 +218,7 @@ Two git clocks, CodeGraph CLI and/or Aider on the **product** one. Contract: [co
 - Workspace has two pins; clone is one checkout (submodules) or two remotes that Venus binds.
 - `codeAnalyzer` is `aider` | `codegraph` | `both`; CLI versions pinned.
 - Graph and/or map is produced at `productSha`, not the live dirty tree.
-- After implement, a step has a review of **that** diff. The analyzer did not commit product or wiki.
+- After implement, a step has a **spec-bound** review of **that** diff (follow the docs, closeness to the goal — not bug-hunt only). The analyzer did not commit product or wiki.
 - Bound chat without a code recipe still packs spec only.
 
 ## Order
@@ -210,9 +226,11 @@ Two git clocks, CodeGraph CLI and/or Aider on the **product** one. Contract: [co
 ```text
 M3 wiki/ SHA
     → AB1 LifeIndexing (spatial)
-        → AB2 bound chat (ask)
-            → AB3 chat-edit (lease holder; after M5–M6)
-M6 comment-commits  → AB4 history/why pack (enriches AB2; before or beside AB3)
+        → AB2 bound chat (ask-only; no wiki write)
+M5 lease + M6 apply (checkout)
+    → AB3 chat-edit (same composer; lease holder — not “AB2 next”)
+M6 comment-commits
+    → AB4 history/why pack (enriches AB2; **not** after AB1; independent of AB3)
 M8 revert           → write path when AB4 names a decided-in
 M4 catalog / links  → richer direct graph; **record** wiki + product remotes (do not delay M5; analyzer is not M4 exit)
 product-plan MCP    → Bind + expand_history + lease tools
@@ -226,8 +244,8 @@ Step plans and boards (M2-style) come when a milestone is opened. This file is t
 
 - Start AB1 before M3 `wiki/` exists, or fold it into M3 convert.
 - Start AB2 before AB1 has an index row for the open `docId`.
-- Start AB3 before M6 apply is honest, or by typing the published CRDT from the thread.
-- Start AB4 before M6 has real comment-commit whys, or pack snapshot autocomments / change-gists as rationale.
+- Start AB3 before **M5–M6 checkout** is honest (lease + apply fixtures), or by typing the published CRDT from the thread. Do not treat “AB2 exists” as the AB3 gate.
+- Start AB4 before **M6** has real comment-commit whys, because AB1 exists, or pack snapshot autocomments / change-gists as rationale.
 - Treat chat as the spec ([product-plan — chat as the spec](../../product/product-plan.md#do-not-add)). AB3 still requires meaning-accept. AB4’s why is those accepts, not the thread.
 - Mute-apply a chat reply (skip hunks / skip why).
 - Show gists as page content.

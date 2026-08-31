@@ -1,6 +1,6 @@
 # LifeIndexing
 
-**Status:** design. **Main product feature** (spatial + temporal spec graph): [Agents README](./README.md). **AB1** / **AB4** in [agentic-binding.md](./agentic-binding.md). Not an M3 exit. Consumes a **git SHA** after [LiveSnapshot](../LiveSnapshot/README.md) convert. Bound chat (**AB2**) expands a selection from this index. Chat-edit (**AB3**) uses the same pack on a lease `T0`. **AB4** adds the temporal why chain (comment-commits + comments). Lease packing later uses the index **at `T0`** (or last indexed SHA ≤ that clock). Exporter: [MDGate](../MDGate/README.md). Sidecar / `gitPath`: [datamodel git](../datamodel/git.md).
+**Status:** design. **Main product feature** (spatial + temporal spec graph): [Agents README](./README.md) — sell after **AB4**, not at AB1. **AB1** (spatial, after M3) / **AB4** (temporal, **after M6**) in [agentic-binding.md](./agentic-binding.md). Not an M3 exit. Consumes a **git SHA** after [LiveSnapshot](../LiveSnapshot/README.md) convert. Bound chat (**AB2**) expands a selection from this index. Chat-edit (**AB3**) uses the same pack on a lease `T0`. **AB4** adds the temporal why chain (comment-commits + comments). Lease packing later uses the index **at `T0`** (or last indexed SHA ≤ that clock). Exporter: [MDGate](../MDGate/README.md). Sidecar / `gitPath`: [datamodel git](../datamodel/git.md).
 
 A **life index** is a hidden photograph of the published wiki in **two dimensions**:
 
@@ -190,7 +190,7 @@ heading H @ HEAD
 
 Do not put LLM change-gists in the why slot. Do not invent `decided-in` from `snapshot: <title>`.
 
-This dimension is **AB4** in [agentic-binding.md](./agentic-binding.md#ab4--history--why-pack). It needs comment-commits (M6) before “why” is real; snapshots alone only give `changed-at`.
+This dimension is **AB4** in [agentic-binding.md](./agentic-binding.md#ab4--history--why-pack). **After M6**, not after AB1. Comment-commits must exist before “why” is real; snapshots alone only give `changed-at`. Spatial AB1 without this axis is “what else is in force,” not [pains §7](../../product/pains.md#7-why-is-it-designed-this-way).
 
 ## Tags
 

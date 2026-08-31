@@ -70,20 +70,22 @@ Cursor remains the implementer. Neither CodeGraph nor Aider types product code a
 
 ## Automated review (after implement)
 
-Plan step cycle on the **product** diff:
+Plan step cycle on the **product** diff. The review pack is **spec-bound**, not a repo dump. Product: [spec-bound review](../../product/product-plan.md#spec-bound-review).
 
 ```text
 implement (Cursor on product repo → branch / PR)
     → productSha'  (the PR or branch tip)
-    → CodeGraph (if selected): index/query at that SHA; impact of the PR/branch diff
-    → Aider (if selected): review that PR/branch (+ graph or repo map)
-    → review artifact (PR/branch comments)
+    → pack: landed feature bound to plan step bound to spec/docs at wikiSha
+    → CodeGraph (if selected): index/query at that SHA; impact of the PR/branch diff; `implements` vs headings
+    → Aider (if selected): review that PR/branch **against that pack** (+ graph or repo map)
+    → review artifact (PR/branch comments): mistakes **and** follow-the-spec **and** closeness to the plan’s goal
     → tests → breakpoint → done
 ```
 
 The runner **kicks** the selected analyzer(s) the same way it kicks CI. Venus does not host Aider’s REPL or CodeGraph MCP as wiki chat. Checkout is the product submodule/remote at the step’s SHAs.
 
 - Review is **read**. It does not `git commit` the product and does not `putHunks` on the wiki.
+- **Validate code against the specification.** Bug-hunt alone is Cursor’s review. “Looks fine” while the plan’s goal is unmet is a fail of this feature.
 - If the analyzer says the code drifted from a bound heading, that is a **contradiction for a human** (spec lease or another implement pass) — not CodeSpeak (silently update the spec from HEAD) and not Notion (agent types the page).
 - v1: always **run** the selected analyzer; a bad review is a **warning** on the step (same softness as two-agent DoD). Later: may fail the step. Do not add a human click that makes the loop longer than Notion + a PR. Merge check stays **spec current or skip**, not “analyzer approved.”
 
@@ -111,14 +113,15 @@ When spec and code disagree, the model **surfaces** it. It does not publish eith
 
 | | Notion + GitHub connector | Cursor | Venus + analyzer |
 |---|---|---|---|
-| Object | Live page + “All sources” | Product files | Spec heading at `wikiSha` + code at `productSha` |
+| Object | Live page + “All sources” | Product files | Spec heading at `wikiSha` + code at `productSha`; **PR bound to plan bound to docs** |
 | Clock | None | Disk / chat | Two pins |
 | Map / graph | n/a | Embeddings + agent open | CodeGraph query and/or Aider repo map + step diff |
+| PR review | Connector dump; no spec SHA | Diff + `@` context. Bug-hunt | **Against the spec:** mistakes, follow the docs, closeness to the plan’s goal |
 | Writes the wiki | Agent may type the page | No | Lease + meaning-accept only |
 | Writes the product | No | Yes (implementer) | Cursor. Analyzer **reviews** the diff |
 | Every wiki ask includes code | Connector dump | n/a | **No** |
 
-Notion already wins “ask the workspace and also search GitHub.” Venus wins only if code context is **clocked, bound, and not allowed to publish**.
+Notion already wins “ask the workspace and also search GitHub.” Cursor already wins “review this diff.” Venus wins only if code context is **clocked, bound to the plan and the spec, and not allowed to publish** — and the review asks how close we are to that goal.
 
 CodeGraph is stronger as a **queryable** graph (impact, callers). Aider is stronger at **LLM review** of a diff and at a packed map. Cursor is stronger at semantic find, LSP, and the daily edit loop. Select per [above](#select-codegraph-cli-or-aider-or-both). Do not replace Cursor.
 
@@ -142,6 +145,7 @@ Until M3 has `wiki/` SHAs there is nothing to bind. Until a product remote is pi
 - Run **two live indexes** of the same dirty tree. If both: CodeGraph at the pin; Aider review consumes that (or a map of the same SHA).
 - Delay `last_flushed` / pin cut on the analyzer ([LifeIndexing invariant](./LifeIndexing.md#invariant)).
 - Treat analyzer review as meaning-accept or as merge green.
+- Run analyzer review as a **bug-hunt only** (no plan, no spec pack). That is Cursor. The feature is **landed ↔ plan ↔ docs**.
 - Update the spec from code without a human (CodeSpeak pulse).
 - Mix wiki history into the product repo as the default layout.
 - Open AB5 without recording `codeAnalyzer: aider | codegraph | both`.

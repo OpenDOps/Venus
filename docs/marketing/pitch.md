@@ -20,7 +20,7 @@ The hole Notion leaves: CRDT is for humans; **agentic development wants markdown
 
 Humans and agents share one spec that cannot silently drift, because nothing publishes without a lease and a human, and a story is not done until the spec diff is accepted.
 
-Agents draft specs, plans, DoD, code, tests, API markdown, and Hugo-ready pages. They do not become the published record by typing into the live tree. A human accepts the intention — and the spec diff that records it. **Cursor implements** the product via **CLI** (branch / PR); the IDE is not required for that loop. **Aider and CodeGraph CLI review that PR or branch**; they do not implement ([product-plan](../product/product-plan.md#workspace-and-aider)).
+Agents draft specs, plans, DoD, code, tests, API markdown, and Hugo-ready pages. They do not become the published record by typing into the live tree. A human accepts the intention — and the spec diff that records it. **Cursor implements** the product via **CLI** (branch / PR); the IDE is not required for that loop. **Aider and CodeGraph CLI review that PR or branch against the spec** — landed feature bound to plan, plan bound to docs: not only mistakes, but did we follow the specification and how close are we to the goal ([product-plan](../product/product-plan.md#spec-bound-review)). They do not implement.
 
 That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept human-language descriptions of what moved and why — when you understand them — not a mute patch of markdown or code. The hunks are how the change is tracked; the description is what you are saying yes to.
 
@@ -28,7 +28,8 @@ That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept h
 
 - An agent merging a story while the spec still describes the old world.
 - The same agent writing the definition of done and the tests that “prove” it.
-- Aider or CodeGraph CLI as the **implementer** (they review the PR or branch; Cursor writes the code).
+- Aider or CodeGraph CLI as the **implementer** (they review the PR or branch against the spec; Cursor writes the code).
+- PR review that only hunts mistakes (no bind from landed feature to plan to docs).
 - Accepting a mute spec patch, or a page rewrite whose meaning was never reviewed in human language.
 - Markdown on git and the live page meaning two different products.
 - A docs site (Hugo or otherwise) publishing anything that was not accepted into that spec git, or outdated.
@@ -42,7 +43,8 @@ That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept h
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Heart / intention  | Humans accept every spec, plan, DoD, and docs lease. Aims of the software are wiki pages, not generated afterthoughts. |
 | Understand, then accept | CodeSpeak-like cycle on **spec** review: human-language descriptions of the change, pinned to hunks. Not accepting code. |
-| Agents do the work | Planner, DoD author, **implementer (Cursor)**, autodoc — leased drafts, PRs, tests. **Aider / CodeGraph CLI:** review that PR or branch, not implement. |
+| Agents do the work | Planner, DoD author, **implementer (Cursor)**, autodoc — leased drafts, PRs, tests. **Aider / CodeGraph CLI:** spec-bound review of that PR (landed ↔ plan ↔ docs), not implement. |
+| Spec-bound review | **Strong vs Notion/Cursor:** validate code against the spec — follow the docs, closeness to the goal — not a bug-hunt dump ([comparisons](./comparisons.md#spec-bound-pr-review)). |
 | One spec           | BlockSuite CRDT + git markdown snapshots; markdown is not a second live replica.                                       |
 | Spec graph         | **Main feature:** spatial binds + temporal why ([Agents](../design/Agents/README.md)). Not a copilot search box.         |
 | No silent drift    | [venus-design.md](../design/venus-design.md), [venus-plan.md](../drafts/pre-design/venus-plan.md)           |
@@ -66,8 +68,8 @@ That accept is a **CodeSpeak-like review cycle, for spec changes**: you accept h
       gate)                │
 ```
 
-The empty cell is multiplayer spec + file snapshot + agent writes are leased + CodeSpeak-like accept of human-language spec-change descriptions + DoD from a different agent + story closed by human spec accept. Do not sell editor, board, or agent. Sell that gate.
+The empty cell is multiplayer spec + file snapshot + agent writes are leased + CodeSpeak-like accept of human-language spec-change descriptions + DoD from a different agent + story closed by human spec accept + **PR review bound to plan bound to docs**. Do not sell editor, board, or agent. Sell that gate.
 
-Comparisons: [comparisons.md](./comparisons.md) — [PM tools](./comparisons.md#versus-pm-tools-linear-jira-plane-github-issues), [Notion](./comparisons.md#versus-notion-and-notion-agents), [Cursor](./comparisons.md#versus-cursor), [CodeSpeak](./comparisons.md#versus-codespeak). Bound chat (ask, write, **why/history**): [agentic-comparison.md](./agentic-comparison.md). First-class product (runner, MCP, shared git): [product-plan](../product/product-plan.md).
+Comparisons: [comparisons.md](./comparisons.md) — [PM tools](./comparisons.md#versus-pm-tools-linear-jira-plane-github-issues), [Notion](./comparisons.md#versus-notion-and-notion-agents), [Cursor](./comparisons.md#versus-cursor), [spec-bound PR review](./comparisons.md#spec-bound-pr-review), [CodeSpeak](./comparisons.md#versus-codespeak). Unique join: [unique-features](../product/unique-features.md). Bound chat (ask, write, **why/history**): [agentic-comparison.md](./agentic-comparison.md). First-class product (runner, MCP, shared git): [product-plan](../product/product-plan.md).
 
 Autodocumenting (APIs, aims, Hugo) is part of the same gate: generated files are still markdown in the spec tree; Hugo only builds **accepted** git. Details: [venus-plan.md](../drafts/pre-design/venus-plan.md) (autodoc + Hugo).
