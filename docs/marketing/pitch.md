@@ -1,5 +1,7 @@
 # Venus pitch
 
+**English** · [Русский](./pitch.ru.md)
+
 ![Venus](/docs/img/image.png)
 
 **Venus is spec-driven development** — a way to build software when agents write the code.

@@ -1,5 +1,7 @@
 # Venus
 
+**English** · [Русский](./README.ru.md)
+
 ![Venus](docs/img/image.png)
 
 **Venus is your project heart.**
@@ -31,7 +33,7 @@ What those do, what Vitest covers, and what is not automated yet: **[docs/runboo
 
 ## Docs
 
-- [Pitch](docs/marketing/pitch.md) — what Venus is (the project heart)
+- [Pitch](docs/marketing/pitch.md) — what Venus is ([Русский](docs/marketing/pitch.ru.md))
 - [Runbook](docs/runbook.md) — install, `dev`, `test`, `build`, Compose
 - [DevOps](docs/devops/README.md) — Compose stack; Kubernetes later
 - [Design index](docs/design/README.md) — map of the design folder
