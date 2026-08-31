@@ -402,7 +402,7 @@ Venus/
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
-  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans
+  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (incl. M3.0)
   docs/devops/              # Compose now; Kubernetes later
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```

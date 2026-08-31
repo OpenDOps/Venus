@@ -11,7 +11,7 @@ A **pin** is a frozen copy of Yjs bytes (plus catalog) at time T. **Git snapshot
 Live collaboration never waits on markdown, git, or pin conversion.
 
 ```text
-browsers  ──Yjs update v1──►  keck memory Workspace
+browsers  ──Yjs update v1──►  hub memory (apply + broadcast)
                                   │
                                   ├── broadcast to other sockets     (always)
                                   ├── persist batch → Postgres       (always, ~1s)
@@ -68,16 +68,16 @@ Goal the product needs: **copy does not stuck CRDT**.
 While Venus is pinning and converting:
 
 - Clients keep sending updates.
-- keck **applies** them to the in-memory Workspace and **broadcasts** them.
-- Persist to Postgres **keeps running** (keck already batches ~1s; see [octobase.md](./octobase.md)).
+- The **hub** **applies** them to the in-memory doc and **broadcasts** them.
+- Persist to Postgres **keeps running** (hub batches ~1s; [M3.0 HA](../M3.0/high-availability.md). M1 keck did the same: [octobase.md](./octobase.md)).
 - New updates after the pin clock are **not** in this git commit. They wait for the next idle/flush (already the lag rule).
 
-The Venus pin is that in-memory copy. It is **not** a pause of OctoBase persist.
+The Venus pin is that in-memory copy. It is **not** a pause of hub persist.
 
 Do **not**:
 
 - Stop apply or WebSocket fan-out for the duration of `fromDoc` / `git commit`.
-- Pause Postgres writes for the whole convert (seconds). That only increases crash-loss and is not a keck API.
+- Pause Postgres writes for the whole convert (seconds). That only increases crash-loss and is not a hub API.
 - `fromDoc` the live `Store` in a browser tab.
 - Re-export the whole wiki; only dirty `docId`s.
 
@@ -85,9 +85,9 @@ A best-effort cut: sequential pins of dirty docs, then convert. Not a multi-spac
 
 ## Pin source (prototype)
 
-Preferred: the snapshotter holds its **own Y.Doc replica** (same `SyncProvider` / AFFiNE socket as a hidden client, or a Node `Y.Doc` on that room). Pin = `Y.encodeStateAsUpdate` into a **new** `Y.Doc` (or keep the bytes). Convert from that clone (`fromPinnedBytes`). keck never sees the pin.
+Preferred: the snapshotter holds its **own Y.Doc replica** (same `SyncProvider` / AFFiNE socket as a hidden client, or a Node `Y.Doc` on that room). Pin = `Y.encodeStateAsUpdate` into a **new** `Y.Doc` (or keep the bytes). Convert from that clone (`fromPinnedBytes`). The hub never sees the pin.
 
-Acceptable for M3 idle (30–120s): `GET /api/block/:workspace/export` after persist has had a chance to flush. That GET reads **Postgres**, not keck’s live memory ([octobase.md](./octobase.md#export-reads-postgres)). Idle flush is already longer than the ~1s persist batch.
+Acceptable for M3 idle (30–120s): `GET /api/block/:workspace/export` after persist has had a chance to flush. That GET reads **Postgres**, not the hub’s live RAM ([M3.0 HA — pin](../M3.0/high-availability.md#pin-against-this-hub)). Idle flush is already longer than the ~1s persist batch.
 
 Flush-before-lease: pin from the replica (or wait ≥2s then GET) so `T0` is not missing in-memory-not-yet-SQL updates.
 
@@ -115,17 +115,18 @@ LifeIndexing ([Agents](../Agents/LifeIndexing.md)) reads this tree at the commit
 
 Clone of `wiki/` is ordinary folders + markdown. Folder **nesting** is directories. Sibling **order** stays on the catalog CRDT. Empty catalog folders are not in git unless a placeholder is added later.
 
-## OctoBase
+## Collab front (hub)
 
-Stock keck **does not** offer “hold persist until pin copy finishes.” It already separates live apply/broadcast from a ~1s persist buffer. Venus puts the pin **beside** keck. After persist, keck **notifies** dirty; it does not convert. OctoBase **stays** in cloud and on devices. Detail: [octobase.md](./octobase.md).
+The hub **does not** offer “hold persist until pin copy finishes.” It already separates live apply/broadcast from a ~1s persist buffer ([M3.0 HA](../M3.0/high-availability.md)). Venus puts the pin **beside** the hub. After persist, Postgres **upserts** `dirty`; the hub does not convert and does not write `jobs`. M1 keck recon (legacy): [octobase.md](./octobase.md).
 
 ## Files
 
 | File | Role |
 |---|---|
 | [README.md](./README.md) | This design |
-| [octobase.md](./octobase.md) | What keck actually does (export, persist, no pin API) |
-| [high-availability.md](./high-availability.md) | Queue, dirty list, pin cut, worker fleet. **Accepted;** M3 code is gated on it. |
+| [octobase.md](./octobase.md) | **M1 keck recon** (export, persist, Format overlay). Not the product hub. |
+| [M3.0/high-availability.md](../M3.0/high-availability.md) | Live CRDT HA (sticky owner, persist, dirty, drain) |
+| [high-availability.md](./high-availability.md) | Queue, dirty list, pin cut, worker fleet. **Re-accept;** M3 code is gated on it **and** M3.0 closed. |
 | [MDGate pin-convert](../MDGate/pin-convert.md) | Host convert helper (no git write) |
 | [LifeIndexing](../Agents/LifeIndexing.md) | After commit: gists, tags, direct + logical graphs. Not convert. Plan: [agentic-binding](../Agents/agentic-binding.md). |
 

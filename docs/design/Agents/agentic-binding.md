@@ -54,7 +54,7 @@ This chrome is **user-to-agent**, not agent-as-teammate-in-the-page. The environ
 
 Index the published wiki **after** each snapshot commit. Incremental on dirty `docId`s; periodic full re-gist when rolling summaries drift. Direct (links) graph + logical (LLM) graph + component/domain tags.
 
-**Gate:** [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) exit — clone `wiki/`, autocomment snapshots, typing during flush still syncs. HA: [high-availability.md](../LiveSnapshot/high-availability.md) (accepted). AB1 is **not** M3 exit. AB1 is **spatial only** (“what else is in force”). It is **not** [pains §7](../../product/pains.md#7-why-is-it-designed-this-way) and not the main wiki feature until AB4.
+**Gate:** [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) exit — clone `wiki/`, autocomment snapshots, typing during flush still syncs. **After [M3.0](../M3.0/README.md)** (hub). HA: [LiveSnapshot HA](../LiveSnapshot/high-availability.md) (snapshotter beside the hub). AB1 is **not** M3 exit. AB1 is **spatial only** (“what else is in force”). It is **not** [pains §7](../../product/pains.md#7-why-is-it-designed-this-way) and not the main wiki feature until AB4.
 
 **Exit**
 

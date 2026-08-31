@@ -65,6 +65,7 @@ crdt_snapshot (workspace_id, doc_id)  → { bin, clock, updated_at }
 crdt_update   (workspace_id, doc_id, seq) → { bin, created_at }
 blob          (workspace_id, hash) → { bytes }     # or S3 later; M3.0 = DB
 workspace_lease (workspace_id) → { owner, lease_until }
+dirty         (workspace_id, doc_id) → { clock, first_dirty_at }  # trigger on persist; no jobs yet
 ```
 
 - **Hydrate:** snapshot + apply pending updates → RAM.

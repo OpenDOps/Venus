@@ -39,10 +39,10 @@ M1 + M2 together: same Y.Doc in two tabs **and** a markdown photograph of that t
 
 | Later | Why not M2 |
 |---|---|
-| `wiki/` git, autocomment | M3 — [LiveSnapshot](../LiveSnapshot/README.md). Convert helper `pinThenFromDoc` is in mdgate; this milestone does not write git. |
+| `wiki/` git, autocomment | **After [M3.0](../M3.0/README.md)** — M3 [LiveSnapshot](../LiveSnapshot/README.md). Convert helper `pinThenFromDoc` is in mdgate; this milestone does not write git. |
 | Apply / hunks / `ap-*` fixtures | M6 — [apply.md](../MDGate/apply.md) |
 | CodeMirror, lease, freeze | M5. M2 pane uses **highlight.js**, not CM. |
-| After/Before OctoBase spaces | [datamodel CRDT](../datamodel/crdt.md#commit-before-and-after); M5–M6 |
+| After/Before hub spaces | [datamodel CRDT](../datamodel/crdt.md#commit-before-and-after); M5–M6 |
 | Catalog, folder tree, product header | M4 |
 | Second page / linked-doc **resolution** in the catalog | M4. M2 may **export** the linked-doc markdown form with a synthetic `pageId`. |
 | Telling agents “edit `.md` in git and it will apply” | After M6 apply fixtures |
@@ -634,7 +634,7 @@ M3 may assume:
 
 M3 exit is clone `wiki/` and read markdown. M2 exit is “WYSIWYG and a read-only pane stay aligned on a documented subset.”
 
-M3 **implementation** is gated on [high-availability.md](../LiveSnapshot/high-availability.md) **Acceptance**. M3 is the thin column of that shape (RAM dirty, in-process idle, replica or idle GET). Do not invert it: no `fromDoc` of the live Store for git, no snapshotter in keck, no markdown in Postgres.
+M3 **implementation** is gated on [M3.0](../M3.0/README.md) **closed** and [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance**. Next after this plan: **[M3.0 Venus hub](../M3.0/README.md)**. M3 is the thin column of the snapshotter shape (RAM dirty, in-process idle, replica or idle GET). Do not invert it: no `fromDoc` of the live Store for git, no snapshotter in the hub, no markdown in Postgres.
 
 ## Invariants (M2 only)
 

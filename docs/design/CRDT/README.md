@@ -31,8 +31,9 @@ The **protocol** is Yjs update v1 (`y-protocols/sync`). That is what “y-websoc
 M1 **does not** run the `y-websocket` npm server. keck’s handshake requires `Sec-WebSocket-Protocol: AFFiNE`. Stock `WebsocketProvider` cannot set that, so it will not connect.
 
 ```text
-Hosted (this repo / cloud)   browser ── AFFiNE WS ── keck ── Postgres
-On device                    app ── OctoBase local store (optional sync to keck)
+M1 hosted                     browser ── AFFiNE WS ── keck ── Postgres jwst
+After M3.0                    browser ── AFFiNE WS ── hub  ── Postgres crdt_*
+On device (later)             app ── hub + local SQLite (optional sync to hosted hub)
 ```
 
 M1: keck **is** the WS front. Hosted persist is Postgres. **After M3.0:** the hub is the WS front; same Postgres instance, Venus tables. Cloud does **not** sit behind Hocuspocus or nbstore. Tests: [sync seam](../../scenarios/sync-seam.md).

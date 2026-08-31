@@ -292,7 +292,7 @@ Do not enrich every wiki request with the codebase. Do not delay M5 for this. Af
 
 ## Already designed — ship the spine
 
-Without these, orchestration is theater. They are [implementation plan](../design/venus-implementation-plan.md) M2–M8, not this file’s invention.
+Without these, orchestration is theater. They are [implementation plan](../design/venus-implementation-plan.md) M2 → **M3.0** → M3–M8, not this file’s invention. Rebuild the collab front (**hub**) **before** git snapshotter.
 
 1. **MDGate** — honest git markdown. No jitter, stable ids.
 2. **Git snapshots + catalog** — cloneable spec; casual WYSIWYG without a ceremony.

@@ -1,6 +1,6 @@
 # Architecture
 
-How Venus’s pieces connect. **Product rules** (lease, freeze, two git classes) stay in [venus-design.md](./venus-design.md). **Stores:** [datamodel](./datamodel/README.md). This file is the **dataflow**: who talks to whom. Markdown hangs off the synced Store ([projection](#markdown-projection-add-here-before-coding-m2)).
+How Venus’s pieces connect. **Product + data design** (goal, stack, lease, git, agentic contract): [venus-design.md](./venus-design.md). **Stores:** [datamodel](./datamodel/README.md). This file is the **dataflow**: who talks to whom. Markdown hangs off the synced Store ([projection](#markdown-projection-add-here-before-coding-m2)).
 
 Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CRDT/README.md). Installed names: [api-map.md](./api-map.md). How we test each box: [scenarios](../scenarios/README.md).
 
@@ -100,8 +100,9 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | Need | Where |
 |---|---|
 | Stores (CRDT + git) | [datamodel](./datamodel/README.md) |
-| Why freeze, two git classes | [venus-design.md](./venus-design.md) |
-| Yjs wire, keck, Postgres, export | [CRDT/README.md](./CRDT/README.md) |
+| Goal, stack, lease, git, agentic contract | [venus-design.md](./venus-design.md) |
+| Why freeze | [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
+| Yjs wire, hub (M1: keck), Postgres, export | [CRDT/README.md](./CRDT/README.md) |
 | Pins and curl | [api-map.md](./api-map.md) |
 | M1 steps | [M1/plan.md](./M1/plan.md) |
 | M2 steps | [M2/plan.md](./M2/plan.md) |

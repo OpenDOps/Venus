@@ -1,6 +1,6 @@
 # Glossary
 
-Words that collide in Venus. Product model: [venus-design.md](./venus-design.md). Stores: [datamodel](./datamodel/README.md). Runtime dataflow: [architecture.md](./architecture.md).
+Words that collide in Venus. Product + data design: [venus-design.md](./venus-design.md). Stores: [datamodel](./datamodel/README.md). Runtime dataflow: [architecture.md](./architecture.md).
 
 ## Four “snapshot” senses
 

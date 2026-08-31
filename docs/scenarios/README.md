@@ -4,6 +4,8 @@ Implemented tests, grouped by the **feature** they prove (the boxes on [architec
 
 Commands assume the **repo root**. Machine setup (Docker, `.env`, ports): [runbook](../runbook.md). This folder is **what we assert**.
 
+M1/M2 e2e currently need Compose **keck**. After [M3.0](../design/M3.0/README.md) the same specs run against **hub** (update `kind` asserts if it becomes `'venus'`).
+
 ## Runners
 
 | Command | Runner | Needs | Matches |
@@ -45,7 +47,7 @@ Keep **one** architecture map. Do **not** split `docs/design/` into `keck/`, `po
 
 | Layer | Lives in | Grows when |
 |---|---|---|
-| Product rules | [venus-design.md](../design/venus-design.md) | lease, git classes |
+| Product + data design | [venus-design.md](../design/venus-design.md) | goal, hub, lease, git, agentic |
 | Dataflow | [architecture.md](../design/architecture.md) | a **new box** on the diagram |
 | Slice internals | [CRDT](../design/CRDT/README.md), later MDGate / git sidecar | that slice is being built |
 | Installed names / URLs | [api-map.md](../design/api-map.md) | recon fills Actual |

@@ -10,7 +10,7 @@ Pieces exist elsewhere (CRDT wikis, git markdown, PR review, CodeGraph). Uniquen
 
 **Use:** (1) a team call to brainstorm software design on collaborative docs ([product-plan.md](./product-plan.md), Product use: brainstorming). (2) **Share while Cursor stays the IDE** — commit markdown, team edits WYSIWYG, pull back ([product-plan.md](./product-plan.md), Product use: share). Live sessions leave a **session-bound commit** — a measurable spec diff of what the call consensused ([product-plan.md](./product-plan.md), Session-bound commit).
 
-**Shipped vs story:** dual store is the next spine (M3). Cursor-commit → WYSIWYG apply is **M6**. Session-bound commit needs M3 git, then agent lease — do not sell idle flush as “what the call decided.” Graph, bound chat, spec-bound PR review are in the story from day one; do not sell them as shipped before their gates ([product-plan.md](./product-plan.md)).
+**Shipped vs story:** dual store is the next spine (**M3**, after **[M3.0 hub](../design/M3.0/README.md)**). Cursor-commit → WYSIWYG apply is **M6**. Session-bound commit needs M3 git, then agent lease — do not sell idle flush as “what the call decided.” Graph, bound chat, spec-bound PR review are in the story from day one; do not sell them as shipped before their gates ([product-plan.md](./product-plan.md)).
 
 ## 1. Collaborative brainstorming (cross-department spec)
 

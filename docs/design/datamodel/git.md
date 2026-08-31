@@ -31,13 +31,13 @@ wiki/
 |---|---|---|
 | `<gitPath>.md` | Projection of one published page | `fromDoc` on a **pin** (snapshot) or on published after comment-commit **accept** |
 | `.venus/ids/<docId>.json` | `{ docId, clock, blocks: [{ id, start, end }] }` | Same export. Ranges rebuilt every write; ids are CRDT ids |
-| `assets/` | Image (and other) bytes | keck blob store → files on flush if dirty |
+| `assets/` | Image (and other) bytes | Hub blob store → files on flush if dirty |
 | directories | Folder **nesting** | Catalog `gitPath`; `git mv` on publish when path changed |
 | git commit message | Why (or autocomment) | Snapshot vs comment-commit, below |
 
 Clone of `wiki/` is ordinary markdown. Sibling **order** lives on the [catalog CRDT](./crdt.md#catalog), not in git. Empty catalog folders are not in git unless a placeholder is added later.
 
-Do **not** commit keck/Postgres dumps as the share format. Optional `.venus/snapshots/*.bin` is a restore aid, not what agents edit.
+Do **not** commit hub/Postgres dumps as the share format. Optional `.venus/snapshots/*.bin` is a restore aid, not what agents edit.
 
 ## Two commit classes
 
@@ -79,7 +79,7 @@ Used when markdown must **come back** ([apply.md](../MDGate/apply.md)): diff vs 
 | Agent private markdown buffer | Holder RAM until submit |
 | LifeIndexing gists / logical edges | Side index at git SHA ([LifeIndexing](../Agents/LifeIndexing.md)); not the spec |
 
-After accept, git has the new `.md` + sidecar; After/Before spaces remain **archives** in OctoBase.
+After accept, git has the new `.md` + sidecar; After/Before spaces remain **archives** on the hub.
 
 ## Revert
 

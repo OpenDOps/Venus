@@ -2,7 +2,7 @@
 
 | File / folder | Role |
 |---|---|
-| [venus-design.md](./venus-design.md) | Product rules (lease, freeze, two git classes, views) |
+| [venus-design.md](./venus-design.md) | Product + data design: goal, hub stack, dual store, lease/git/views, agentic contract |
 | [datamodel](./datamodel/README.md) | **What is stored where:** [CRDT spaces](./datamodel/crdt.md), [git](./datamodel/git.md) |
 | [architecture.md](./architecture.md) | Dataflow (M0–M2 on keck; M3.0+ on hub) |
 | [glossary.md](./glossary.md) | Doc export vs `T0` vs git snapshot vs markdown projection |
