@@ -31,6 +31,7 @@ What those do, what Vitest covers, and what is not automated yet: **[docs/runboo
 
 ## Docs
 
+- [Pitch](docs/marketing/pitch.md) — what Venus is (the project heart)
 - [Runbook](docs/runbook.md) — install, `dev`, `test`, `build`, Compose
 - [DevOps](docs/devops/README.md) — Compose stack; Kubernetes later
 - [Design index](docs/design/README.md) — map of the design folder
@@ -41,4 +42,3 @@ What those do, what Vitest covers, and what is not automated yet: **[docs/runboo
 - [Scenarios](docs/scenarios/README.md) — implemented tests by feature
 - [Comparisons](docs/marketing/comparisons.md) — vs PM tools and CodeSpeak
 - [Plans](docs/drafts/pre-design/venus-plan.md) — spec → plan → DoD → implement → human-accepted docs
-- [Pitch](docs/marketing/pitch.md) — what Venus is (the project heart)

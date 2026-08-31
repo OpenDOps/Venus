@@ -1,5 +1,7 @@
 # Venus pitch
 
+![Venus](/docs/img/image.png)
+
 **Venus is spec-driven development** — a way to build software when agents write the code.
 
 Humans keep intention. Agents do the work. The spec is the record. A story is not done until that spec is current — or you skip it because contract did not move.
