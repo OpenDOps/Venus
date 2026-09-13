@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { SEED_H1, SEED_H2, seedMarkdownDemo } from '../seed.js';
 import { MemoryNoopProvider } from '../sync-provider.js';
+import { PAGE_DOC_ID, WORKSPACE_ID } from '../ids.js';
 import { createM0Workspace } from '../workspace.js';
 import { fromDoc } from './from-doc.js';
 import {
@@ -46,7 +47,7 @@ test('Seed fromDoc: MemoryNoopProvider seed contains Why Venus and Empty host', 
   expect(markdown).toContain(SEED_H2);
   expect(markdown.endsWith('\n') && !markdown.endsWith('\n\n')).toBe(true);
   expect(markdown).toBe(readFileSync(seedGoldenPath, 'utf8'));
-  expect(sidecar.docId).toBe('doc:home');
+  expect(sidecar.docId).toBe(PAGE_DOC_ID);
   expect(sidecar.clock.length).toBeGreaterThan(0);
   expect(markdown).not.toMatch(/<!--\s*id:/);
   expect(sidecar.blocks[0]?.id).toBe(session.store.root!.id);
@@ -134,7 +135,7 @@ test('side-ids: three paragraphs map CRDT ids to slices; no ids in the body', as
     session.workspace,
   );
 
-  expect(sidecar.docId).toBe('doc:home');
+  expect(sidecar.docId).toBe(PAGE_DOC_ID);
   const notes = noteRanges(session.store, sidecar);
   expect(notes.map((b) => b.id)).toEqual(ids);
   expect(notes).toHaveLength(3);
@@ -242,6 +243,8 @@ test('linked-doc comment injects at the adapter URL, not a prose substring', asy
   expect(linkAt).toBeGreaterThan(prose);
   expect(commentAt).toBeGreaterThan(linkAt);
   expect(markdown).toMatch(
-    /\[untitled\]\(\.\/workspace\/venus-m0\/doc:lease\)\n<!-- venus:doc:doc:lease -->/,
+    new RegExp(
+      `\\[untitled\\]\\(\\.\\/workspace\\/${WORKSPACE_ID}\\/doc:lease\\)\\n<!-- venus:doc:doc:lease -->`,
+    ),
   );
 });

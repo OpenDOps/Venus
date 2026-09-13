@@ -1,8 +1,8 @@
 # Compose stack
 
-**Feature:** one Compose file runs **postgres**, **octobase**, and **web**. A new machine brings up the M1 loop without memorizing Vite flags. [devops/compose](../devops/compose.md).
+**Feature:** one Compose file runs **postgres**, **hub**, and **web**. A new machine brings up the loop without memorizing Vite flags. [devops/compose](../devops/compose.md). Hub internals: [hub](../design/components/hub/).
 
-**Boxes:** Postgres, keck, nginx `web` ([architecture](../design/architecture.md#elements)).
+**Boxes:** Postgres, hub, nginx `web` ([architecture](../design/architecture.md#elements)).
 
 ## Run
 
@@ -21,15 +21,11 @@ PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 pnpm --filter @venus/w
 
 | Spec | Proves |
 |---|---|
-| `compose.test.ts` — Three services | `docker-compose.yml` has separate `postgres`, `octobase`, `web`; named volume `pg-data`; no `USE_MEMORY_SQLITE` |
-| `compose.test.ts` — `docker compose config` | when the daemon is up, `--services` is those three names |
+| `compose.test.ts` — Product path | `docker-compose.yml` has `postgres`, `hub`, `web`; `hub-b` is profile `ha`; volume `pg-venus-data`; `POSTGRES_HOST` / `USER` / `PASSWORD`; required `HUB_DB_*` / persist / compact; `HUB_CORS_ORIGINS`; no `octobase` |
+| `compose.test.ts` — `docker compose config` | when the daemon is up, `--services` is `postgres` `hub` `web` |
 
 ## Playwright (optional Compose base URL)
 
 | Spec | Proves |
 |---|---|
 | `e2e/m1-two-tabs.spec.ts` with `PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080` | A→B on the **web service URL** (same-origin WS through nginx) |
-
-## Manual
-
-Step 8 DoD allows a person: `docker compose up --build`, open http://127.0.0.1:8080, two tabs, type `from-a` in A, B sees it without reload (10s). Full close-out is [M1 step 9](../design/M1/plan.md#9-step-verify).

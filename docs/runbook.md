@@ -10,7 +10,7 @@ M0 contract: [design/M0](./design/M0/README.md). M1 contract: [design/M1](./desi
 |---|---|
 | Node | `>=22` (`engines` in root `package.json`) |
 | pnpm | `10.19.0` (`packageManager` field; Corepack: `corepack enable`) |
-| Docker | Compose v2. Needed for M1 (`postgres` + `octobase`; `web` for the three-service loop). Not needed for `pnpm dev`. |
+| Docker | Compose v2. Needed for M1/M3.0 (`postgres` + `hub`; `web` for the three-service loop). Not needed for `pnpm dev`. |
 
 Do not mix two BlockSuite or `yjs` majors. `yjs` is pinned to `13.6.32` via root `pnpm.overrides`.
 
@@ -30,61 +30,61 @@ pnpm dev
 
 Same as `pnpm --filter @venus/web dev` (Vite). Default URL is the Vite printout, usually `http://localhost:5173`.
 
-M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **octobase** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **[M3.0 Venus hub](./design/M3.0/README.md)** (replace keck). Do **not** code `wiki/` until M3.0 is closed and [LiveSnapshot HA](./design/LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the hub). Adapter: [MDGate](./design/MDGate/README.md).
+M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). **M3.0 hub is the product collab server** ([hub](./design/components/hub/)). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **hub** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **[M3 — Git snapshotter](./design/LiveSnapshot/README.md)**, gated on [LiveSnapshot HA](./design/LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the hub). Do **not** code `wiki/` until that gate. Adapter: [MDGate](./design/MDGate/README.md).
 
 Browser console noise from extensions (`contentscript.js`, MetaMask, ObjectMultiplex) is not Venus.
 
-## Sync (M1)
+## Sync (hub)
 
-Postgres and OctoBase keck are **separate** Compose services. keck is AGPL-3.0 (`deploy/NOTICE`). The browser talks to keck on `:3000`; Postgres is not published. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
+Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/hub/)). The browser talks to the hub on `:3000`; Postgres is not published. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
 
 ```bash
-docker compose up --build postgres octobase
+docker compose up --build postgres hub
 # same as: pnpm sync:up
 ```
 
-Wait until keck logs `listening on 0.0.0.0:3000` and `docker compose ps` shows both services running. Health (no swagger; `JWST_DEV` off):
+Wait until hub logs `listening on 0.0.0.0:3000` and `docker compose ps` shows both services running. Health:
 
 ```bash
-curl -sSSf -X POST http://127.0.0.1:3000/collaboration/venus-m0
+curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
 # {"protocol":"AFFiNE"}
 ```
 
 **Doc export** (current Y.Doc as Yjs update v1; no browser; not `T0`):
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs
+curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs
 ```
 
 Same command: api-map **Export command**. After the page has been hydrated at least once, the file should be more than a trivial empty update. Vitest: `apps/web/src/host/snapshot.test.ts` (Reachable / Decodes). [Doc export scenarios](./scenarios/doc-export.md). [M1 step 7](./design/M1/plan.md#7-step-snapshot).
 
-Stop (keeps the named volume `pg-data` — the doc survives):
+Stop (keeps the named volume `pg-venus-data` — the doc survives):
 
 ```bash
 docker compose down
 # same as: pnpm sync:down / pnpm compose:down
 ```
 
-`docker compose down -v` **deletes** `pg-data`. Do not use `-v` if you need the workspace.
+`docker compose down -v` **deletes** `pg-venus-data`. Do not use `-v` if you need the workspace.
 
-Host `cargo run --bin keck` is recon history only (used SQLite). It is not the product server.
+Host `cargo run -p venus-hub` is recon only (still needs Postgres). It is not the product server.
 
-Point Vite at keck (does not start Compose; `pnpm dev` stays memory-only without this):
+Point Vite at the hub (does not start Compose; `pnpm dev` stays memory-only without this):
 
 ```bash
 # apps/web/.env — not required; copy from .env.example
-VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/venus-m0
+VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
 ```
 
-Or one-shot: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/venus-m0 pnpm dev`.
+Or one-shot: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 pnpm dev`.
 
-M1 Playwright against host Vite (Compose keck must already be up):
+M1 Playwright against host Vite (Compose hub must already be up):
 
 ```bash
 pnpm test:e2e:m1
 ```
 
-That starts Vite on `127.0.0.1:5174` with `VITE_SYNC_URL` so it does not reuse memory-only `:5173`. Specs: [scenarios](./scenarios/README.md) (`m1-provider`, [hydrate](./scenarios/hydrate-persist.md) including `m1-smoke`, [two-tabs](./scenarios/collaboration.md), [blobs](./scenarios/blobs.md)). Doc export: [doc-export](./scenarios/doc-export.md) via `pnpm test`. Vite proxies `/api` to keck. Do not `docker compose down -v` between those tests.
+That starts Vite on `127.0.0.1:5174` with `VITE_SYNC_URL` so it does not reuse memory-only `:5173`. Specs: [scenarios](./scenarios/README.md) (`m1-provider`, [hydrate](./scenarios/hydrate-persist.md) including `m1-smoke`, [two-tabs](./scenarios/collaboration.md), [blobs](./scenarios/blobs.md)). Doc export: [doc-export](./scenarios/doc-export.md) via `pnpm test`. Vite proxies `/api` to the hub. Do not `docker compose down -v` between those tests.
 
 ## Deploy (Compose web)
 
@@ -95,7 +95,7 @@ docker compose up --build
 # same as: pnpm compose:up
 ```
 
-Wait until `docker compose ps` shows `postgres`, `octobase`, and `web` running (web healthy). Open that URL — not Vite `:5173`. Two tabs on it is the M1 loop ([plan](./design/M1/plan.md), [scenarios/compose](./scenarios/compose.md)). Person-in-browser close-out: [Manual testing (M1)](#manual-testing-m1-close-out).
+Wait until `docker compose ps` shows `postgres`, `hub`, and `web` running (web healthy). Open that URL — not Vite `:5173`. Two tabs on it is the M1 loop on the hub ([plan](./design/M3.0/plan.md), [scenarios/compose](./scenarios/compose.md)). Person-in-browser close-out: [Manual testing (M1)](#manual-testing-m1-close-out).
 
 Playwright against nginx instead of Vite:
 
@@ -129,7 +129,7 @@ pnpm test:e2e
 
 Memory-only: `e2e/m0-*.spec.ts` and `e2e/m2-*.spec.ts`. Ignores `m1-*.spec.ts`. If a stale Vite is bound to 5173, kill it first — `reuseExistingServer` will reuse a broken process.
 
-M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose keck up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out) and [Manual testing (M2)](#manual-testing-m2-close-out).
+M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out) and [Manual testing (M2)](#manual-testing-m2-close-out).
 
 ## Manual testing (M0 close-out)
 
@@ -152,19 +152,19 @@ If any step fails, M0 is not done. Fix the host; do not fake UI.
 
 **Passed 2026-08-30.** Keep this checklist for regression. Playwright does **not** replace it. Use Chrome or Firefox yourself (not a screenshot, not Playwright headed mode). Fail on uncaught exceptions from the host or BlockSuite. Ignore extension noise (`contentscript.js`, MetaMask, ObjectMultiplex).
 
-First-paragraph `hello` / `from-a-…` / `from-b-…` mash on an old `pg-data` volume is leftover e2e typing (persist working). Title **Venus** and outline H1/H2 still count as seed. Wipe with `docker compose down -v` only if you want a clean note.
+First-paragraph `hello` / `from-a-…` / `from-b-…` mash on an old volume is leftover e2e typing (persist working). Title **Venus** and outline H1/H2 still count as seed. Wipe with `docker compose down -v` only if you want a clean note.
 
-1. From the repo root: `pnpm compose:up` (or confirm `docker compose ps` shows `postgres`, `octobase`, and `web` healthy). Open **http://127.0.0.1:8080** (Compose `web`, not Vite `:5173`).
+1. From the repo root: `pnpm compose:up` (or confirm `docker compose ps` shows `postgres`, `hub`, and `web` healthy). Open **http://127.0.0.1:8080** (Compose `web`, not Vite `:5173`).
 2. **Seed.** Do not type yet. Title is **Venus**. Body has H1 **Why Venus** and H2 **Empty host**. The right-hand outline lists those headings only — no folders or other pages.
 3. **Type.** Click the **empty paragraph at the top of the note**, not the title. Type `hello`. It appears in the note.
 4. **Refresh.** Reload. `hello` is **still there**. Outline still matches (this fails M1 if it behaves like M0).
 5. **Second tab.** Open the same URL in a second tab. It shows `hello` without typing. Type `tab-b` in B; A shows `tab-b` without reload.
 6. **Image.** In A, insert an image (slash **Image** or paste). It renders. B shows the same image. Reload A; the image remains.
-7. **WS.** DevTools → Network → **WS**: a sync socket is open to `/collaboration/venus-m0` (same origin `:8080`, or `:3000` if you used host Vite). Not “no WS” like M0.
+7. **WS.** DevTools → Network → **WS**: a sync socket is open to `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` (same origin `:8080`, or `:3000` if you used host Vite). Not “no WS” like M0.
 8. **Export.** From a terminal (no tab required):
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs
+curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs
 ```
 
 Exit 0. File length **> 2** bytes.
@@ -186,7 +186,7 @@ There is **no markdown mode switch**. Layout is three columns: markdown **source
 5. **Refresh (memory).** Reload. The unique word is **gone**. Seed title + H1/H2 are back. Pane matches the seed source again (same as M0 persist).
 6. **No git.** There is no `wiki/` in the repo from this milestone. The pane is RAM only.
 7. **Optional Compose.** `pnpm compose:up`, open **http://127.0.0.1:8080**. Type a unique word; pane updates; reload **keeps** the word **and** the pane still matches (M1 persist). Not required to close M2. Opt-in extra blocks: `?md-demo=1` (appends once; numbered lists, fences, linked-doc comment). Rebuild `web` after host changes (`docker compose up --build -d web`).
-8. **Optional two tabs (M1).** Same URL in a second tab. Type a unique word in A; B’s **note** (not only the pane) should show it without reload. If B stays stale while reload-in-B shows the word, keck’s publisher may have panicked on Y.Text `Format` (bold/italic/code/link/color). Rebuild octobase after `deploy/octobase/patches/value.rs` (`Value::Format`): `docker compose up --build -d octobase`. Do not `docker compose down -v` unless you want a clean seed.
+8. **Optional two tabs (M1).** Same URL in a second tab. Type a unique word in A; B’s **note** (not only the pane) should show it without reload. If B stays stale, check hub logs (`docker compose logs hub`) — y-octo apply must not panic. Do not `docker compose down -v` unless you want a clean seed.
 
 If any required step (1–6) fails, M2 is not done. Fix the exporter or the pane loop; do not hide jitter by stripping whitespace. Full contract: [M2 step 8](./design/M2/plan.md#8-step-verify). Specs: [scenarios/markdown-projection](./scenarios/markdown-projection.md).
 

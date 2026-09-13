@@ -16,9 +16,9 @@ If we skip it: fake hunks, diffs by “paragraph 3,” opaque blocks rewritten, 
 
 | Direction | Job | Where |
 |---|---|---|
-| **A — pane** | Live CRDT → RAM markdown + sidecar. `fromDoc` or splice. No `T0`. | [live-pane.md](./live-pane.md) |
-| **B — convert** | Pin Yjs bytes → full `fromDoc` on an offline clone → `markdown_T0` + `sidecar_T0`. | [pin-convert.md](./pin-convert.md) |
-| **Apply** | Diff **markdown vs `markdown_T0`**, attribute with **frozen sidecar**, hunks on Before/After **OctoBase** CRDTs, ops on the **published** Y.Doc. | [apply.md](./apply.md) · [datamodel](../datamodel/crdt.md#commit-before-and-after) |
+| **A — pane** | Live CRDT → RAM markdown + sidecar. `fromDoc` or splice. No `T0`. | [live-pane.md](./live-pane.md) — **browser** |
+| **B — convert** | Pin Yjs bytes → full `fromDoc` on an offline clone → `markdown_T0` + `sidecar_T0`. | [pin-convert.md](./pin-convert.md) — **Rust worker** (y-octo hydrate + this JS exporter) |
+| **Apply** | Diff **markdown vs `markdown_T0`**, attribute with **frozen sidecar**, hunks, ops on the **published** Y.Doc. Slice **`toDoc`** for payloads. | [apply.md](./apply.md) — **Rust worker** hosts slice `toDoc`; not the hub |
 
 M2 **exit** is [fixture](./fixtures.md) export rows green on the [subset](./subset.md) (done 2026-08-30).
 

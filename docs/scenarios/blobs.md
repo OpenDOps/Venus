@@ -1,8 +1,8 @@
 # Blobs
 
-**Feature:** image bytes go through keck HTTP into Postgres. Second tab and reload show pixels, not a dead `blob:` URL.
+**Feature:** image bytes go through hub HTTP into Postgres. Second tab and reload show pixels, not a dead `blob:` URL.
 
-**Boxes:** Blob HTTP, keck, Postgres ([architecture](../design/architecture.md#dataflow-m0m1-with-m2-dashed), [CRDT persist](../design/CRDT/README.md#persist)).
+**Boxes:** Blob HTTP, hub, Postgres ([architecture](../design/architecture.md#dataflow-m30), [CRDT persist](../design/CRDT/README.md#persist)).
 
 ## Run
 
@@ -28,8 +28,8 @@ Fixture: `apps/web/e2e/fixtures/dot.png`.
 
 | Spec | Proves |
 |---|---|
-| upload posts the PNG and shows pixels | slash Image; `POST /api/blobs/venus-m0` 2xx; `naturalWidth > 0` |
+| upload posts the PNG and shows pixels | slash Image; `POST /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00` 2xx; `naturalWidth > 0` |
 | second tab sees the image without picking a file | B has pixels without choosing a file |
 | reload keeps the image pixels | after reload, image + seed title/H1 |
 
-keck has no blob list route; `list` returning `[]` is expected.
+keck (M1) had no blob list route; `list` returning `[]` is still expected on the hub.

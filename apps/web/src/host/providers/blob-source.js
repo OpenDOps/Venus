@@ -1,7 +1,9 @@
+import { WORKSPACE_ID } from '../ids.js';
+
 /**
- * BlobSource → keck POST/GET /api/blobs/:workspace. Do not import this from
- * mount-editor.js. keck has no list route. Hash is SHA-256 base64url with
- * padding (same as BlockSuite `sha()`; confirmed against keck 276e0e9).
+ * BlobSource → hub POST/GET /api/blobs/:workspace. Do not import this from
+ * mount-editor.js. No list route. Hash is SHA-256 base64url with
+ * padding (same as BlockSuite `sha()`; confirmed against M1 keck 276e0e9).
  */
 
 export function blobOriginFromSyncUrl(syncUrl, { sameOrigin = false } = {}) {
@@ -43,7 +45,7 @@ export class OctoBaseBlobSource {
    * @param {{ workspaceId?: string, origin?: string }} [options]
    *   `origin` empty → same-origin `/api/blobs/...` (Vite proxies to keck).
    */
-  constructor({ workspaceId = 'venus-m0', origin = '' } = {}) {
+  constructor({ workspaceId = WORKSPACE_ID, origin = '' } = {}) {
     this.workspaceId = workspaceId;
     this.origin = origin.replace(/\/$/, '');
   }
@@ -77,7 +79,7 @@ export class OctoBaseBlobSource {
     });
     if (!res.ok) {
       throw new Error(
-        `blob POST ${res.status} ${this._url()}. Is Compose keck up and the venus-m0 workspace created?`,
+        `blob POST ${res.status} ${this._url()}. Is Compose hub up?`,
       );
     }
     const json = await res.json().catch(() => null);

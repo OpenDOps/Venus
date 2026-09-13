@@ -2,7 +2,7 @@ import type { SyncProvider } from '../sync-provider.js';
 import type { OctoBaseBlobSource } from './blob-source.js';
 
 export const SAME_ORIGIN_SYNC: 'same-origin';
-export const SAME_ORIGIN_SYNC_PATH: '/collaboration/venus-m0';
+export const SAME_ORIGIN_SYNC_PATH: string;
 
 export function resolveSyncUrl(env?: { VITE_SYNC_URL?: string }): string;
 

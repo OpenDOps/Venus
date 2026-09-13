@@ -1,10 +1,9 @@
-The `octobase` Compose service is OctoBase **keck**, licensed **AGPL-3.0-only**.
+The `hub` Compose service is the Venus-owned collab front (`crates/venus-hub`).
 
-Source: https://github.com/toeverything/OctoBase
-Pin:    276e0e94719a652483119c5fea16be13293ee21c
+License of Venus hub source: MIT OR Apache-2.0.
+It is not an OctoBase fork. Apply engine: y-octo (MIT).
 
-keck is an external server image. It is not a dependency of `@venus/web`.
-See docs/legal/licensing.md.
+See docs/legal/licensing.md and docs/design/components/hub/.
 
-Postgres in the `postgres` service is the PostgreSQL license (not AGPL).
-The `web` image (`deploy/web`) is the Venus host + nginx; it must not copy OctoBase source.
+Postgres in the `postgres` service is the PostgreSQL license.
+The `web` image (`deploy/web`) is the Venus host + nginx.

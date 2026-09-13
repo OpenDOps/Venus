@@ -1,10 +1,11 @@
+import { COLLABORATION_PATH } from './src/host/ids.js';
 import { defineConfig, devices } from '@playwright/test';
 
 const isM1 = process.env.PLAYWRIGHT_M1 === '1';
 const composeWeb = process.env.PLAYWRIGHT_BASE_URL;
 const syncUrl =
   process.env.VITE_SYNC_URL ??
-  'ws://127.0.0.1:3000/collaboration/venus-m0';
+  `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
 
 if (composeWeb && !isM1) {
   throw new Error(

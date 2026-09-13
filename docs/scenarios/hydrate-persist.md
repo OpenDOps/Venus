@@ -2,7 +2,7 @@
 
 **Feature:** wait until synced, seed **only if** empty. Memory refresh **drops** text (M0). Sync refresh **keeps** text (M1). No second page root.
 
-**Boxes:** Store, keck, Postgres ([architecture](../design/architecture.md#dataflow-m0m1-with-m2-dashed), [CRDT share / persist](../design/CRDT/README.md#share-between-clients)).
+**Boxes:** Store, hub, Postgres ([architecture](../design/architecture.md#dataflow-m30), [CRDT share / persist](../design/CRDT/README.md#share-between-clients)).
 
 ## Run
 
@@ -31,4 +31,4 @@ pnpm test:e2e:m1
 | `e2e/m1-hydrate.spec.ts` — second session | Compose | new context: one `doc-title` Venus, one outline H1 |
 | `e2e/m1-smoke.spec.ts` | Compose | kind `octobase`; outline H1; type `hello`; reload **keeps** it |
 
-Postgres persist across `docker compose restart octobase` is M1 step 2 (spike / export), not a Playwright file. Operator notes: [runbook Sync](../runbook.md#sync-m1).
+Postgres persist across `docker compose restart hub` is a hub persist test (wait ≥2s after a write), not a Playwright file. Operator notes: [runbook Sync](../runbook.md#sync-hub).

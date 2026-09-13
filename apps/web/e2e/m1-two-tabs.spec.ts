@@ -79,11 +79,11 @@ test('A typing appears in B without reload', async ({ page, context }) => {
   await waitForHydrated(pageB);
 
   expect(
-    wsA.find((u) => u.includes('/collaboration/venus-m0')),
+    wsA.find((u) => u.includes(KECK_WS)),
     'tab A must open a keck websocket',
   ).toBe(KECK_WS);
   expect(
-    wsB.find((u) => u.includes('/collaboration/venus-m0')),
+    wsB.find((u) => u.includes(KECK_WS)),
     'tab B must open a keck websocket',
   ).toBe(KECK_WS);
 

@@ -12,3 +12,5 @@ playwright/.cache
 !.env.example
 # Host keck SQLite fallback (not the product store)
 /data
+# Rust workspace (commit Cargo.lock for the hub binary)
+/target

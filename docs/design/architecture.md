@@ -9,9 +9,9 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 | Layer | Status | Design |
 |---|---|---|
 | Editor + outline | **M0 done** | [M0](./M0/README.md) |
-| Sync, persist, blobs, **doc export** (keck) | **M1 done** | [CRDT](./CRDT/README.md), [M1](./M1/README.md) |
+| Sync, persist, blobs, **doc export** (keck) | **M1 done** (legacy wire proof) | [CRDT](./CRDT/README.md), [M1](./M1/README.md) |
 | Markdown projection | **M2 done** | [MDGate](./MDGate/README.md), [M2/plan.md](./M2/plan.md) |
-| **Venus hub** (replace keck) | **Next (M3.0)** | [M3.0](./M3.0/README.md), [hub HA](./M3.0/high-availability.md) |
+| **Venus hub** (replace keck) | **M3.0 in progress** (step 1: y-octo apply) | [M3.0](./M3.0/README.md), [hub](./components/hub/), [hub HA](./M3.0/high-availability.md) |
 | Pin + git snapshotter | Later (M3) | [LiveSnapshot](./LiveSnapshot/README.md) — **after M3.0** |
 | LifeIndexing | Parallel (after M3) | [Agents](./Agents/README.md) — [AB1](./Agents/agentic-binding.md#ab1--lifeindexing) / [LifeIndexing](./Agents/LifeIndexing.md) |
 | Bound chat | Parallel (after AB1; **ask-only**) | [AB2](./Agents/agentic-binding.md#ab2--bound-chat) |
@@ -21,31 +21,31 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 | Lease `T0` + freeze | Later | [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
 | Stores (CRDT + git) | Design | [datamodel](./datamodel/README.md) |
 
-## Dataflow (M0–M2)
+## Dataflow (M3.0)
 
-M1–M2 run against **keck**. After [M3.0](./M3.0/README.md) the same arrows hit **Venus hub** (`hub:3000`); Postgres tables become `crdt_*` instead of `jwst` docs. The browser wire does not change (`AFFiNE` + y-protocols).
+M1 proved the wire on **keck**. Product collab is the **Venus hub** (`hub:3000`): [hub](./components/hub/). Postgres tables are `crdt_*` (not `jwst` docs). The browser wire did not change (`AFFiNE` + y-protocols).
 
 ```mermaid
 flowchart TB
-  subgraph browsers["M0–M1 browsers"]
+  subgraph browsers["browsers"]
     tabA["Tab A<br/>BlockSuite Store<br/>store.spaceDoc Y.Doc"]
     tabB["Tab B<br/>BlockSuite Store<br/>store.spaceDoc Y.Doc"]
   end
 
-  ws["SyncProvider kind octobase<br/>Yjs update v1 · y-protocols/sync<br/>WebSocket subprotocol AFFiNE"]
-  keck["OctoBase keck<br/>Compose octobase :3000<br/>/collaboration/venus-m0"]
-  pg[("Postgres<br/>Compose postgres<br/>docs + blob bytes<br/>volume pg-data")]
+  ws["SyncProvider kind octobase<br/>wire alias for the hub<br/>Yjs update v1 · y-protocols/sync<br/>WebSocket subprotocol AFFiNE"]
+  hub["Venus hub<br/>Compose hub :3000<br/>Rust + y-octo<br/>/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00"]
+  pg[("Postgres<br/>Compose postgres<br/>crdt_snapshot / crdt_update<br/>blob / workspace_lease / dirty<br/>volume pg-venus-data")]
 
   tabA --> ws
   tabB --> ws
-  ws --> keck
-  keck -->|"DATABASE_URL"| pg
+  ws --> hub
+  hub -->|"POSTGRES_HOST/USER/PASSWORD"| pg
 
   exportClient["curl / sidecar / later Venus<br/>not a browser tab"]
-  exportClient -->|"GET /api/block/venus-m0/export<br/>current Y.Doc as update v1<br/>doc export · not T0, not git"| keck
+  exportClient -->|"GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export<br/>current Y.Doc as update v1<br/>doc export · not T0, not git"| hub
 
-  tabA -->|"POST/GET /api/blobs/venus-m0"| keck
-  tabB -->|"POST/GET /api/blobs/venus-m0"| keck
+  tabA -->|"POST/GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00"| hub
+  tabB -->|"POST/GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00"| hub
 
   subgraph m2["M2 — RAM projection"]
     pane["read-only markdown pane"]
@@ -54,10 +54,9 @@ flowchart TB
   tabA -->|"MarkdownAdapter.fromDoc<br/>same CRDT · not a second replica<br/>not GET export"| pane
 ```
 
+Stock **`y-websocket` is not on this diagram.** The wire is hub + `AFFiNE`. The unused `y-websocket` kind in code is not a Hocuspocus target. Persist hosted is Postgres. See [CRDT](./CRDT/README.md#seam). How the hub process works: [hub](./components/hub/).
 
-Stock **`y-websocket` is not on this diagram.** M1’s wire is keck + `AFFiNE`. **M3.0** keeps that wire on the **hub**. The unused `y-websocket` kind in code is not a Hocuspocus target. Persist hosted is Postgres. See [CRDT](./CRDT/README.md#seam).
-
-Compose **`web`** (nginx on `:8080`) is a same-origin reverse proxy in front of the collab front (keck until M3.0, then hub). It is not a fourth store. Vite `pnpm dev` still opens WS to `:3000` and proxies `/api`. How the containers run: [devops/compose](../devops/compose.md).
+Compose **`web`** (nginx on `:8080`) is a same-origin reverse proxy in front of **`hub:3000`**. It is not a fourth store. Vite `pnpm dev` still opens WS to `:3000` and proxies `/api`. How the containers run: [devops/compose](../devops/compose.md).
 
 ## Elements
 
@@ -69,10 +68,10 @@ Each row is a box that later markdown (or git) can hang off. Do not put review h
 | **BlockSuite Store** | Live published page. `affine:*` tree. | Adapter input. Sidecar ids on export. | [Editor host](../scenarios/editor-host.md), [hydrate](../scenarios/hydrate-persist.md) |
 | **Y.Doc** | `store.spaceDoc`. Client CRDT. | Never a second Y.Text of the `.md`. | [Hydrate](../scenarios/hydrate-persist.md), [collaboration](../scenarios/collaboration.md) |
 | **SyncProvider** | Seam in the host. | Unchanged. Md pane reads the **synced** store. | [Sync seam](../scenarios/sync-seam.md) |
-| **keck / hub** | M1: keck WS + blob HTTP + export (AGPL). **M3.0:** Venus hub, same jobs, Venus tables. | Lease/git sidecar calls **export**, then adapter. | [Collaboration](../scenarios/collaboration.md), [blobs](../scenarios/blobs.md), [doc export](../scenarios/doc-export.md) |
-| **Postgres** | Source of truth for refresh. Docs + blobs. M3.0: `crdt_*` not `jwst` docs. | Not a markdown store. | [Hydrate](../scenarios/hydrate-persist.md), [blobs](../scenarios/blobs.md) |
+| **Hub** | Venus **Rust + y-octo**: apply, broadcast, persist ~1s. Compose `hub`. Wiki sticky on `workspace_id`. [hub](./components/hub/). | Lease/git sidecar calls **export**, then adapter in the convert worker. | [Collaboration](../scenarios/collaboration.md), [blobs](../scenarios/blobs.md), [doc export](../scenarios/doc-export.md) |
+| **Postgres** | Source of truth for refresh. `crdt_*` + `blob` + `workspace_lease` + `dirty`. Volume `pg-venus-data`. | Not a markdown store. | [Hydrate](../scenarios/hydrate-persist.md), [blobs](../scenarios/blobs.md) |
 | **Compose web** | nginx + static host. Proxies `/api` and `/collaboration` to the collab front. | Layout only. | [Compose stack](../scenarios/compose.md) |
-| **Doc export** | `GET /api/block/venus-m0/export`. Current tree, no tab. | Same GET becomes `T0` bytes (M5) and optional `.venus/snapshots/*.bin`. | [Doc export](../scenarios/doc-export.md) |
+| **Doc export** | `GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export`. Current tree, no tab. | Same GET becomes `T0` bytes (M5) and optional `.venus/snapshots/*.bin`. | [Doc export](../scenarios/doc-export.md) |
 | **Markdown projection** | Adapter output + RAM id sidecar. | **M2 done.** [plan](./M2/plan.md). | [Markdown projection](../scenarios/markdown-projection.md) |
 | **Git** | Folders + `.md` + commits. | Snapshot vs comment-commit. Layout: [datamodel git](./datamodel/git.md). Pin then convert: [LiveSnapshot](./LiveSnapshot/README.md). M3+. | None yet. |
 | **Review session** | Lease, threads, hunks. Per commit Before/After **hub CRDTs**. | Comment-commits vs `T0`. After editable; edits are the next commit. M5–M6. | None yet. |
@@ -106,8 +105,8 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | Pins and curl | [api-map.md](./api-map.md) |
 | M1 steps | [M1/plan.md](./M1/plan.md) |
 | M2 steps | [M2/plan.md](./M2/plan.md) |
-| M3.0 hub | [M3.0/plan.md](./M3.0/plan.md); live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md) |
-| Compose / Kubernetes | [devops](../devops/README.md) |
+| M3.0 hub | [hub](./components/hub/); [M3.0/plan.md](./M3.0/plan.md); live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md) |
+| Compose / Kubernetes | [devops](../devops/README.md). Hub fleet (after M3.0): [hub-fleet.md](../devops/hub-fleet.md) |
 | Adapter gate (M2) | [MDGate](./MDGate/README.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live pane](./MDGate/live-pane.md), [pin convert](./MDGate/pin-convert.md), [M2/plan.md](./M2/plan.md) |
 | Apply (M6) | [MDGate apply](./MDGate/apply.md) |
 | Pin + git snapshotter (M3) | [LiveSnapshot](./LiveSnapshot/README.md); **gated on M3.0 done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) **Acceptance** |

@@ -17,22 +17,46 @@ columns:
 steps:
   step-recon-hub: # 1
     n: 1
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Map complete
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test recon api_map_chosen_backend_is_venus_hub — Chosen backend (M3.0) is crates/venus-hub + y-octo; WS URL, export curl, blob paths, DATABASE_URL, Compose service hub; not keck SHA"
+      - name: Spike syncs
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test recon — two Room clients y-protocols Step2/Update; yjs@13.6.32 spike.k=v applies; Format/bold does not panic; Cargo.toml has y-octo and no jwst/octobase/keck; no Postgres"
   step-store: # 2
     n: 2
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Round-trip
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test store push_update_then_get_doc_round_trip — yjs@13.6.32 spike.k=v BYTEA in crdt_update; get_doc + y-octo apply reads v; not JSON"
+      - name: Restart store
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test store get_doc_after_new_connection_keeps_value — close pool, new connection, get_doc still has spike.k=v; testcontainers postgres:16"
   step-ws: # 3
     n: 3
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: A→B
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test ws a_to_b_over_affine_ws — two AFFiNE WS clients; A spike.k=v; B sees Update without reload; POST /collaboration is AFFiNE; no keck"
+      - name: Marks
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test ws format_mark_over_ws_does_not_crash — yjs@13.6.32 Format/bold fans out; B applies; hub still serves POST"
+      - name: Persist after WS
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test ws persist_after_ws_survives_hub_restart — wait ≥2s, shutdown hub, new Hub+client Step2 has spike.k=v from Postgres"
+      - name: Crash, client resend
+        status: pass
+        evidence: "2026-09-12 cargo test -p venus-hub --test ws crash_unflushed_client_resend_restores — abort persist without flush; SQL hydrate misses spike; client Update restores; no Redis"
   step-compose-hub: # 4
     n: 4
     state: pending

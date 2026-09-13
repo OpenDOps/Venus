@@ -6,14 +6,16 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
+import { WORKSPACE_ID } from './ids.js';
+
 const hostDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(hostDir, '../../../..');
 
 /** Exact api-map Export command. Do not invent a second store or URL. */
 const EXPORT_COMMAND =
-  'curl -sSSf http://127.0.0.1:3000/api/block/venus-m0/export -o /tmp/venus-m0.yjs';
-const EXPORT_URL = 'http://127.0.0.1:3000/api/block/venus-m0/export';
-const EXPORT_FILE = '/tmp/venus-m0.yjs';
+  `curl -sSSf http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export -o /tmp/venus-page.yjs`;
+const EXPORT_URL = `http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
+const EXPORT_FILE = '/tmp/venus-page.yjs';
 const CURL_ARGV = ['-sSSf', EXPORT_URL, '-o', EXPORT_FILE];
 
 function tcpOpen(
@@ -39,7 +41,7 @@ const keckUp = await tcpOpen('127.0.0.1', 3000, 1500);
 
 if (!keckUp) {
   console.warn(
-    'snapshot.test.ts: skipping Reachable/Decodes — nothing on 127.0.0.1:3000. Start with pnpm sync:up. Documented skip when Compose is down.',
+    'snapshot.test.ts: skipping Reachable/Decodes — nothing on 127.0.0.1:3000. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
   );
 }
 
@@ -59,7 +61,7 @@ test('export is not wired into the editor UI', () => {
   expect(app).not.toMatch(/\/api\/block\/.+\/export/);
 });
 
-describe.skipIf(!keckUp)('keck GET /api/block/venus-m0/export', () => {
+describe.skipIf(!keckUp)(`hub GET /api/block/${WORKSPACE_ID}/export`, () => {
   beforeAll(() => {
     execFileSync('curl', CURL_ARGV, { stdio: 'pipe' });
   });

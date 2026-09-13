@@ -63,6 +63,8 @@ While the holder types, the RAM map may track ranges through CodeMirror (same sh
 
 After hunks exist, **then** run the adapter on **`hunk.new` / `hunk.old` slices** (scratch note + that markdown), to get BlockSuite props for `updateBlock` / `addBlock`. Never parse the whole proposal as “the new CRDT.”
 
+That slice **`toDoc`** runs in the **Rust convert/apply worker** (y-octo hydrate of any pin, then the same `MarkdownAdapter` as M2). It does **not** run in the hub merge process and does not replace the published Y.Doc. The spectator pane stays browser `fromDoc`.
+
 Untouched ids: apply is a **no-op**. Opaque regions the writer did not touch must not be rewritten.
 
 ## Map markdown diff → CRDT diff (review UI)

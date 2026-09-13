@@ -38,7 +38,7 @@ test.beforeAll(async () => {
     const msg = err instanceof Error ? err.message : String(err);
     if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
       throw new Error(
-        `keck is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
+        `hub is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
       );
     }
   }
@@ -69,7 +69,7 @@ test('octobase kind and AFFiNE websocket when VITE_SYNC_URL is set', async ({
   );
 
   await expect
-    .poll(() => wsUrls.find((u) => u.includes('/collaboration/venus-m0')))
+    .poll(() => wsUrls.find((u) => u.includes(KECK_WS)))
     .toBe(KECK_WS);
 
   const protocols = await page.evaluate(() => window.__VENUS_WS_PROTOCOLS__);

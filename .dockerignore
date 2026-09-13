@@ -1,5 +1,7 @@
 .git
 .cursor
+target
+**/target
 node_modules
 **/node_modules
 **/dist

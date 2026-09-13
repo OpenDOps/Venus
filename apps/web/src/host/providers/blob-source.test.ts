@@ -4,6 +4,7 @@ import {
   blobOriginFromSyncUrl,
 } from './blob-source.js';
 import { blobSourcesFromEnv } from './from-env.js';
+import { COLLABORATION_PATH, WORKSPACE_ID } from '../ids.js';
 
 function urlOf(input: RequestInfo | URL) {
   if (typeof input === 'string') return input;
@@ -13,10 +14,10 @@ function urlOf(input: RequestInfo | URL) {
 
 test('blobOriginFromSyncUrl maps ws to http origin', () => {
   expect(
-    blobOriginFromSyncUrl('ws://127.0.0.1:3000/collaboration/venus-m0'),
+    blobOriginFromSyncUrl(`ws://127.0.0.1:3000${COLLABORATION_PATH}`),
   ).toBe('http://127.0.0.1:3000');
   expect(
-    blobOriginFromSyncUrl('ws://127.0.0.1:3000/collaboration/venus-m0', {
+    blobOriginFromSyncUrl(`ws://127.0.0.1:3000${COLLABORATION_PATH}`, {
       sameOrigin: true,
     }),
   ).toBe('');
@@ -29,7 +30,7 @@ test('blobSourcesFromEnv is unset without VITE_SYNC_URL', () => {
 
 test('blobSourcesFromEnv uses OctoBaseBlobSource when VITE_SYNC_URL is set', () => {
   const sources = blobSourcesFromEnv({
-    VITE_SYNC_URL: 'ws://127.0.0.1:3000/collaboration/venus-m0',
+    VITE_SYNC_URL: `ws://127.0.0.1:3000${COLLABORATION_PATH}`,
   });
   expect(sources?.main).toBeInstanceOf(OctoBaseBlobSource);
   expect(sources?.main.name).toBe('octobase');
@@ -47,7 +48,7 @@ test('OctoBaseBlobSource POSTs bytes, GETs them, list is empty', async () => {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = urlOf(input);
     const method = (init?.method ?? 'GET').toUpperCase();
-    if (method === 'POST' && url.endsWith('/api/blobs/venus-m0')) {
+    if (method === 'POST' && url.endsWith(`/api/blobs/${WORKSPACE_ID}`)) {
       const body = init?.body;
       const buf =
         body instanceof ArrayBuffer
@@ -61,7 +62,7 @@ test('OctoBaseBlobSource POSTs bytes, GETs them, list is empty', async () => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (method === 'GET' && url.includes('/api/blobs/venus-m0/')) {
+    if (method === 'GET' && url.includes(`/api/blobs/${WORKSPACE_ID}/`)) {
       const key = url.split('/').pop() ?? '';
       if (key === 'missing') {
         return new Response(null, { status: 404 });
@@ -80,7 +81,7 @@ test('OctoBaseBlobSource POSTs bytes, GETs them, list is empty', async () => {
 
   try {
     const src = new OctoBaseBlobSource({
-      workspaceId: 'venus-m0',
+      workspaceId: WORKSPACE_ID,
       origin: 'http://127.0.0.1:3000',
     });
     expect(await src.list()).toEqual([]);

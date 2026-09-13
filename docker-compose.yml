@@ -1,7 +1,27 @@
-# M1: Postgres (docs + blobs), OctoBase keck (WS/HTTP), Venus web (nginx).
-# keck image is AGPL-3.0 — see deploy/NOTICE. Web image is not AGPL.
-# Do not publish 5432. Never omit DATABASE_URL (keck would fall back to SQLite).
-# Never USE_MEMORY_SQLITE. Operators: docs/devops/compose.md
+# M3.0: Postgres (Venus crdt_* + blobs), Venus hub (WS/HTTP), Venus web (nginx).
+# Product Compose is postgres + hub + web. There is no octobase on this path.
+# keck remains under deploy/octobase/ as M1 history; do not build it here.
+# Hub image is MIT/Apache Venus code — see deploy/NOTICE.
+# Never omit Postgres (no SQLite fallback). Do not publish 5432.
+# Operators: docs/devops/compose.md  Component: docs/design/components/hub/
+
+# Pool: 32 covers 10 distinct cold exports + 10 blob GETs + 10 room flushes
+# overlapping, plus heartbeat. Compact shares the persist-task connection.
+# Postgres image default max_connections is 100; two hubs (hub + hub-b) = 64.
+x-hub-env: &hub-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: venus
+  POSTGRES_PASSWORD: venus
+  POSTGRES_DB: venus
+  HUB_LISTEN: "0.0.0.0:3000"
+  HUB_DB_MAX_CONNECTIONS: "32"
+  HUB_DB_MIN_CONNECTIONS: "4"
+  HUB_DB_ACQUIRE_TIMEOUT_SECS: "10"
+  HUB_PERSIST_INTERVAL_MS: "1000"
+  HUB_COMPACT_AFTER: "32"
+  # Vite/Playwright talk to hub:3000. Empty string disables CORS (same-origin nginx).
+  HUB_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080"
 
 services:
   postgres:
@@ -9,28 +29,26 @@ services:
     environment:
       POSTGRES_USER: venus
       POSTGRES_PASSWORD: venus
-      POSTGRES_DB: jwst
+      POSTGRES_DB: venus
     volumes:
-      - pg-data:/var/lib/postgresql/data
+      # New volume so M1 keck `jwst` rows on `pg-data` are not mistaken for hub tables.
+      - pg-venus-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U venus -d jwst"]
+      test: ["CMD-SHELL", "pg_isready -U venus -d venus"]
       interval: 2s
       timeout: 5s
       retries: 20
       start_period: 5s
 
-  octobase:
+  hub:
     build:
-      context: ./deploy/octobase
-      dockerfile: Dockerfile
-      args:
-        OCTOBASE_SHA: 276e0e94719a652483119c5fea16be13293ee21c
+      context: .
+      dockerfile: deploy/hub/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://venus:venus@postgres:5432/jwst?sslmode=disable
-      KECK_PORT: "3000"
+      <<: *hub-env
     ports:
       - "3000:3000"
     healthcheck:
@@ -40,12 +58,28 @@ services:
       retries: 20
       start_period: 5s
 
+  # Second process against the same Postgres. Prove workspace_lease refuses a second owner.
+  #   docker compose --profile ha up --build hub-b
+  hub-b:
+    profiles: ["ha"]
+    build:
+      context: .
+      dockerfile: deploy/hub/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *hub-env
+      HUB_OWNER: hub-b
+    ports:
+      - "3001:3000"
+
   web:
     build:
       context: .
       dockerfile: deploy/web/Dockerfile
     depends_on:
-      octobase:
+      hub:
         condition: service_healthy
     ports:
       - "8080:80"
@@ -57,4 +91,4 @@ services:
       start_period: 5s
 
 volumes:
-  pg-data:
+  pg-venus-data:

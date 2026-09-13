@@ -8,7 +8,7 @@ Start with a **thin host** around BlockSuite. M1 proved the wire on OctoBase **k
 
 `SyncProvider` product kind is `venus` after M3.0 (`octobase` may remain as a wire alias; `memory` for tests). Cloud does **not** switch to Hocuspocus or nbstore. Licensing: [licensing.md](../legal/licensing.md). v1 scope and the git/WYSIWYG rule: [v1-concerns.md](../drafts/pre-design/v1-concerns.md). Spec-driven plans: [venus-plan.md](../drafts/pre-design/venus-plan.md). Pitch: [pitch.md](../marketing/pitch.md).
 
-**Hosted runtime:** persist is **Postgres in Docker**. Collab front is a **second Docker**: M1 **`octobase` (keck)**; **from M3.0 `hub`**. Compose is `postgres` + that front (+ `web`). Do not put the front and Postgres in one container. On-device later: one hub process + local store, sync to hosted hub.
+**Hosted runtime:** persist is **Postgres in Docker**. Collab front is a **second Docker**: **`hub`**. Compose is `postgres` + `hub` + `web`. Do not put the front and Postgres in one container. On-device later: one hub process + local store, sync to hosted hub.
 
 ## Tool choices
 
@@ -35,11 +35,11 @@ BlockSuite already owns a Y.Doc per page. Venus does not replace that with a sec
 
 | Piece | Use |
 |---|---|
-| **Venus hub** (M3.0) | WS front: Yjs apply + broadcast + persist, blob HTTP, export. **Own Docker** (`hub`). MIT/Apache Venus code. Not OctoBase. |
+| **Venus hub** (M3.0) | **Rust** WS front: y-octo apply + broadcast + persist, blob HTTP, export. **Own Docker** (`hub`). Wiki sticky on `workspace_id`. MIT/Apache. Not OctoBase. Not a Node product hub. |
 | **Postgres** | Hosted persist: Venus `crdt_*` + blobs + `dirty` / `workspace_lease`. **Own Docker** (`postgres:16`). Named volume. |
-| **y-octo** | MIT. Optional Rust apply/compact; sidecar decode |
+| **y-octo** | MIT. **Required** hub merge (hydrate / apply / compact). Same update v1 as browser `yjs@13.6.32`. |
 | **M1 (done)** | OctoBase **keck** proved the wire. Legacy after M3.0. Recon: [octobase.md](./LiveSnapshot/octobase.md) |
-| **On device (later)** | One hub process + local SQLite; sync to hosted hub |
+| **On device (later)** | Native hub + SQLite + **WebView BlockSuite**. No Rust in the editor. Sync to hosted hub. |
 
 Binding (M3.0+):
 
@@ -63,7 +63,7 @@ M1: keck in Docker. **M3.0 replaces that process** with the hub; same seam. Venu
 
 The wiki root is a real git repository. Venus is the only writer of published commits (users do not `git push` into the live tree in v1). Later: allow PRs from clones as “attach a commit” (import a patch as a review commit).
 
-Use `isomorphic-git` or `simple-git` in Node, or `git2` in a small Rust sidecar next to y-octo. Prefer one sidecar: **y-octo + git2** so snapshot → markdown → commit stays in one process.
+Product convert worker is **Rust**: y-octo hydrates the pin, **git2** commits, and the same M2 `from-doc.js` / slice `toDoc` runs in that process (Node or embedded JS). Do not ship convert inside the hub. Do not reimplement `MarkdownAdapter` until goldens match. Node `simple-git` is recon-only.
 
 ### Folder tree — Venus catalog, not a third-party TOC
 
@@ -110,7 +110,9 @@ Do not put hunks or threads in the published block schema. Hunk cards may sit in
 
 ### Identity (v1)
 
-Single-workspace local users: display name + id in a config file or hub awareness. Auth can wait. Lease `holder` is that id.
+Single-workspace local users: display name + id in a config file or hub awareness. Lease `holder` is that id.
+
+**Leftover — authorization module (separately designed).** Who may open a `workspace_id`, apply Yjs, GET export, or POST/DELETE blobs is **not** in this milestone list and **not** the hub merge buffer. Do not bolt tokens onto `handle_socket`. Do not fold OIDC / sessions / ACLs into [M3.0](#m30--venus-hub-replace-keck-week). Write a design (and plan) when that work starts. Until then, Compose `hub:3000` is a local/trusted-network write surface. Awareness display names are not authorization.
 
 ## Bindings (the actual glue)
 
@@ -275,19 +277,19 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ### M3.0 — Venus hub (replace keck) (week)
 
-**Status:** not started. Step-by-step: [M3.0/plan.md](./M3.0/plan.md). Board: [M3.0/M3.0.state.yaml](./M3.0/M3.0.state.yaml). Live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
+**Status:** in progress (step 1: recon / y-octo apply). Step-by-step: [M3.0/plan.md](./M3.0/plan.md). Board: [M3.0/M3.0.state.yaml](./M3.0/M3.0.state.yaml). Crate notes: [hub](./components/hub/). Live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
 
-Replace OctoBase **keck** with a Venus-owned **merge buffer**: apply Yjs, broadcast, persist ~1s to Venus Postgres tables (`crdt_snapshot` / `crdt_update` / `blob`). Same `AFFiNE` + `y-protocols` wire so M1 e2e stay green. One live owner per `workspace_id` (lease). Dirty SQL trigger on persist (no `jobs` yet). No JWST Block REST, no convert/git in the hub, no nbstore.
+Replace OctoBase **keck** with a Venus-owned **Rust + y-octo merge buffer**: apply Yjs, broadcast, persist ~1s to Venus Postgres tables (`crdt_snapshot` / `crdt_update` / `blob`). Same `AFFiNE` + `y-protocols` wire so M1 e2e stay green. One live owner per `workspace_id` (**wiki sticky** / lease — not cookie, not `doc_id`). Dirty SQL trigger on persist (no `jobs` yet). No JWST Block REST, no convert/`toDoc`/git in the hub, no Node product hub, no nbstore.
 
 **Exit:** Compose **`postgres` + `hub` + `web`** (no `octobase`). Refresh / second tab / image / export work. Lease refuses a second owner. `dirty` upserts. Product collab is not AGPL keck.
 
-Do not start M3 `wiki/` until this milestone is **done**.
+Do not start M3 `wiki/` until this milestone is **done**. Hub HPA, stateless gateways, and drain-then-claim are a **later devops track**, not this exit: [hub-fleet.md](../devops/hub-fleet.md). **Auth is a leftover** ([Identity](#identity-v1)): separately designed; hub routes stay open.
 
 ### M3 — Git snapshotter (week)
 
 **Status:** not started. **Gate:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while M3.0 is open or LiveSnapshot HA is un-accepted. An M3 step plan comes **after** this gate.
 
-Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. Same `from-doc.js` as [M2](./M2/README.md) on a **pin** — do not `fromDoc` the live Store for git.
+Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. **Rust worker** hydrates the pin with y-octo, then the same `from-doc.js` as [M2](./M2/README.md) — do not `fromDoc` the live Store for git. Slice `toDoc` for apply is the same worker (M6), not the hub.
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in the hub; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
@@ -384,7 +386,7 @@ When a spec page **changes intention**, v1 must use comment-commit: After / Befo
 
 ### Not in v1 dogfood
 
-Runner, two-agent DoD, MCP, Hugo, alternatives/stacks, **analyzer review**. Identity can stay display name + id ([Identity (v1)](#identity-v1)). Named people (not `user1`) so a PM can see who holds a lease. After M4 you **may** record product remote + branch; you do not run Aider or CodeGraph in dogfood.
+Runner, two-agent DoD, MCP, Hugo, alternatives/stacks, **analyzer review**. Identity can stay display name + id ([Identity (v1)](#identity-v1)); the **authorization module** is a leftover (separately designed), not dogfood. Named people (not `user1`) so a PM can see who holds a lease. After M4 you **may** record product remote + branch; you do not run Aider or CodeGraph in dogfood.
 
 Header in M4 should already show **current page**. As soon as M5 exists, show **who holds the lease**. That is manager chrome, not programmer chrome.
 
@@ -397,13 +399,14 @@ Venus/
   deploy/octobase/          # M1 keck image (legacy after M3.0)
   deploy/web/               # nginx + static host
   apps/web/                 # BlockSuite host + tree + review UI
-  crates/venus-sidecar/     # y-octo + git2: decode export, then md + commit
+  crates/venus-hub/         # M3.0 product hub: y-octo apply + WS + persist
+  crates/venus-sidecar/     # convert worker: y-octo hydrate + M2 adapter + git2
   packages/catalog/         # catalog schema + ops
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
   docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (incl. M3.0)
-  docs/devops/              # Compose now; Kubernetes later
+  docs/devops/              # Compose now; Kubernetes later; hub fleet after M3.0
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```
 

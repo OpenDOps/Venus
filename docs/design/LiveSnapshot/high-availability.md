@@ -1,8 +1,8 @@
 # High-load / high-availability snapshotter
 
-**Status:** revised 2026-08-31 (evening) — **re-accept before M3 code.** Live CRDT is the **Venus hub** after [M3.0](../M3.0/README.md) (keck does not stay). **Dirty:** Postgres upsert on hub persist (`crdt_update`). Pin rules: [README.md](./README.md). Hub fleet: [M3.0/high-availability.md](../M3.0/high-availability.md). Convert: [pin-convert.md](../MDGate/pin-convert.md). Git tree: [datamodel — git](../datamodel/git.md). Milestone: [implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week). **Do not start M3 while M3.0 is open.**
+**Status:** revised 2026-09-01 — **re-accept before M3 code.** Live CRDT is the **Venus hub** after [M3.0](../M3.0/README.md) (keck does not stay). **Dirty:** Postgres upsert on hub persist (`crdt_update`). **Jobs:** Venus `jobs` table (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. Consumers: **TTL lease** on that row, not a held `FOR UPDATE`. Pin starts at **claim**. Pin rules: [README.md](./README.md). Hub fleet: [M3.0/high-availability.md](../M3.0/high-availability.md). Convert: [pin-convert.md](../MDGate/pin-convert.md). Git tree: [datamodel — git](../datamodel/git.md). Milestone: [implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week). **Do not start M3 while M3.0 is open.**
 
-2026-08-31 morning “OctoBase stays / keck dirty notify” is **superseded**. Invariants 1–8 (live never waits, two buffers, queue, cut then convert) are unchanged; item 9 is hub not keck. Revising this file **re-opens the M3 gate** — stop M3 implementation until this revision is accepted **and M3.0 is closed**.
+2026-08-31 morning “OctoBase stays / keck dirty notify” is **superseded**. Invariants 1–8 (live never waits, two buffers, queue, cut then convert) are unchanged; item 9 is hub not keck. **2026-09-01:** wiki-grain enqueue, bulk `jobs` insert, no broker; consumer **TTL lease** (not held `FOR UPDATE`); pin starts at **claim**, persist never queued. Revising this file **re-opens the M3 gate** — stop M3 implementation until this revision is accepted **and M3.0 is closed**.
 
 M3 is **one** workspace and **one** page. This file is the scale contract so that slice does not paint “one replica + GET export in one process” into a corner. The invariant does not change: live collaboration never waits on markdown, git, or convert.
 
@@ -10,7 +10,7 @@ M3 is **one** workspace and **one** page. This file is the scale contract so tha
 
 | | Target |
 |---|---|
-| Product workspaces (wikis) | Thousands |
+| Product workspaces (wikis) | Thousands typical; enqueue must not break at **10⁴–10⁵ dirty wikis** |
 | Pages per wiki | Hundreds |
 | Edits | Many pages, many wikis, in parallel |
 | Snapshotter | A **fleet**, not one process |
@@ -59,7 +59,7 @@ Two **buffers** (bytes of pages). Everything else is clocks, jobs, or git — no
 |---|---|---|---|---|---|
 | **Live generation** | Current CRDT of every page | Hub **memory** (apply/broadcast) + **Postgres** `crdt_*` / blobs after the ~1s persist batch | Browsers → WS → hub. Persist thread drains to SQL. Never Venus markdown. | **No.** Typing continues for the whole flush. | Postgres is the refresh truth. Hub RAM can trail SQL by ~1s. |
 | **Pin generation** | Copy of **dirty** pages only, at cut clock **T** | Flush **worker RAM**: `Map<docId, { bytes, clock }>` (spill to worker disk if huge) | Worker copies from persist at the cut (cloud: MVCC `SELECT` of dirty rows; M3: replica encode or idle `GET …/export`) | **Yes — this copy only.** Bytes and clocks in the Map do not change until drop. | **No**, except this flush is lease `T0` (keep until the lease ends). Crash → retry from `dirty`. |
-| **Dirty / jobs / last_flushed** | Clocks and job rows, **not** Yjs bytes | **Venus tables** (same Postgres instance as `crdt_*` is the hosted default) | **Persist path in Postgres** upserts `dirty` when `crdt_update` rows land (trigger). Observer produces `jobs`. Workers consume. Step 12 writes `last_flushed`. The hub does not write `jobs`. | Job row is the **wiki flush lock** (one inflight). CRDT rows are not locked. | **Yes.** This is HA state. |
+| **Dirty / jobs / last_flushed** | Clocks and job rows, **not** Yjs bytes | **Venus tables** (same Postgres instance as `crdt_*` is the hosted default) | **Persist path in Postgres** upserts `dirty` / `dirty_wiki` when `crdt_update` rows land (trigger). Observer `INSERT…SELECT`s `jobs` (not a broker). Workers consume. Step 12 writes `last_flushed`. The hub does not write `jobs`. | Job row is the **wiki flush lock** (one inflight). CRDT rows are not locked. | **Yes.** This is HA state. |
 | **Git `wiki/`** | Markdown + sidecar + dirty blobs **after** convert | One repo **per wiki** (M3: one `wiki/`) | Convert worker: `fromDoc` on the **pin**, then `git add` / `git mv` / one commit | HEAD is last **successful** commit. Convert does not mutate live CRDT. | **Yes** (git remote). |
 | **Cut** | A consistent **read** of dirty set **S** at **T** | DB snapshot or generation **G** for the copy window only | Worker opens it, copies S into the pin Map, **drops it** before `fromDoc` | Brief. Not a writer freeze. Not held across convert or `git commit`. | No. |
 
@@ -72,11 +72,11 @@ The hub persist buffer (~1s) is **live generation**, always on. It is not the Ve
 2. Sync     Yjs update v1 → hub apply + broadcast (other tabs live)
 3. Persist  hub persist ~1s → Postgres crdt_update   ← never paused
 4. Dirty    same Postgres: AFTER persist upsert dirty[workspace_id, docId].clock
-            (SQL trigger; hub does not write jobs)
-5. Queue    observer produces one job per wiki; worker consumes it
-6. Claim    worker FOR UPDATE SKIP LOCKED on the Venus job row
+            and dirty_wiki[workspace_id] (SQL trigger; hub does not write jobs)
+5. Queue    observer INSERT…SELECT jobs in Postgres; worker consumes (`SKIP LOCKED`)
+6. Claim    worker: short `SKIP LOCKED` + set `owner` / `lease_until`; **COMMIT**
 7. Cut      consistent read of S at T; live writers append the next version
-8. Pin      copy S bytes into worker Map  (pin generation starts here)
+8. Pin      copy S bytes into **this consumer’s** Map  (pin generation starts here — not at enqueue)
 9. Release  drop the DB snapshot / generation G   ← convert must not hold this
 10. Convert fromPinnedBytes / pinThenFromDoc on the Map only
 11. Git     one commit on this wiki’s repo
@@ -107,8 +107,8 @@ flowchart TB
   end
 
   subgraph venusHA["Venus — clocks and queue, not page bytes"]
-    observer["Dirty observer<br/>jobs from dirty table"]
-    dirty["dirty docId clock"]
+    observer["Dirty observer<br/>INSERT jobs in Postgres"]
+    dirty["dirty + dirty_wiki"]
     queue["QUEUE jobs 1 per wiki"]
     lastFl["last_flushed clock + gitSha"]
   end
@@ -151,7 +151,7 @@ flowchart TB
 | | Who | What |
 |---|---|---|
 | **Producer** | Dirty observer (same process as clock upsert) | If no job for the wiki → insert (`idle` / `flush` / `lease`). If pending or inflight → leave the job; only `dirty` grows. |
-| **Consumer** | Flush worker | `SELECT … WHERE not_before <= now() FOR UPDATE SKIP LOCKED` on the **job row**. Then cut → pin → convert → git. |
+| **Consumer** | Flush worker | Short `SKIP LOCKED` + TTL lease on the job row, **COMMIT**, then cut → pin → convert → git. |
 
 The hub is neither jobs producer nor consumer.
 
@@ -175,12 +175,13 @@ The hub already persists Yjs into **Postgres `crdt_*`**. Venus `dirty` is also P
 
 ```text
 hub persist  →  INSERT crdt_update
-                    │  AFTER trigger (one UPSERT, no jobs, no network)
+                    │  AFTER trigger (UPSERT dirty + dirty_wiki; no jobs, no network)
                     ▼
-              dirty(workspace_id, docId, clock)
+              dirty(workspace_id, docId, clock)          ← page grain (cut)
+              dirty_wiki(workspace_id, first_dirty_at)   ← wiki grain (enqueue)
                     │
                     ▼
-              observer → jobs  (Venus, not the hub)
+              observer INSERT…SELECT jobs  (same Postgres; not a broker)
 ```
 
 | | Postgres trigger (preferred) | Hub hook |
@@ -188,11 +189,11 @@ hub persist  →  INSERT crdt_update
 | Extra hub patch | **No** | Yes |
 | When | Same commit as persist (or `AFTER` statement) | After persist in the hub process |
 | HA | Dirty durable with bytes; hub crash after commit is fine | Same if hook writes DB; RAM retry is worse |
-| Persist stall | Trigger must stay **one upsert**. Do not take `jobs` locks. Do not HTTP. | Must not block persist |
+| Persist stall | Trigger: tiny `UPSERT` of `dirty` / `dirty_wiki` only. Do not take `jobs` locks. Do not HTTP. Do not talk to a broker. | Must not block persist |
 | Grain | SQL must map workspace/guid → `(workspace_id, docId)` | Same map in the hub |
 | Coupling | Venus SQL knows `crdt_*` table names | Venus logic inside the hub |
 
-**Yes — write `dirty` directly in Postgres** if the persist tables expose workspace + doc + a clock (or enough to compute one). Idle wikis generate no trigger. Coalesce is `UPSERT` on `(workspace_id, docId)`.
+**Yes — write `dirty` directly in Postgres** if the persist tables expose workspace + doc + a clock (or enough to compute one). Idle wikis generate no trigger. Coalesce is `UPSERT` on `(workspace_id, docId)`. The same trigger may `UPSERT dirty_wiki` (still no `jobs` lock). Do not `INSERT jobs` in the trigger: an inflight worker’s `FOR UPDATE` on that row would stall persist.
 
 **Hub hook** only if that map cannot be done in SQL. Then the hook upserts the same `dirty` row; still no `jobs` from the hub.
 
@@ -204,9 +205,9 @@ M3.0 ships the trigger. M3 idle GET is a **pin source**, not a dirty observer.
 
 ## Observer cycle (Venus clocks + timer)
 
-Venus does **not** scan `crdt_*` or poll every workspace. It watches **`dirty`** (and `last_flushed`, `jobs`) in Postgres.
+Venus does **not** scan `crdt_*` or poll every workspace. It does **not** learn observer `replicaCount` or hash-slice the wiki catalog. It watches **`dirty` / `dirty_wiki`** (and `last_flushed`, `jobs`) in Postgres and **creates `jobs` there** (`INSERT…SELECT … ON CONFLICT DO NOTHING`).
 
-**What is dirty:** a row `dirty(workspace_id, docId) = { clock, firstDirtyAt }` meaning that page’s CRDT clock moved since `last_flushed`. The trigger writes it. It is not a wall-clock and not “the whole service ticked.”
+**What is dirty:** a row `dirty(workspace_id, docId) = { clock, firstDirtyAt }` meaning that page’s CRDT clock moved since `last_flushed`. The trigger writes it. It is not a wall-clock and not “the whole service ticked.” **Enqueue** uses wiki grain (`dirty_wiki`); the **cut** still reads page `dirty` for the claimed wiki.
 
 **Clocks Venus owns**
 
@@ -220,16 +221,19 @@ Venus does **not** scan `crdt_*` or poll every workspace. It watches **`dirty`**
 **Cycle**
 
 ```text
-trigger UPSERT dirty
+trigger UPSERT dirty (page) + dirty_wiki (wiki)
         │
-observer each turn:  SELECT DISTINCT workspace_id FROM dirty
-                     (no pending job) LIMIT B   ← many wikis, one query
-                     INSERT jobs … ON CONFLICT DO NOTHING
+observer each turn:  INSERT jobs
+                     SELECT FROM dirty_wiki   ← wikis that need a job, not the wiki catalog
+                     WHERE no pending/inflight job
+                     ON CONFLICT DO NOTHING
+                     (M3 thin: LIMIT B is ok. Scale: bulk / chunks until 0 rows)
         │
-workers every tick:  SELECT jobs WHERE not_before <= now()
-                     FOR UPDATE SKIP LOCKED   ← one wiki per claim
+workers every tick:  claim due job (SKIP LOCKED + lease) → COMMIT
+                     ← that is the shard; pin starts after this
         │
-claimed job: read ALL dirty rows for that workspace_id  → cut S at T
+claimed job: read ALL page dirty rows for that workspace_id  → cut S at T
+             (plain SELECT; persist not paused)
              convert + one git commit
              last_flushed = T
              if dirty.clock > T → stay dirty (next job)
@@ -237,7 +241,9 @@ claimed job: read ALL dirty rows for that workspace_id  → cut S at T
 
 **Not:** a timer that enqueues one job per dirty page, or one global job for “everything dirty in the fleet.” **One pending job per wiki.** Hundreds of dirty pages on one wiki = **one** worker, one commit (or a bound slice; leftover stays dirty). N dirty wikis = up to N workers in parallel.
 
-Watching Postgres: `LISTEN` from the dirty trigger, or a short `SELECT` on `dirty` / `jobs` — **not** `GET …/export` for every space. One observer turn **must** batch many dirty wikis (`LIMIT B`). Do not hash-split that `SELECT` across processes — see [Snapshotter fleet](#snapshotter-fleet-competing-consumers-not-hash-shards).
+**Not:** list all workspaces, `hash % replicaCount`, then read Postgres. **Not:** a broker (Akka / Kafka / Redis) in front of `jobs` — see [Queue](#queue).
+
+Watching Postgres: a short timer, or one `NOTIFY` per persist **batch** (not per wiki at 10⁵ dirty wikis). Then `INSERT…SELECT` — **not** `GET …/export` for every space. Do not hash-split that `SELECT` across processes — see [Snapshotter fleet](#snapshotter-fleet-competing-consumers-not-hash-shards). Do not `FOR UPDATE` `dirty` / `dirty_wiki` while enqueueing (persist `UPSERT` must not wait).
 
 ## Dirty list (edits since last snapshot)
 
@@ -245,12 +251,13 @@ Per wiki, the snapshotter stores **which pages moved** since `last_flushed`, not
 
 ```text
 last_flushed[workspace_id, docId] = { clock, gitSha }
-dirty[workspace_id, docId]        = { clock, firstDirtyAt }
+dirty[workspace_id, docId]        = { clock, firstDirtyAt }     # page — cut
+dirty_wiki[workspace_id]          = { firstDirtyAt }            # wiki — enqueue
 ```
 
 `clock` is the page’s **Yjs / CRDT clock** (how far that `docId` has moved), not a wall-clock and not one clock for the whole service.
 
-**Dirty observer** is Venus code that **produces `jobs`** from the `dirty` table. It is not the hub. Product path: Postgres already upserted `dirty`; the observer inserts/leaves the job row. M3 thin: observer may still compare replica/GET clocks and upsert `dirty` itself if the trigger is not wired in that process.
+**Dirty observer** is Venus code that **produces `jobs` in Postgres** from `dirty_wiki` (M3 thin may `DISTINCT` page `dirty`). It is not the hub and not an Akka/Kafka producer. Product path: Postgres already upserted `dirty` / `dirty_wiki`; the observer `INSERT…SELECT`s the job row. M3 thin: observer may still compare replica/GET clocks and upsert `dirty` itself if the trigger is not wired in that process.
 
 It does **not** hold page bytes, convert markdown, or commit git.
 
@@ -258,14 +265,14 @@ How dirty is **written** (not the job):
 
 | Era | How | Not |
 |---|---|---|
-| **Product (after M3.0)** | SQL `AFTER` persist on `crdt_update` → upsert `dirty`. Observer writes `jobs` | Poll every workspace. Hub writes `jobs`. Mark on apply. Fat trigger |
+| **Product (after M3.0)** | SQL `AFTER` persist on `crdt_update` → upsert `dirty` (+ `dirty_wiki` at scale). Observer writes `jobs` in SQL | Poll every workspace. Hub writes `jobs`. Mark on apply. Fat trigger. Broker publish |
 | **M3 thin pin source** | Replica or idle `GET …/export` for **that** wiki (bytes for the cut) | A timer over every space as the dirty observer |
 
 Polling every workspace is **forbidden**. Convert and git stay **out** of the hub.
 
 ### Observer vs flush worker (Compose)
 
-M3 **may** run both in one process. That is thinning, not the invariant. The fleet already has two roles; designing them as **two Venus containers** now is aligned — share Venus tables (`dirty`, `jobs`, `last_flushed`), not the hub.
+M3 **may** run both in one process. That is thinning, not the invariant. The fleet already has two roles; designing them as **two Venus containers** now is aligned — share Venus tables (`dirty`, `dirty_wiki`, `jobs`, `last_flushed`), not the hub.
 
 | Container | Owns | Does not |
 |---|---|---|
@@ -274,7 +281,7 @@ M3 **may** run both in one process. That is thinning, not the invariant. The fle
 
 Idle is a column (`jobs.not_before`), not a Kafka delay. Workers `SELECT … WHERE not_before <= now()`. No broker.
 
-**Flush worker is not a tiny Rust-only binary.** `fromDoc` is BlockSuite JS ([Acceptance #7](#acceptance-gate-for-m3)). y-octo + git2 may decode the pin and commit; they must still call `from-doc.js` (Node or embedded JS). The host (`apps/web`) stays JS. A Rust sidecar is optional beside that, not “Venus is Rust.”
+**Flush worker is a Rust process.** It hydrates the pin with **y-octo**, then must still call `from-doc.js` / slice `toDoc` (Node or embedded JS) so [fixtures](../MDGate/fixtures.md) stay the dialect ([Acceptance #7](#acceptance-gate-for-m3)). The host pane (`apps/web`) stays JS. Do not put convert in the **hub**. Do not ship a second MarkdownAdapter until goldens match.
 
 Do not put pin/convert/git on the observer **and** on the worker. Observer produces; worker consumes.
 
@@ -284,7 +291,7 @@ Do not put pin/convert/git on the observer **and** on the worker. Observer produ
 |---|---|---|
 | Browser tab | Vite host + live BlockSuite `Store` | **No.** Must not git-commit from here. |
 | Hub | Apply, broadcast, persist `crdt_*`. **No dirty hook** if the SQL trigger exists | **No** convert/git/`jobs` |
-| Postgres | `crdt_*` bytes; **dirty trigger**; Venus `jobs` / `last_flushed` | **No** convert |
+| Postgres | `crdt_*` bytes; **dirty trigger**; Venus `dirty_wiki` / `jobs` / `last_flushed` | **No** convert |
 | **Observer** container | Producer | Yes (clocks + jobs only) |
 | **Flush worker** container(s) | Consumer | Yes (pin + convert + git) |
 
@@ -292,21 +299,25 @@ M3 thin: one snapshotter process may still be observer+worker with RAM maps. Mus
 
 ### Where the two clocks come from
 
-Persist writes `crdt_update`. A **Postgres trigger** upserts `dirty`. The observer **writes** `jobs`. The flush worker **writes** `last_flushed`.
+Persist writes `crdt_update`. A **Postgres trigger** upserts `dirty` and `dirty_wiki`. The observer **writes** `jobs` (SQL). The flush worker **writes** `last_flushed`.
 
 ```text
 live clock     ← Yjs on the persisted doc (trigger reads workspace/guid)
-dirty.clock    ← Postgres AFTER persist UPSERT
+dirty.clock    ← Postgres AFTER persist UPSERT (page)
+dirty_wiki     ← same trigger, one row per dirty wiki
 last_flushed   ← flush worker after git commit
 ```
 
 | Name | Who writes | From where | Who reads | M3 store |
 |---|---|---|---|---|
 | **Live clock** | Hub persist → `crdt_*` | Persist row / guid. **M3 thin pin:** replica or GET. Not the user’s `Store`. | Trigger / observer | In `crdt_*` |
-| **`dirty[workspace_id, docId].clock`** | Postgres trigger (product); observer (M3 thin) | Persist clock if `> last_flushed` | Flush path | RAM in M3; Venus table at scale |
+| **`dirty[workspace_id, docId].clock`** | Postgres trigger (product); observer (M3 thin) | Persist clock if `> last_flushed` | Flush path (cut) | RAM in M3; Venus table at scale |
+| **`dirty_wiki[workspace_id]`** | Same trigger | First page dirty on that wiki | Observer enqueue | Same as `dirty`; M3 may DISTINCT |
 | **`last_flushed[workspace_id, docId]`** | Flush path after `git commit` | Pin Map `{ clock: T }` + commit SHA | Observer / next trigger compare | RAM in M3; Venus table at scale |
 
-First run: `last_flushed` is missing → page is dirty → first snapshot. Crash: RAM gone; retry from live clock vs git sidecar / empty `last_flushed`. Scale stores `dirty` + `last_flushed` in **Venus tables**, still not the Yjs blob columns.
+First run: `last_flushed` is missing → page is dirty → first snapshot. Crash: RAM gone; retry from live clock vs git sidecar / empty `last_flushed`. Scale stores `dirty` + `dirty_wiki` + `last_flushed` in **Venus tables**, still not the Yjs blob columns.
+
+Drop `dirty_wiki` when that wiki has no page `dirty` left (flush path), not in the persist trigger.
 
 `dirty` is a **set** keyed by `(workspace_id, docId)`. A second keystroke on the same page **upserts the clock**. It does not enqueue a second job. Coalesce: all WYSIWYG since last git SHA is one snapshot ([README — git snapshotter](./README.md#git-snapshotter)).
 
@@ -316,7 +327,7 @@ Also dirty: catalog nodes whose `gitPath` changed; blob ids whose bytes changed.
 
 | Era | How dirty is observed |
 |---|---|
-| Product (hosted) | SQL trigger on `crdt_update` persist → upsert `dirty` |
+| Product (hosted) | SQL trigger on `crdt_update` persist → upsert `dirty` / `dirty_wiki` |
 | M3 thin pin source | Replica or idle `GET …/export` for **bytes**, not as a fleet sweep |
 
 Do not tail the hub SQL WAL. `crdt_*` stays Yjs bytes. Dirty is a Venus table.
@@ -330,53 +341,116 @@ One **pending job per wiki**. Upsert, do not stack.
 | Key | `workspace_id` |
 | `reason` | `idle` \| `flush` \| `lease` (flush-before-lease / `T0`) |
 | `not_before` | Idle: now + 30–120s from `firstDirtyAt`. Flush / lease: now |
-| Inflight | **1** per wiki (`FOR UPDATE SKIP LOCKED` on the job row) |
+| Inflight | **1** per wiki. **TTL lease** on the job row (`owner`, `lease_until` + heartbeat). `FOR UPDATE SKIP LOCKED` only to **claim**, then **COMMIT**. Do not hold the row lock across pin/convert/git. |
 | Coalesce | New dirty while pending: update clocks on `dirty`; do **not** reset `not_before` for `idle`. `flush` / `lease` may pull `not_before` forward |
 
 ```text
 Postgres trigger UPSERT dirty[workspace_id, docId]
+                 UPSERT dirty_wiki[workspace_id]
         │
-observer: if no job for wiki → insert job (idle, not_before = firstDirtyAt + debounce)
-          if job pending     → leave job; dirty set grows
+observer: INSERT…SELECT jobs FROM dirty_wiki WHERE no job
+          ON CONFLICT DO NOTHING
+          if job pending     → leave job; page dirty set grows
           if job inflight    → dirty set grows; after commit, leftover dirty enqueues again
         │
         ▼
-workers:  SELECT … WHERE not_before <= now()   ← consumer
-          FOR UPDATE SKIP LOCKED
+workers:  claim due job (SKIP LOCKED) → write lease → COMMIT
+          then cut / pin / convert / git
+          heartbeat lease_until until done
 ```
 
 Priority: `lease` > `flush` > `idle`. A lease job is allowed to cut in front of idle for **that** wiki only. It does not steal another wiki’s inflight worker mid-convert.
 
 Fairness: N workers, N wikis in parallel. One wiki with hundreds of dirty pages occupies **one** worker until that flush finishes (or hits a time/memory bound — then commit what was pinned and leave the rest dirty). Do not convert the whole fleet on one core.
 
-Durable store: **Venus tables** (same Postgres instance is fine, **not** the Yjs blob schema). Workers are stateless. No leader. No Redis required for correctness.
+Durable store: **Venus tables** (same Postgres instance is fine, **not** the Yjs blob schema). Workers are stateless. No leader. **No broker.** No Redis required for correctness.
+
+### Jobs stay in Postgres (not Akka / Kafka / Redis)
+
+Observe dirty and **create jobs in the same database**. The observer is a timer (or batch `NOTIFY`) that runs `INSERT…SELECT`. It is not a publisher into an actor mailbox.
+
+| Need | Venus `jobs` | Akka (or Kafka / Redis queue) |
+|---|---|---|
+| One job per wiki, coalesce | `UNIQUE (workspace_id)` + `ON CONFLICT DO NOTHING` | Still need a keyed dedup store — that is this table |
+| Idle 30–120s | Column `not_before` | Delay mailbox / scheduler = a second clock |
+| Inflight **1** | TTL lease on the job row; short `SKIP LOCKED` to claim | At-least-once delivery still needs a mutex or you double-`fromDoc` |
+| Persist must not wait | Trigger never writes `jobs` | Publish-from-trigger waits on the broker or drops the message |
+| Worker process | **Rust** + `SKIP LOCKED` | JVM cluster (Akka) or extra brokers Venus does not otherwise run |
+| Durability | Already Postgres | Akka persistence / Kafka is a second HA plane |
+
+`SKIP LOCKED` **is** the competing-consumer queue. A broker does not remove `dirty` / `last_flushed` / one-job-per-wiki. Do not put Kafka in front of Yjs persist either ([M3.0 HA](../M3.0/high-availability.md)).
+
+### Tens / hundreds of thousands of dirty wikis
+
+A tiny `LIMIT B` (tens–hundreds) is **M3 thin** and modest load. At 10⁴–10⁵ dirty **wikis**, it adds a second queue: wiki 50 000 waits many ticks **before a job row exists**, so idle debounce has not started. Convert/git is still the throughput ceiling; enqueue must not trickle.
+
+**Do:** bulk `INSERT…SELECT` from **`dirty_wiki`** (one row per dirty wiki). Chunk `LIMIT 5k–20k` only if a single statement is too large; repeat until 0 inserts. After the hole is filled, the same SQL inserts **only** wikis that still lack a job.
+
+**Do not:** `GROUP BY` millions of **page** `dirty` rows every tick (that is cut grain). **Do not** list all product workspaces. **Do not** `hash % replicaCount`. **Do not** `FOR UPDATE` dirty rows while enqueueing.
+
+`NOTIFY` per wiki at this cardinality is a flood. Wake on a timer, or **one** notify per persist batch, then bulk insert.
+
+If that `INSERT…SELECT` is **measured** CPU-bound: **fixed P** partitions in SQL (`hash(workspace_id) % P IN claimed`), not pod count. If Postgres is sharded later, shard key is `workspace_id` and this query is **shard-local**. Scale **workers** from queue depth; extra observers past 2 are HA unless enqueue CPU is the proven limit.
+
+A mass-dirty event (outage, migration) is a **worker** herd. `not_before = first_dirty_at + debounce` spreads wikis that got dirty at different times. Do not skip dirty marks to protect the observer.
+
+### Hundreds of consumers (connections vs locks)
+
+Hundreds of **row leases** is fine. Hundreds of **held transactions** (and extra idle connections) is not.
+
+| Thing | At ~100 workers | Verdict |
+|---|---|---|
+| One **lease** per inflight wiki (`jobs.owner` / `lease_until`) | 100 leased rows | Trivial. |
+| **Claim** `SELECT … FOR UPDATE SKIP LOCKED LIMIT 1` then `UPDATE` lease then **COMMIT** | Short, indexed (`not_before`, unexpired lease) | Standard PG work queue. Contention is “next due row,” not 100 open locks. |
+| Connection **held open** for pin + `fromDoc` + git | 100 idle-in-transaction sessions | **Forbidden.** `max_connections`, vacuum, xid. Convert can last seconds–minutes. |
+| 100 workers **polling** when 3 jobs are due | 97 empty `SKIP LOCKED` | Waste. Worker `replicaCount` follows **queue depth** (due and unleased). Observers stay ≥2; do not run 100 workers “for HA” on an empty queue. |
+
+```text
+BEGIN
+  SELECT id FROM jobs
+  WHERE not_before <= now()
+    AND (lease_until IS NULL OR lease_until < now())
+  FOR UPDATE SKIP LOCKED
+  LIMIT 1
+  UPDATE jobs SET owner = $worker, lease_until = now() + interval '2 minutes'
+COMMIT                    ← session may return to the pool
+
+-- pin / fromDoc / git here (no row lock, no open txn)
+heartbeat: UPDATE jobs SET lease_until = now() + '2 minutes' WHERE id AND owner
+crash:     lease expires → another worker claims
+```
+
+PgBouncer **transaction** pooling is OK because claim is one short transaction. One connection (or 1–2) per worker process is enough. Hub persist must not share a tiny `max_connections` with a worker stampede.
+
+`SKIP LOCKED` with many due jobs: workers skip a just-claimed row and take the next. That is the parallel fleet. Pin/convert stays off this connection.
 
 ## Snapshotter fleet (competing consumers, not hash shards)
 
 Watching **many dirty wikis in one turn** is correct. Pinning each observer process to a **hash slice of all wikis** is the wrong tool for this plane.
 
-The **hub must** shard by `workspace_id`: live apply lives in one process’s RAM; two owners is split-brain ([hub fleet](#live-crdt-ha-hub-fleet)). Snapshotters share Postgres. Job insert is **idempotent**. Convert work is claimed with **`FOR UPDATE SKIP LOCKED`**. That is already the shard: whoever is free takes the next ready wiki. Do not add a second map `hash(workspace_id) → Venus pod`.
+The **hub must** shard by `workspace_id`: live apply lives in one process’s RAM; two owners is split-brain ([hub fleet](#live-crdt-ha-hub-fleet)). Snapshotters share Postgres. Job insert is **idempotent**. Convert work is claimed with a **TTL lease** (`SKIP LOCKED` to take the row, then COMMIT). That is already the shard: whoever is free takes the next ready wiki. Do not add a second map `hash(workspace_id) → Venus pod`.
 
 | Plane | Standard | Why |
 |---|---|---|
-| **Hub (live CRDT)** | Consistent hash **or** TTL lease on `workspace_id` | RAM is not shared. Exactly one owner. [M3.0 HA](../M3.0/high-availability.md). |
-| **Flush workers** | Competing consumers (`SKIP LOCKED` on `jobs`) | Work is a row in a shared table. Sticky hash leaves idle pods while one hot wiki queues behind its owner. |
-| **Dirty observers** | ≥2 replicas, same SQL, batch `SELECT` | `INSERT jobs ON CONFLICT DO NOTHING`. Duplicate turns are cheap. Missed wikis are not. |
+| **Hub (live CRDT)** | Wiki sticky: consistent hash **or** TTL lease on `workspace_id` | RAM is not shared. Exactly one owner. **Rust + y-octo.** [M3.0 HA](../M3.0/high-availability.md). |
+| **Flush workers** | Competing consumers (TTL lease on `jobs`, short `SKIP LOCKED` to claim) | Work is a row in a shared table. Sticky hash leaves idle pods while one hot wiki queues behind its owner. Do not hold `FOR UPDATE` across convert. |
+| **Dirty observers** | ≥2 replicas, same SQL, bulk `INSERT…SELECT` from `dirty_wiki` | `ON CONFLICT DO NOTHING`. Duplicate turns are cheap. Missed wikis are not. Tiny `LIMIT B` is M3 thin, not 10⁵-wiki enqueue. |
 
 ### What “a turn” is
 
 ```text
--- every observer replica, every tick (or on LISTEN)
+-- every observer replica, every tick (or one NOTIFY per persist batch)
 INSERT INTO jobs (workspace_id, reason, not_before)
-SELECT d.workspace_id, 'idle', min(d.first_dirty_at) + debounce
-FROM dirty d
-WHERE NOT EXISTS (pending/inflight job for d.workspace_id)
-GROUP BY d.workspace_id
-LIMIT B
+SELECT w.workspace_id, 'idle', w.first_dirty_at + debounce
+FROM dirty_wiki w
+WHERE NOT EXISTS (pending/inflight job for w.workspace_id)
 ON CONFLICT (workspace_id) DO NOTHING;
+
+-- M3 thin (one wiki / modest dirty): FROM dirty … GROUP BY workspace_id LIMIT B is enough
+-- Scale hole (10⁴–10⁵ wikis): omit tiny LIMIT; chunk 5k–20k until INSERT count = 0
 ```
 
-`B` is tens to hundreds of wikis per turn, not 1. Scale the **batch**, not a hash ring. Two observer processes both running this is HA, not double work that matters.
+One statement can create many jobs. Two observer processes both running this is HA, not double work that matters. Do not hash-split to make enqueue “parallel” unless this statement is CPU-bound ([large dirty set](#tens--hundreds-of-thousands-of-dirty-wikis)).
 
 **k8s:** observer `Deployment` replicaCount **≥ 2** (crash cover). Worker `Deployment` replicaCount from **queue depth** (`jobs` where `not_before <= now()` and not inflight). Replica count is **not** shard count. Do not use `hash(workspace_id) % replicaCount` — adding a pod reshuffles every wiki and two pods can own the same wiki during a rolling deploy.
 
@@ -389,7 +463,7 @@ Observers do not. Costs if you do it anyway:
 | Cost | What happens |
 |---|---|
 | Membership | Shared store of process count + IDs. Restart, split-brain, and “who holds slot 7” become a second HA problem. |
-| Coverage holes | Dead process → its hash slice is unwatched until rebalance. Dirty rows sit with no job. Competing consumers have no holes: any live replica sees the whole `dirty` table. |
+| Coverage holes | Dead process → its hash slice is unwatched until rebalance. Dirty rows sit with no job. Competing consumers have no holes: any live replica sees the whole `dirty_wiki` table. |
 | Hot keys | One busy wiki is stuck on one observer while others idle. Same anti-pattern we forbade for workers. |
 | `replicaCount` as N | k8s HPA / rolling update changes N → every wiki remaps. The standard fix (Kafka, Vitess) is a **fixed** partition count, not `2 × processes`. |
 
@@ -417,6 +491,23 @@ k8s still starts more **worker** pods from queue depth. Extra observer pods only
 
 ## Pin cut (lock only dirty files, then copy)
 
+Pinning **starts when a consumer has claimed the job**. The observer only writes `jobs` (`not_before`). Until some worker takes that row, there is **no** pin Map, no cut, no `T`.
+
+Each wiki is claimed independently. Wiki A’s cut clock **T_A** and wiki B’s **T_B** differ (wall time and persist clocks). That is correct: there is no fleet-wide “snapshot second.” Catalog + dirty pages of **one** wiki share **one** cut (same MVCC snapshot) so `gitPath` matches the files in **that** commit.
+
+**Hub does not feel the pin.** Apply, broadcast, and persist ~1s keep running. Persist is **not** queued, paused, or locked for the wiki. The cut is a `REPEATABLE READ` **plain `SELECT`** of `crdt_*` (and blobs) for dirty ids. Writers insert **new MVCC row versions**. Postgres does not make the hub wait. The dirty trigger still upserts; those newer clocks stay on `dirty` for the **next** job.
+
+`FOR UPDATE` on CRDT / `dirty` rows **would** stall persist (those are the hot pages). Forbidden. The only exclusive lock is the **job lease** (one flush per wiki), and that lease is columns + heartbeat, not a transaction sitting on `crdt_update`.
+
+```text
+observer:  job row exists, not_before in the future     ← no pin
+consumer:  claim + COMMIT
+           CUT (MVCC SELECT of S) → copy into Map       ← pin starts
+           COMMIT the cut txn (bytes now only in RAM)
+           fromDoc + git                                ← hub still persisting
+           last_flushed = T; leftover dirty stays
+```
+
 “Lock the DB before we pin” means a **consistent cut of dirty rows only**, then copy those bytes into the pin buffer. It does **not** mean `LOCK TABLE`, `FOR UPDATE` on those rows, or pausing persist until git is done.
 
 **Why not `FOR UPDATE` / `FOR SHARE` on dirty pages:** those lock modes conflict with writers. The pages in the dirty set are exactly the ones people are editing. An exclusive or share-row lock for the copy would stall live CRDT on the hot path. Forbidden by the [invariant](./README.md#invariant).
@@ -424,13 +515,14 @@ k8s still starts more **worker** pods from queue depth. Extra observer pods only
 **What to implement:**
 
 ```text
-1. Claim job (wiki flush lease — this is the only exclusive lock, and it is Venus’s job row, not CRDT rows)
+1. Claim job: `SKIP LOCKED` + set `owner` / `lease_until` + **COMMIT** (only exclusive lock = this lease, not CRDT rows)
 2. Read dirty set S (docIds ∪ catalog ∪ dirty blobs)
 3. Open pin buffer (empty)
 4. CUT — consistent read of S at clock T
       live writers continue (new generation / MVCC next row version)
       other wikis untouched
       pages not in S untouched
+      hub persist not queued
 5. Copy S into the pin buffer (I/O only)
 6. End cut — drop the snapshot; persist was never paused
 7. Convert + git on the buffer (no DB row locks, no hub involvement)
@@ -457,7 +549,7 @@ Same Path B as M3: `fromPinnedBytes` / `pinThenFromDoc` on the buffer. Not the s
 
 ```text
 pin buffer (worker RAM, maybe spill to worker disk)
-        │  fromDoc + sidecar   (CPU, JS adapter — scale out workers)
+        │  y-octo hydrate + fromDoc + sidecar   (CPU — scale out workers)
         ▼
 wiki repo for this workspace
         │  git add / git mv / one commit
@@ -465,20 +557,20 @@ wiki repo for this workspace
 last_flushed clocks
 ```
 
-- **Git lock** = the job row (one writer per wiki). Do not share a working tree across workers without that.
+- **Git lock** = the job **lease** (one writer per wiki). Do not share a working tree across workers without that. Do not hold a PG `FOR UPDATE` for the git.
 - Workers are interchangeable if each wiki has a **remote** (push after commit). Local-disk-only trees need sticky `workspace_id → worker` or a shared volume plus the same job lock.
 - Autocomment `snapshot: <title>` for idle/flush; lease accept is the other class (required why) and reuses this convert path.
 - Do not re-export clean pages. Catalog-only moves are `git mv` without `fromDoc` if the body clock is unchanged.
 
 **After** `last_flushed` (step 8), enqueue [LifeIndexing](../Agents/LifeIndexing.md) `{ wikiSha, dirtyDocIds }`. Same dirty grain (`docId`). Direct-link parse may run after git add (no model). LLM gists, tags, and the logical graph are a **second job**: upsert per wiki, must not hold the cut, must not delay step 8, must not retry the pin on model failure. `last_indexed` is not `last_flushed`.
 
-`fromDoc` is BlockSuite JS. Scale-out is **more convert workers**, not a Rust reimplementation of the adapter. y-octo + git2 in `crates/venus-sidecar` may own pin-decode + commit in one Venus process; it still consumes the pin interface and still must call the same exporter (Node or embedded JS). It still does not live in the hub.
+`fromDoc` / slice `toDoc` stay BlockSuite JS. The **worker is Rust** (y-octo hydrate + git2 + host the adapter). Scale-out is **more convert workers**, not a second adapter dialect and not convert inside the hub. Same exporter as M2 (`from-doc.js`).
 
 ## Live CRDT HA (hub fleet)
 
-Product collab after M3.0 is the **Venus hub**, not keck. RAM apply + in-process broadcast are **not** shared across pods. Two hubs applying the same `workspace_id` is split-brain. Cookie/IP sticky is **wrong**.
+Product collab after M3.0 is the **Venus hub** (**Rust + y-octo**), not keck. RAM apply + in-process broadcast are **not** shared across pods. Two hubs applying the same `workspace_id` is split-brain. Cookie/IP sticky is **wrong**. **`doc_id` sticky is wrong.**
 
-**Contract:** [M3.0/high-availability.md](../M3.0/high-availability.md). Many hub pods, **one live owner per `workspace_id`**, shared Postgres (`crdt_*` + Venus `dirty` / `jobs`). Gateway hashes or **leases** `workspace_id`.
+**Contract:** [M3.0/high-availability.md](../M3.0/high-availability.md). Many hub pods, **one live owner per `workspace_id`** (wiki sticky / lease), shared Postgres. Gateway hashes or **leases** `workspace_id`. One process per wiki is enough for live typing; scale-out is many wikis.
 
 ```text
 clients ──► gateway (workspace_id → hub owner)
@@ -503,9 +595,9 @@ M1 keck recon (do not copy into M3): [octobase.md](./octobase.md).
 | Worker dies after commit, before `last_flushed` | Next attempt sees same pin clocks; empty diff or identical commit — make step 8 **idempotent** (compare clocks, skip commit if HEAD already has them). |
 | Queue DB down | Live CRDT unaffected (hub/Postgres persist still runs). Snapshot lag grows. Do not block editors. |
 | One wiki is huge / hot | Occupies one worker; other wikis proceed. Bound pin memory (spill). Bound docs per flush if needed; leftover stays dirty. |
-| Observer dies | Remaining replica(s) still `SELECT` the whole `dirty` table. No hash slice goes dark. Job insert is idempotent. |
+| Observer dies | Remaining replica(s) still `INSERT…SELECT` from `dirty_wiki` (whole set). No hash slice goes dark. Job insert is idempotent. |
 
-Pins stay non-durable (except `T0`). **Snapshotter HA state** is `dirty` + `jobs` + `last_flushed` + git remotes.
+Pins stay non-durable (except `T0`). **Snapshotter HA state** is `dirty` + `dirty_wiki` + `jobs` + `last_flushed` + git remotes.
 
 Live collab HA is the **hub fleet** above. Snapshotters must not stall persist (including the dirty trigger).
 
@@ -516,7 +608,7 @@ M3 may degenerate every box. It must not invert them.
 | Box | M3 (allowed thin) | Must not |
 |---|---|---|
 | Dirty list | RAM, one `docId` | `fromDoc` every keystroke into git |
-| Queue | In-process idle timer + Flush | Commit inside the editor tab |
+| Queue | In-process idle timer + Flush | Commit inside the editor tab; Akka/Kafka as the queue |
 | Cut | Replica encode **or** idle GET export | `fromDoc` the live `Store`; pause persist for convert |
 | Pin buffer | Process `Map` | Write markdown to Postgres |
 | Workers | One process | Link into the hub |
@@ -526,7 +618,7 @@ Exit of M3 stays: clone `wiki/` and read markdown; typing during flush still syn
 
 ## Acceptance (gate for M3)
 
-Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus hub (not keck); dirty on `crdt_update`; snapshotter beside the hub. **Re-accept this table before M3 code.** No `wiki/` writer or snapshotter implementation while this section is un-accepted **or M3.0 is open**.
+Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus hub (not keck); dirty on `crdt_update`; snapshotter beside the hub. **Revised 2026-09-01:** wiki-grain `dirty_wiki`, bulk `jobs` in Postgres, no broker; consumer TTL lease; pin at claim, persist never queued. **Re-accept this table before M3 code.** No `wiki/` writer or snapshotter implementation while this section is un-accepted **or M3.0 is open**.
 
 [LiveSnapshot README](./README.md) is pin-then-convert for one wiki. This file is the fleet. M3 is the **thin column** of the table above, not a second architecture. Live CRDT owner/lease/drain: [M3.0 HA](../M3.0/high-availability.md).
 
@@ -535,28 +627,32 @@ Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus
 | 1 | Live CRDT never waits on markdown, git, or convert. Typing during flush still syncs. |
 | 2 | **Wiki** = one git repo and **one** flush job at a time. **Page** = dirty / pin / convert grain. Blobs ride with the page (or their clock). Catalog is in the same **cut** as the dirty pages. |
 | 3 | Two buffers: live generation always; pin generation only for the flush. Drop the pin after commit (keep it if this flush is lease `T0`). |
-| 4 | Dirty is `{ clock }` on `(workspace_id, docId)` (plus catalog path / blob id), not keystrokes and not markdown in Postgres. Second edit **upserts** the clock. |
-| 5 | Queue: one pending job per wiki; upsert, do not stack; inflight **1**; `lease` > `flush` > `idle`. Workers claim with `FOR UPDATE SKIP LOCKED` on the **job row** (Venus tables), never on CRDT rows. Observers: ≥2 replicas, many wikis per turn, `ON CONFLICT DO NOTHING`. Do not hash-partition observers or workers by `workspace_id % replicaCount`. |
-| 6 | Cut = consistent read of dirty set **S** at clock **T**, copy bytes, **release the cut**, then `fromDoc`. No `FOR UPDATE` / exclusive lock of CRDT rows. Do not hold the cut across convert or `git commit`. M3 idle may use replica encode or `GET …/export` (best-effort). That is not the scale mechanism. |
-| 7 | Convert is Path B: `pinThenFromDoc` / `fromPinnedBytes` on the pin buffer, same `from-doc.js`. Not the spectator pane. Not hub export-as-markdown. Scale-out is **more convert workers**, not a Rust adapter and not convert inside the hub. |
-| 8 | Durable HA state is `dirty` + `jobs` + `last_flushed` + git remotes. Pins stay non-durable except `T0`. Worker death retries from dirty; git HEAD is the last successful commit. Step 8 (`last_flushed`) is **idempotent**. |
-| 9 | Snapshotter sits **beside** the **hub**. Hosted hub fleet: one live owner per `workspace_id`, shared Postgres. **Dirty** = Postgres upsert when `crdt_update` persist lands (SQL trigger preferred; hub hook only if grain cannot map). Trigger/hook must not stall persist or write `jobs`. Do not poll every space, embed convert in the hub, or two hub owners for one wiki. keck is M1 legacy. |
+| 4 | Dirty is `{ clock }` on `(workspace_id, docId)` (plus catalog path / blob id), not keystrokes and not markdown in Postgres. Second edit **upserts** the clock. Enqueue grain is the **wiki** (`dirty_wiki`); cut grain stays the page. |
+| 5 | Queue is the Venus **`jobs` table** (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. One pending job per wiki; upsert, do not stack; inflight **1** = **TTL lease** (`owner` / `lease_until` + heartbeat); `lease` > `flush` > `idle`. Workers **claim** with short `FOR UPDATE SKIP LOCKED`, then **COMMIT** — never hold that lock across pin/convert/git; never lock CRDT rows. Observers: ≥2 replicas, bulk insert from `dirty_wiki`, `ON CONFLICT DO NOTHING`. Tiny `LIMIT B` is M3 thin. Worker count follows queue depth. Do not hash-partition by `workspace_id % replicaCount`. Trigger never writes `jobs`. |
+| 6 | Pin starts **when the consumer claims**, not at enqueue. Each wiki has its own cut clock **T** (no fleet-wide snapshot second). Cut = consistent **plain `SELECT`** of dirty set **S** at **T** (`REPEATABLE READ` / MVCC). Copy bytes, **release the cut**, then `fromDoc`. Hub apply/broadcast/persist **never wait** (not queued, not paused). No `FOR UPDATE` on CRDT/`dirty` rows. M3 idle may use replica encode or `GET …/export` (best-effort). That is not the scale mechanism. |
+| 7 | Convert is Path B: `pinThenFromDoc` / `fromPinnedBytes` on the pin buffer, same `from-doc.js`. **Rust worker** hydrates with y-octo and hosts that adapter (including slice **`toDoc`** for apply). Not the spectator pane. Not hub export-as-markdown. Scale-out is **more convert workers**, not a second adapter and not convert inside the hub. |
+| 8 | Durable HA state is `dirty` + `dirty_wiki` + `jobs` + `last_flushed` + git remotes. Pins stay non-durable except `T0`. Worker death retries from dirty; git HEAD is the last successful commit. Step 8 (`last_flushed`) is **idempotent**. |
+| 9 | Snapshotter sits **beside** the **hub**. Hosted hub fleet: one live owner per `workspace_id` (**wiki sticky**). Shared Postgres. **Dirty** = Postgres upsert when `crdt_update` persist lands (SQL trigger preferred; hub hook only if grain cannot map). Trigger/hook must not stall persist or write `jobs`. Do not poll every space, embed convert in the hub, or two hub owners for one wiki. keck is M1 legacy. Hub merge is **y-octo**. |
 
-**Left to the M3 plan** (not this gate): idle debounce inside 30–120s; first pin source (replica vs idle GET vs persist MVCC); Node `simple-git` vs `crates/venus-sidecar`; whether process crash recovers `last_flushed` by reading the git sidecar clock; exact `crdt_*` table/columns for the dirty trigger (M3.0 fills Actual).
+**Left to the M3 plan** (not this gate): idle debounce inside 30–120s; first pin source (replica vs idle GET vs persist MVCC); how the Rust worker embeds JS (`from-doc.js`); whether process crash recovers `last_flushed` by reading the git sidecar clock; exact `crdt_*` table/columns for the dirty trigger (M3.0 fills Actual). M3 one-wiki may `DISTINCT` page `dirty` instead of a `dirty_wiki` table.
 
 ## Do not
 
 - Poll every workspace with `GET …/export`.
 - Embed convert / git / `jobs` in the hub.
 - Two live hub owners for one `workspace_id`.
-- Cookie/IP sticky instead of `workspace_id` routing.
+- Cookie/IP sticky or **`doc_id` sticky** instead of `workspace_id` routing.
 - Open one Y.Doc replica per page at thousands of wikis.
-- `FOR UPDATE` / exclusive lock CRDT rows while copying or converting.
+- `FOR UPDATE` / exclusive lock CRDT rows while copying or converting. Hold `FOR UPDATE` on `jobs` across pin/`fromDoc`/git (use a TTL lease + COMMIT instead).
 - Hold the cut open across `fromDoc` / `git commit`.
-- Pause hub persist until pin finishes ([M3.0 HA](../M3.0/high-availability.md)).
+- Pause hub persist until pin finishes, or queue persist behind a pin ([M3.0 HA](../M3.0/high-availability.md)). Pin does not lock the wiki’s `crdt_*` writers.
+- Pin at observer enqueue (no consumer yet). Expect one wall-clock **T** for the whole fleet.
 - Use the spectator splice map as a git pin.
 - Store the list of keystrokes as the dirty list.
 - Hash-partition observers or flush workers by `workspace_id % replicaCount` (or “2 IDs per process” as the shard map). The hub may hash; snapshotters use `SKIP LOCKED` / idempotent job insert ([fleet](#snapshotter-fleet-competing-consumers-not-hash-shards)).
+- Put snapshotter `jobs` on Akka, Kafka, Redis, or any broker. Observe dirty and create jobs **in Postgres**.
+- Use a tiny `LIMIT B` as the only enqueue path when tens/hundreds of thousands of wikis are dirty. Bulk-insert from `dirty_wiki`.
+- `GROUP BY` page `dirty` every tick at that size; `FOR UPDATE` `dirty` / `dirty_wiki` while enqueueing; `NOTIFY` per wiki at 10⁵ cardinality.
 - Wait on an LLM (gists, tags, logical graph) to `last_flushed` or to the `.md` git commit ([LifeIndexing](../Agents/LifeIndexing.md)).
 - Start M3 while [M3.0](../M3.0/README.md) is open, or keep keck as the product collab front.
 

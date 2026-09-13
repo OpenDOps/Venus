@@ -18,7 +18,7 @@ The live contract is **Yjs update binaries + spaces (docs) + blobs**. M1 impleme
 |---|---|---|---|
 | **BlockSuite** (`@blocksuite/affine`, `@blocksuite/store`, adapters) | [MPL-2.0](https://github.com/toeverything/blocksuite) | Weak, **file-level** | Editor in prototype and cloud |
 | **Yjs** | MIT | None | Browser CRDT (BlockSuite already uses it) |
-| **y-octo** | [MIT](https://crates.io/crates/y-octo) | None | Server merge / snapshots; OK in cloud |
+| **y-octo** | [MIT](https://crates.io/crates/y-octo) | None | **Required** M3.0+ hub merge; convert-worker hydrate. OK in cloud |
 | **OctoBase** | [AGPL-3.0](https://github.com/toeverything/OctoBase) | Strong, including **network / SaaS** | **M1 keck only.** Product after M3.0 does not ship it. If you still run the M1 image: disclose overlays |
 
 Toeverything’s OctoBase README states they will switch to MPL (or looser) after production-ready. That has not happened (still pre-1.0). **Do not plan the cloud license around a relicensing with no date.**

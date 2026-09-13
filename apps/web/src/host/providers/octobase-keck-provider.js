@@ -23,7 +23,7 @@ export class OctoBaseKeckProvider {
   synced = false;
 
   /**
-   * @param {string} url full WS URL, e.g. ws://127.0.0.1:3000/collaboration/venus-m0
+   * @param {string} url full WS URL, e.g. ws://127.0.0.1:3000/collaboration/<workspace uuid>
    */
   constructor(url) {
     this.url = url;

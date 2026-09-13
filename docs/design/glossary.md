@@ -6,7 +6,7 @@ Words that collide in Venus. Product + data design: [venus-design.md](./venus-de
 
 | Term | What it is | Pinned? | Browser? | When |
 |---|---|---|---|---|
-| **Doc export** | HTTP read of the **current** Y.Doc: `GET /api/block/venus-m0/export` (Yjs update v1). Next GET can differ. Reads **Postgres**, not the collab process’s live RAM (M1: keck; after [M3.0](./M3.0/README.md): hub). | No | No | [M1 step 7](./M1/plan.md#7-step-snapshot); M3.0 keeps the URL or an alias |
+| **Doc export** | HTTP read of the **current** Y.Doc: `GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export` (Yjs update v1). Next GET can differ. Reads **Postgres**, not the collab process’s live RAM (M1: keck; after [M3.0](./M3.0/README.md): hub). | No | No | [M1 step 7](./M1/plan.md#7-step-snapshot); M3.0 keeps the URL or an alias |
 | **Pin** | Frozen copy of export bytes (and catalog) at time T. Convert and git run on this copy. Live CRDT is not paused. | Yes | No | M3+ ([LiveSnapshot](./LiveSnapshot/README.md)) |
 | **`T0`** | The pin **kept** at lease acquire. Review Before/Diff is vs this clock. | Yes | No | M5 |
 | **Git snapshot commit** | WYSIWYG pin → markdown + autocomment (`snapshot: <title>`). Not a review why. | Yes (git SHA) | No | M3 |
@@ -20,7 +20,8 @@ Words that collide in Venus. Product + data design: [venus-design.md](./venus-de
 |---|---|
 | **Live CRDT** | BlockSuite `Store` / `store.spaceDoc` (Y.Doc). Browsers share it over the sync WebSocket. |
 | **keck** | OctoBase WebSocket + HTTP front. Compose service `octobase`. **M1 (done).** Not the product collab front after [M3.0](./M3.0/README.md). Recon: [octobase.md](./LiveSnapshot/octobase.md). |
-| **Hub** | Venus-owned merge buffer: apply Yjs, broadcast, persist ~1s. Compose service `hub`. Same `AFFiNE` + y-protocols wire as M1. Not JWST, not git, not `jobs`. [M3.0](./M3.0/README.md), [hub HA](./M3.0/high-availability.md). |
+| **Hub** | Venus-owned **Rust + y-octo** merge buffer: apply Yjs, broadcast, persist ~1s. Compose service `hub`. Same `AFFiNE` + y-protocols wire as M1. **Wiki sticky** on `workspace_id` (lease / hash). Not JWST, not git, not `jobs`, not cookie/`doc_id` sticky. [M3.0](./M3.0/README.md), [hub HA](./M3.0/high-availability.md). |
+| **Wiki sticky** | Gateway / lease sends every socket for one `workspace_id` to **one** hub process. That is live-collab scale-out (many wikis). Not session sticky. Not per-page sticky. Fleet (HPA, drain): [hub-fleet.md](../devops/hub-fleet.md). |
 | **Postgres** | Persist for Yjs docs **and** blobs. Compose service `postgres`. M1: `jwst` via keck. After M3.0: Venus `crdt_*` + `blob` + `workspace_lease` + `dirty`. |
 | **SyncProvider** | Host seam: `memory` \| `octobase` (M1) \| `venus` (product after M3.0; `octobase` may stay as a wire alias) \| `y-websocket` (unused kind). Cloud stays this wire, not a y-websocket / nbstore swap. |
 | **Comment-commit** | Markdown lease accept: hunks + required why. Opposite of a git snapshot commit. |

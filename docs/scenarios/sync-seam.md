@@ -1,8 +1,8 @@
 # Sync seam
 
-**Feature:** the editor talks to a `SyncProvider`. Default is memory. Live keck is env-selected. `mount-editor` does not import the server.
+**Feature:** the editor talks to a `SyncProvider`. Default is memory. Live hub is env-selected (`kind: 'octobase'` alias). `mount-editor` does not import the server.
 
-**Boxes:** SyncProvider, keck WS ([architecture](../design/architecture.md#elements), [CRDT seam](../design/CRDT/README.md#seam)).
+**Boxes:** SyncProvider, hub WS ([architecture](../design/architecture.md#elements), [CRDT seam](../design/CRDT/README.md#seam)).
 
 ## Run
 
@@ -28,4 +28,4 @@ The Vitest env-switch tests **do not** open a socket.
 
 | Spec | Needs | Proves |
 |---|---|---|
-| `e2e/m1-provider.spec.ts` | Compose keck, `pnpm test:e2e:m1` | `kind === 'octobase'`; one WS to `ws://127.0.0.1:3000/collaboration/venus-m0` with subprotocol `AFFiNE` |
+| `e2e/m1-provider.spec.ts` | Compose hub, `pnpm test:e2e:m1` | `kind === 'octobase'` (alias); one WS to `ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with subprotocol `AFFiNE` |

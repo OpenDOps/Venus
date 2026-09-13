@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { PAGE_DOC_ID, WORKSPACE_ID } from './ids.js';
 import { createM0Workspace } from './workspace.js';
 import { SEED_H1, SEED_TITLE } from './seed.js';
 import pkg from '../../package.json' with { type: 'json' };
@@ -15,7 +16,8 @@ function h1Count(
 
 test('single page default tree', async () => {
   const { workspace, store, docId } = await createM0Workspace();
-  expect(docId).toBe('doc:home');
+  expect(docId).toBe(PAGE_DOC_ID);
+  expect(workspace.id).toBe(WORKSPACE_ID);
   expect(workspace.docs.size).toBe(1);
 
   const root = store.root;

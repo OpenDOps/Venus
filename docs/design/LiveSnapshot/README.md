@@ -11,14 +11,14 @@ A **pin** is a frozen copy of Yjs bytes (plus catalog) at time T. **Git snapshot
 Live collaboration never waits on markdown, git, or pin conversion.
 
 ```text
-browsers  ──Yjs update v1──►  hub memory (apply + broadcast)
+browsers  ──Yjs update v1──►  hub memory (Rust y-octo apply + broadcast)
                                   │
                                   ├── broadcast to other sockets     (always)
                                   ├── persist batch → Postgres       (always, ~1s)
                                   └── pin copy → Venus buffer        (flush only)
                                               │
                                               ▼
-                                       fromDoc + sidecar  (slow, off live)
+                                       Rust worker: y-octo hydrate + fromDoc + sidecar
                                               │
                                               ▼
                                        wiki/*.md + git commit

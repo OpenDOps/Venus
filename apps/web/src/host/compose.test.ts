@@ -24,24 +24,35 @@ function serviceNames(src: string): string[] {
   return names;
 }
 
-test('Three services: postgres, octobase, and web are separate Compose services', () => {
+test('Product path is postgres, hub, and web (hub-b is an ha profile only)', () => {
   const src = readFileSync(composeFile, 'utf8');
   const names = serviceNames(src);
   expect(names, 'docker-compose.yml service keys').toEqual([
     'postgres',
-    'octobase',
+    'hub',
+    'hub-b',
     'web',
   ]);
   expect(src).toMatch(/image:\s*postgres:16/);
-  expect(src).toMatch(/pg-data:/);
-  expect(src).toMatch(/deploy\/octobase/);
+  expect(src).toMatch(/pg-venus-data:/);
+  expect(src).toMatch(/deploy\/hub\/Dockerfile/);
   expect(src).toMatch(/deploy\/web\/Dockerfile/);
   expect(src).not.toMatch(/^\s*USE_MEMORY_SQLITE:/m);
-  expect(src).toMatch(/DATABASE_URL:\s*postgres:\/\//);
-  expect(new Set(names).size).toBe(3);
+  expect(src).toMatch(/POSTGRES_HOST:\s*postgres/);
+  expect(src).toMatch(/POSTGRES_USER:\s*venus/);
+  expect(src).toMatch(/POSTGRES_PASSWORD:\s*venus/);
+  expect(src).toMatch(/HUB_DB_MAX_CONNECTIONS:\s*"32"/);
+  expect(src).toMatch(/HUB_DB_MIN_CONNECTIONS:\s*"4"/);
+  expect(src).toMatch(/HUB_DB_ACQUIRE_TIMEOUT_SECS:\s*"10"/);
+  expect(src).toMatch(/HUB_PERSIST_INTERVAL_MS:\s*"1000"/);
+  expect(src).toMatch(/HUB_COMPACT_AFTER:\s*"32"/);
+  expect(src).toMatch(/HUB_CORS_ORIGINS:/);
+  expect(src).toMatch(/http:\/\/localhost:5174/);
+  expect(src).not.toMatch(/^\s*octobase:/m);
+  expect(src).toMatch(/profiles:\s*\["ha"\]/);
 });
 
-test('docker compose config --services lists postgres octobase web', () => {
+test('docker compose config --services lists postgres hub web (hub-b is a profile)', () => {
   let out: string;
   try {
     out = execFileSync('docker', ['compose', 'config', '--services'], {
@@ -67,5 +78,5 @@ test('docker compose config --services lists postgres octobase web', () => {
     .map((s) => s.trim())
     .filter(Boolean)
     .sort();
-  expect(names).toEqual(['octobase', 'postgres', 'web'].sort());
+  expect(names).toEqual(['hub', 'postgres', 'web'].sort());
 });

@@ -27,8 +27,10 @@ This is the **product and data design**: what Venus *is*, what bytes mean, lease
 | Where bytes live (spaces + `wiki/` tree) | [datamodel](./datamodel/README.md) |
 | Who talks to whom | [architecture](./architecture.md) |
 | Wire (Yjs, hub, export) | [CRDT](./CRDT/README.md) |
+| No Rust/WASM in the editor; Rust = hub + `toDoc` worker | [CRDT/wasm.md](./CRDT/wasm.md) |
 | Pin + git snapshotter + snapshotter HA | [LiveSnapshot](./LiveSnapshot/README.md) |
-| Live CRDT HA (sticky owner, persist, dirty) | [M3.0/high-availability.md](./M3.0/high-availability.md) |
+| Live CRDT HA (wiki sticky, Rust merge, persist, dirty) | [M3.0/high-availability.md](./M3.0/high-availability.md) |
+| Hub fleet (gateway, HPA, shed-then-claim) | [hub-fleet.md](../devops/hub-fleet.md) (devops, after M3.0) |
 | Adapter, pane, apply | [MDGate](./MDGate/README.md) |
 | Spec graph, bound chat, two gits | [Agents](./Agents/README.md) |
 | Tools and milestone order | [venus-implementation-plan.md](./venus-implementation-plan.md) |
@@ -37,7 +39,7 @@ This is the **product and data design**: what Venus *is*, what bytes mean, lease
 | Plan yaml / wiki vs product remotes | [venus-plan.md](../drafts/pre-design/venus-plan.md) |
 | License (hub MIT/Apache; M1 keck AGPL) | [licensing.md](../legal/licensing.md) |
 
-Shipped vs story: M0–M2 done (editor, keck wire, markdown pane). **Next is [M3.0](./M3.0/README.md)** (Venus hub). Dual store git is **M3** after that. Do not sell graph, bound chat, or apply as shipped.
+Shipped vs story: M0–M2 done (editor, wire, markdown pane). **M3.0 in progress** (Rust hub + y-octo apply). Dual store git is **M3**. Do not sell graph, bound chat, or apply as shipped.
 
 ## Product
 
@@ -106,7 +108,7 @@ Uniqueness is the **join**, not the editor. Catalog: [unique-features](../produc
 - Kanban / cycles / points as the home screen.
 - Two-agent DoD as a **hard** v1 block (warn only — a hard rule lengthens the loop).
 - Alternatives/stacks **picker UI**, Hugo, Linear mirrors (data may exist; do not ship the ceremony).
-- WASM/Yjs swap in the browser Store (BlockSuite **is** `yjs` on `store.spaceDoc`).
+- WASM, y-octo, or any Rust **in the client editor**. BlockSuite (Lit + `yjs` on `store.spaceDoc`) is the page. Rust is **only** hub merge and the `toDoc` / pin-convert worker ([CRDT — no client Rust](./CRDT/wasm.md)).
 
 ## Runtime stack
 
@@ -117,7 +119,8 @@ Browser     BlockSuite Store  (yjs 13.6.32 on store.spaceDoc)
             SyncProvider kind venus  (M1: octobase alias)
                  │  y-protocols/sync  ·  subprotocol AFFiNE
                  ▼
-Hub         apply + broadcast + persist ~1s
+Hub         Rust + y-octo: apply + broadcast + persist ~1s
+            wiki sticky on workspace_id (lease)
             blob HTTP, doc export (Yjs bytes, not markdown)
                  │  DATABASE_URL
                  ▼
@@ -125,7 +128,7 @@ Postgres    crdt_snapshot / crdt_update / blob
             workspace_lease / dirty
                  │  AFTER persist UPSERT dirty
                  ▼
-Snapshotter pin copy → fromDoc → wiki/ git     (M3, beside the hub)
+Snapshotter Rust worker: pin copy → y-octo hydrate → fromDoc / toDoc → wiki/ git     (M3, beside the hub)
                  │  after last_flushed
                  ▼
 LifeIndexing  spatial (+ later temporal) at that SHA   (AB1 / AB4, async)
@@ -135,14 +138,15 @@ LifeIndexing  spatial (+ later temporal) at that SHA   (AB1 / AB4, async)
 |---|---|---|
 | **BlockSuite** `@blocksuite/affine` **0.22.4** | Page editor, `affine:*` schema, outline, linked-doc, `MarkdownAdapter` | `@affine/core` shell, GraphQL, copilot |
 | **Yjs in the browser** | The page CRDT. Venus does not add a second client CRDT. | Markdown-as-Y.Text |
-| **Venus hub** | Merge buffer: one apply queue per room, persist ~1s, one live **owner per `workspace_id`**. Compose `hub`. MIT/Apache. [M3.0](./M3.0/README.md) | OctoBase keck, JWST Block REST, `fromDoc`, git, `jobs` |
+| **Venus hub** | **Rust + y-octo** merge buffer: apply + broadcast + persist ~1s. One live **owner per `workspace_id`** (wiki sticky / lease, not cookie, not `doc_id`). Compose `hub`. MIT/Apache. [M3.0](./M3.0/README.md), [hub HA](./M3.0/high-availability.md) | OctoBase keck, Node product hub, JWST Block REST, `fromDoc`/`toDoc`/git/`jobs` inside the hub |
 | **Postgres** | Refresh truth for Yjs + blobs. Venus tables after M3.0. Compose `postgres` | Markdown store |
-| **y-octo** | Optional **native** hub apply/compact. Same update v1 codec. | Browser Store replacement; AGPL |
+| **y-octo** | **Required** hub merge (hydrate / apply / compact). Same update v1 as `yjs@13.6.32`. | Client Store; WASM in the editor; AGPL |
+| **Convert / `toDoc` worker** | **Rust** process beside the hub: y-octo hydrate of the pin, then M2 `MarkdownAdapter` (`fromDoc` / slice `toDoc`) | Convert in the hub; whole-file `toDoc` onto published; a second adapter dialect |
 | **MDGate** | `fromDoc` + sidecar; pane splice; apply is markdown-vs-markdown + hunk slices | Pane splice as `T0` |
 | **Git** | Share/history. Venus is the only v1 writer of the live `wiki/` tree | Users `git push` into live |
 | **M1 keck** | Proved the wire. **Legacy** after M3.0. AGPL image may remain under `deploy/octobase/` | Product collab front |
 
-Compose after M3.0: **`postgres` + `hub` + `web`**. Same-origin `/collaboration` and `/api`. Live CRDT HA: [M3.0 HA](./M3.0/high-availability.md). Snapshotter fleet: [LiveSnapshot HA](./LiveSnapshot/high-availability.md). On device later: one hub + local SQLite, sync to hosted hub — not a local OctoBase.
+Compose after M3.0: **`postgres` + `hub` + `web`**. Same-origin `/collaboration` and `/api`. Live CRDT HA: [M3.0 HA](./M3.0/high-availability.md). Snapshotter fleet: [LiveSnapshot HA](./LiveSnapshot/high-availability.md). On device later: native hub + local SQLite + **WebView BlockSuite** (no Rust in the editor), sync to hosted hub — not a local OctoBase.
 
 `T0` is a **kept pin** (`pinThenFromDoc` / replica encode), not the next `GET …/export`. Export is the **current** tree in Postgres (can trail live RAM by the persist batch).
 
@@ -578,11 +582,12 @@ Those do not replace this design. They consume it.
 7. Links prefer `docId`, then path.
 8. Git is the durable, human-readable history of published snapshots. Wiki git ≠ product git.
 9. Live CRDT never waits on markdown, git, convert, or LifeIndexing.
-10. One live **hub owner** per `workspace_id`. Snapshotters compete on `jobs` (`SKIP LOCKED`); they do not sit in the hub.
+10. One live **hub owner** per `workspace_id` (**wiki sticky** / lease). Not cookie/IP. Not `doc_id` sticky. Snapshotters compete on `jobs` (`SKIP LOCKED`); they do not sit in the hub.
 11. Dirty is clocks on `(workspace_id, docId)`, upserted on **persist**, not on apply. The hub does not write `jobs`.
 12. Apply is markdown-vs-markdown + sidecar attribution + hunk-slice parse. Never whole-file `toDoc` onto published.
 13. **Flow:** spec / plan / DoD / docs publish only on **human** accept of meaning. Agents draft; they do not apply. Skip the lease when spec did not move. [product-plan — Force these](../product/product-plan.md#force-these-or-it-is-not-the-flow).
 14. LifeIndexing is not the spec. Snapshot autocomment is not why. AB2 does not write the wiki.
+15. Hub **merge** is Rust **y-octo**. Product `toDoc` / pin convert is a **Rust worker** hosting the M2 adapter. **No Rust in BlockSuite** (tab or WebView). Not a Node product hub. Convert is not inside the hub.
 
 ## Build order (spine vs parallel)
 

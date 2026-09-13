@@ -1,10 +1,11 @@
 import { MemoryNoopProvider } from '../sync-provider.js';
 import { OctoBaseBlobSource, blobOriginFromSyncUrl } from './blob-source.js';
 import { OctoBaseKeckProvider } from './octobase-keck-provider.js';
+import { COLLABORATION_PATH, WORKSPACE_ID } from '../ids.js';
 
 /** Bake this in Compose/k8s web. Browser WS is same-origin `/collaboration/…`. */
 export const SAME_ORIGIN_SYNC = 'same-origin';
-export const SAME_ORIGIN_SYNC_PATH = '/collaboration/venus-m0';
+export const SAME_ORIGIN_SYNC_PATH = COLLABORATION_PATH;
 
 /**
  * Turn Vite env into a WebSocket URL. `same-origin` needs `location.host`
@@ -20,7 +21,7 @@ export function resolveSyncUrl(env = import.meta.env) {
   const loc = globalThis.location;
   if (!loc?.host) {
     throw new Error(
-      'VITE_SYNC_URL=same-origin needs window.location (Compose web). For Vite use ws://127.0.0.1:3000/collaboration/venus-m0.',
+      'VITE_SYNC_URL=same-origin needs window.location (Compose web). For Vite use an absolute ws://…/collaboration/<workspace uuid>.',
     );
   }
   const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -55,14 +56,14 @@ export function blobSourcesFromEnv(env = import.meta.env) {
   if (sameOrigin) {
     return {
       main: new OctoBaseBlobSource({
-        workspaceId: 'venus-m0',
+        workspaceId: WORKSPACE_ID,
         origin: '',
       }),
     };
   }
   return {
     main: new OctoBaseBlobSource({
-      workspaceId: 'venus-m0',
+        workspaceId: WORKSPACE_ID,
       origin: blobOriginFromSyncUrl(raw),
     }),
   };

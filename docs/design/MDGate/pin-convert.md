@@ -29,7 +29,8 @@ live Store (may keep mutating)
     │   { bytes, clock }              the pin (RAM; keck never sees it)
     │         │
     │         ▼
-    │   hydrateM0FromUpdate           new Store, Y.applyUpdate
+    │   hydrate pin                   y-octo in the convert worker (M3+);
+    │   (M2 helper: hydrateM0FromUpdate / Y.applyUpdate in tests)
     │   (no seed, no SyncProvider)
     │         │
     │         ▼
@@ -39,7 +40,7 @@ live Store (may keep mutating)
     └─  { pin, markdown, sidecar }    markdown_T0 + sidecar_T0
 ```
 
-Live collaboration does not wait on convert. Clients keep sending; keck applies and broadcasts; Postgres persist keeps running. Updates after the pin clock are the **next** flush ([LiveSnapshot](../LiveSnapshot/README.md)).
+Live collaboration does not wait on convert. Clients keep sending; the **hub** applies and broadcasts; Postgres persist keeps running. Updates after the pin clock are the **next** flush ([LiveSnapshot](../LiveSnapshot/README.md)). Product convert (M3+) is the **Rust worker**: y-octo hydrate, then this helper’s `fromDoc`. Slice **`toDoc`** for apply is the same worker ([apply.md](./apply.md)).
 
 Do **not**:
 

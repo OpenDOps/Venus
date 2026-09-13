@@ -8,6 +8,7 @@ import { MemoryNoopProvider } from './sync-provider.js';
 import { providerFromEnv } from './providers/from-env.js';
 import { OctoBaseKeckProvider } from './providers/octobase-keck-provider.js';
 import { createM0Workspace } from './workspace.js';
+import { COLLABORATION_PATH, PAGE_DOC_ID } from './ids.js';
 
 const hostDir = dirname(fileURLToPath(import.meta.url));
 
@@ -19,7 +20,7 @@ test('default provider is memory no-op and connects before seed', async () => {
   expect(provider).toBeInstanceOf(MemoryNoopProvider);
   expect(provider.kind).toBe('memory');
   expect(provider.synced).toBe(true);
-  expect(docId).toBe('doc:home');
+  expect(docId).toBe(PAGE_DOC_ID);
   expect(store.spaceDoc.guid).toBeTruthy();
 });
 
@@ -66,6 +67,7 @@ test('Seam holds: editor host files do not import live sync clients', () => {
     expect(src, name).not.toMatch(importOf('y-protocols'));
     expect(src, name).not.toMatch(importOf('lib0'));
     expect(src, name).not.toMatch(/octobase-keck-provider/);
+    expect(src, name).not.toMatch(/venus-hub/);
     expect(src, name).not.toMatch(/blob-source/);
   }
 });
@@ -116,15 +118,15 @@ test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until 
   globalThis.WebSocket = StubSocket;
 
   try {
-    const url = 'ws://127.0.0.1:3000/collaboration/venus-m0';
+    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
     const fromEnv = providerFromEnv({ VITE_SYNC_URL: url });
     expect(fromEnv).toBeInstanceOf(OctoBaseKeckProvider);
     expect(fromEnv.kind).toBe('octobase');
     expect(constructed).toEqual([]);
 
-    fromEnv.connect('doc:home', (await createM0Workspace()).store.spaceDoc);
+    fromEnv.connect(PAGE_DOC_ID, (await createM0Workspace()).store.spaceDoc);
     expect(constructed).toEqual([[url, ['AFFiNE']]]);
-    fromEnv.disconnect('doc:home');
+    fromEnv.disconnect(PAGE_DOC_ID);
   } finally {
     globalThis.WebSocket = Ws;
   }
@@ -145,7 +147,7 @@ test('Env switch: same-origin needs location.host and does not open a socket yet
     expect(fromEnv).toBeInstanceOf(OctoBaseKeckProvider);
     expect(fromEnv).toMatchObject({
       kind: 'octobase',
-      url: 'ws://127.0.0.1:8080/collaboration/venus-m0',
+      url: `ws://127.0.0.1:8080${COLLABORATION_PATH}`,
     });
   } finally {
     if (desc) Object.defineProperty(globalThis, 'location', desc);

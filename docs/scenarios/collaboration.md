@@ -1,8 +1,8 @@
 # Collaboration
 
-**Feature:** two tabs share one Y.Doc over the keck socket. Typing appears without reload. Not BroadcastChannel.
+**Feature:** two tabs share one Y.Doc over the hub socket. Typing appears without reload. Not BroadcastChannel.
 
-**Boxes:** Tab A, Tab B, SyncProvider, keck ([architecture](../design/architecture.md#dataflow-m0m2), [CRDT share](../design/CRDT/README.md#share-between-clients)).
+**Boxes:** Tab A, Tab B, SyncProvider, hub ([architecture](../design/architecture.md#dataflow-m30), [CRDT share](../design/CRDT/README.md#share-between-clients)).
 
 ## Run
 

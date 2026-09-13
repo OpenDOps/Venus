@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
+import { WORKSPACE_ID } from './keck-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -98,7 +99,7 @@ test('upload posts the PNG and shows pixels', async ({ page }) => {
   page.on('response', (res) => {
     if (
       res.request().method() === 'POST' &&
-      res.url().includes('/api/blobs/venus-m0')
+      res.url().includes(`/api/blobs/${WORKSPACE_ID}`)
     ) {
       posts.push({ url: res.url(), status: res.status() });
     }
@@ -111,7 +112,7 @@ test('upload posts the PNG and shows pixels', async ({ page }) => {
   // the server before this test's page closes.
   await page.waitForTimeout(2000);
 
-  expect(posts.length, 'expected POST /api/blobs/venus-m0').toBeGreaterThan(0);
+  expect(posts.length, `expected POST /api/blobs/${WORKSPACE_ID}`).toBeGreaterThan(0);
   expect(
     posts.some((p) => p.status === 413),
     '413: raise keck/proxy body size, do not stub the image',

@@ -5,6 +5,7 @@ import { TestWorkspace } from '@blocksuite/affine/store/test';
 import * as Y from 'yjs';
 import { SEED_TITLE, seedHomeNote } from './seed.js';
 import { MemoryNoopProvider } from './sync-provider.js';
+import { PAGE_DOC_ID, WORKSPACE_ID } from './ids.js';
 
 export const SYNC_TIMEOUT_MS = 15_000;
 
@@ -69,12 +70,12 @@ function seedHomePage(store) {
 function openBareM0Workspace(options = {}) {
   const manager = new StoreExtensionManager(getInternalStoreExtensions());
   const workspace = new TestWorkspace({
-    id: 'venus-m0',
+    id: WORKSPACE_ID,
     ...(options.blobSources ? { blobSources: options.blobSources } : {}),
   });
   workspace.storeExtensions = manager.get('store');
   workspace.meta.initialize();
-  const docId = 'doc:home';
+  const docId = PAGE_DOC_ID;
   const doc = workspace.createDoc(docId);
   const store = doc.getStore();
   return { workspace, store, docId };
