@@ -3,10 +3,13 @@
 # Runtime is debian:bookworm-slim (not the toolchain image) as USER venus (S5).
 # Do not bake POSTGRES_PASSWORD / DATABASE_URL into the image (Compose injects them).
 
-FROM rust:1.90-bookworm AS build
+FROM rust:1.98.1-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates/venus-hub crates/venus-hub
+# Workspace member only (Cargo.toml lists both crates). This image still
+# builds and runs venus-hub — do not CMD venus-sidecar here.
+COPY crates/venus-sidecar crates/venus-sidecar
 RUN cargo build --release -p venus-hub
 
 FROM debian:bookworm-slim

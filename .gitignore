@@ -14,3 +14,6 @@ playwright/.cache
 /data
 # Rust workspace (commit Cargo.lock for the hub binary)
 /target
+# Nested wiki git (sidecar autoinit on first snapshot). Not the product remote.
+/wiki
+/wiki/

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/venus-hub"]
+members = ["crates/venus-hub", "crates/venus-sidecar"]
 resolver = "2"
 
 [workspace.package]

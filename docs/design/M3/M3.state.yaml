@@ -17,22 +17,58 @@ columns:
 steps:
   step-recon-snapshot: # 1
     n: 1
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-wiki-init: # 2
+    dodResults:
+      - name: Gate held
+        status: pass
+        evidence: "2026-09-13 M3.0.state.yaml steps 1–9 done (step-verify Three services / Smoke / Manual path). LiveSnapshot HA Acceptance accepted 2026-09-13 (not re-accept with no date)."
+      - name: Map complete
+        status: pass
+        evidence: "2026-09-13 docs/design/api-map.md Names — git snapshotter Actuals: pin source GET export after ≥2s; convert CLI from-pinned-cli.js (Vite ssrLoadModule); gitPath spec/home.md; sidecar wiki/.venus/ids/doc:home.json; WIKI_DIR wiki; autoinit on first Flush; SNAPSHOT_IDLE_MS 60000; POST :3002/flush; last_flushed RAM + git sidecar clock; Compose sidecar; no jobs"
+      - name: Product ignores wiki/
+        status: pass
+        evidence: "2026-09-13 .gitignore /wiki/; git check-ignore -v wiki (no nested repo in recon)"
+      - name: Spike convert
+        status: pass
+        evidence: "2026-09-13 pnpm --filter @venus/web test src/host/mdgate/recon-snapshot.test.ts — hub GET export → fromPinnedBytes contains Why Venus; CLI same; pin-from-doc.js / from-pinned-cli.js do not import splice.js; no git commit"
+  step-worker: # 2
     n: 2
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-worker: # 3
+    dodResults:
+      - name: Hydrate pin
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test hydrate — y-octo try_from_binary_v1 of fixtures/seed-home.yjs (MemoryNoop seed pin); re-encode >2 bytes; product hydrate.rs is not Node Y.applyUpdate"
+      - name: Same exporter
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test convert — spawn from-pinned-cli.js on that pin; markdown contains Why Venus and Empty host; sidecar.blocks have ids; no <!-- id:… -->; CLI is fromPinnedBytes not incrementalFromDoc"
+      - name: Not in hub
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test not_in_hub — venus-hub Cargo.toml/src have no venus-sidecar/git2/from-doc/MarkdownAdapter; cargo tree -p venus-hub -i venus-sidecar and -i git2 fail; hub Dockerfile CMD is venus-hub"
+  step-rust-adapter: # 3
     n: 3
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Seed identical
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test from_doc seed_and_m2_goldens_identical_to_js_cli — seed-home.yjs markdown bytes + sidecar blocks[] (id,start,end) + docId match JS CLI; EOF \\n; no <!-- id:… -->; rust from_doc hydrates y-octo (not a live Store)"
+      - name: M2 goldens identical
+        status: pass
+        evidence: "2026-09-13 same test + m2_golden_pins_match_committed_markdown — rt-paragraph/headings/list/code/link/marks/linked-doc + loss-color pins match JS CLI and apps/web goldens. Unresolved affine:image omits (opaque-image pin = rt-paragraph form; no blob map). Rust does not skip a golden JS emits."
+      - name: Large file identical
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test from_doc large_file_identical_to_js_cli — fixtures/large-home.yjs (2000 unique paragraphs); markdown 554008 bytes (≥512 KiB); sidecar blocks.len()=2001 (title+paras); full-file JS vs Rust identical"
+      - name: Large file wall time
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test from_doc_bench -- --ignored — warmup 3 + timed 10 each. docs/design/M3/convert-bench.md: pin 1069231 B, md 554008 B, 2001 blocks; JS-from-Rust median 6326.2 ms (cold spawn); Pure Rust median 344.3 ms (debug). No pass/fail on speed."
+      - name: Still not in hub
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-sidecar --test not_in_hub — venus-hub has no venus-sidecar/git2/from-doc/MarkdownAdapter; cargo tree -p venus-hub -i venus-sidecar fails"
   step-pin: # 4
     n: 4
     state: pending

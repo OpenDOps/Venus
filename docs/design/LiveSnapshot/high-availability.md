@@ -1,6 +1,6 @@
 # High-load / high-availability snapshotter
 
-**Status:** revised 2026-09-01 — **re-accept before M3 code.** Live CRDT is the **Venus hub** after [M3.0](../M3.0/README.md) (keck does not stay). **Dirty:** Postgres upsert on hub persist (`crdt_update`). **Jobs:** Venus `jobs` table (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. Consumers: **TTL lease** on that row, not a held `FOR UPDATE`. Pin starts at **claim**. Pin rules: [README.md](./README.md). Hub fleet: [M3.0/high-availability.md](../M3.0/high-availability.md). Convert: [pin-convert.md](../MDGate/pin-convert.md). Git tree: [datamodel — git](../datamodel/git.md). Milestone: [M3/plan.md](../M3/plan.md) ([implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). **Do not start M3 while M3.0 is open.**
+**Status:** accepted 2026-09-13 (M3 `step-recon-snapshot`; who: implementer on [M3.state.yaml](../M3/M3.state.yaml)). Fleet lock is the **2026-09-01** table (items 1–9). Live CRDT is the **Venus hub** after [M3.0](../M3.0/README.md) (**closed**). **Dirty:** Postgres upsert on hub persist (`crdt_update`). **Jobs:** Venus `jobs` table (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. Consumers: **TTL lease** on that row, not a held `FOR UPDATE`. Pin starts at **claim**. Pin rules: [README.md](./README.md). Hub fleet: [M3.0/high-availability.md](../M3.0/high-availability.md). Convert: [pin-convert.md](../MDGate/pin-convert.md). Git tree: [datamodel — git](../datamodel/git.md). Milestone: [M3/plan.md](../M3/plan.md) ([implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). M3 is the thin column of this file.
 
 2026-08-31 morning “OctoBase stays / keck dirty notify” is **superseded**. Invariants 1–8 (live never waits, two buffers, queue, cut then convert) are unchanged; item 9 is hub not keck. **2026-09-01:** wiki-grain enqueue, bulk `jobs` insert, no broker; consumer **TTL lease** (not held `FOR UPDATE`); pin starts at **claim**, persist never queued. Revising this file **re-opens the M3 gate** — stop M3 implementation until this revision is accepted **and M3.0 is closed**.
 
@@ -63,7 +63,7 @@ Two **buffers** (bytes of pages). Everything else is clocks, jobs, or git — no
 | **Git `wiki/`** | Markdown + sidecar + dirty blobs **after** convert | One repo **per wiki** (M3: one `wiki/`) | Convert worker: `fromDoc` on the **pin**, then `git add` / `git mv` / one commit | HEAD is last **successful** commit. Convert does not mutate live CRDT. | **Yes** (git remote). |
 | **Cut** | A consistent **read** of dirty set **S** at **T** | DB snapshot or generation **G** for the copy window only | Worker opens it, copies S into the pin Map, **drops it** before `fromDoc` | Brief. Not a writer freeze. Not held across convert or `git commit`. | No. |
 
-The hub persist buffer (~1s) is **live generation**, always on. It is not the Venus pin. Do not pause it ([M3.0 HA](../M3.0/high-availability.md)). M1 keck `save_update` is the same idea, legacy: [octobase.md](./octobase.md).
+The hub persist buffer (~1s) is **live generation**, always on. It is not the Venus pin. Do not pause it ([M3.0 HA](../M3.0/high-availability.md)).
 
 ### Full data flow
 
@@ -281,7 +281,7 @@ M3 **may** run both in one process. That is thinning, not the invariant. The fle
 
 Idle is a column (`jobs.not_before`), not a Kafka delay. Workers `SELECT … WHERE not_before <= now()`. No broker.
 
-**Flush worker is a Rust process.** It hydrates the pin with **y-octo**, then must still call `from-doc.js` / slice `toDoc` (Node or embedded JS) so [fixtures](../MDGate/fixtures.md) stay the dialect ([Acceptance #7](#acceptance-gate-for-m3)). The host pane (`apps/web`) stays JS. Do not put convert in the **hub**. Do not ship a second MarkdownAdapter until goldens match.
+**Flush worker is a Rust process.** It hydrates the pin with **y-octo**, then converts. The dialect oracle is `from-doc.js` / slice `toDoc` (Node CLI) so [fixtures](../MDGate/fixtures.md) stay the dialect ([Acceptance #7](#acceptance-gate-for-m3)). [M3 step-rust-adapter](../M3/plan.md#3-step-rust-adapter) may add an in-process Rust `fromDoc` **when goldens match** (byte-identical markdown); until then spawn JS. The host pane (`apps/web`) stays JS. Do not put convert in the **hub**.
 
 Do not put pin/convert/git on the observer **and** on the worker. Observer produces; worker consumes.
 
@@ -566,7 +566,7 @@ last_flushed clocks
 
 **After** `last_flushed` (step 8), enqueue [LifeIndexing](../Agents/LifeIndexing.md) `{ wikiSha, dirtyDocIds }`. Same dirty grain (`docId`). Direct-link parse may run after git add (no model). LLM gists, tags, and the logical graph are a **second job**: upsert per wiki, must not hold the cut, must not delay step 8, must not retry the pin on model failure. `last_indexed` is not `last_flushed`.
 
-`fromDoc` / slice `toDoc` stay BlockSuite JS. The **worker is Rust** (y-octo hydrate + git2 + host the adapter). Scale-out is **more convert workers**, not a second adapter dialect and not convert inside the hub. Same exporter as M2 (`from-doc.js`).
+`fromDoc` / slice `toDoc` stay the **M2 dialect**. The **worker is Rust** (y-octo hydrate + git2). JS `from-doc.js` is the oracle; an in-process Rust `fromDoc` is allowed when [M3 step-rust-adapter](../M3/plan.md#3-step-rust-adapter) goldens match (byte-identical markdown). Scale-out is **more convert workers**, not a different dialect and not convert inside the hub.
 
 ## Live CRDT HA (hub fleet)
 
@@ -584,7 +584,7 @@ clients ──► gateway (workspace_id → hub owner)
             Postgres crdt_*  ── trigger ──► dirty ──► observer jobs
 ```
 
-M1 keck recon (do not copy into M3): [octobase.md](./octobase.md).
+Do not copy M1 keck into M3. Product collab is the hub ([M1](../M1/README.md) is the legacy wire proof).
 
 **On device:** one hub process. HA is sync to hosted hub, not a local ring.
 
@@ -620,7 +620,7 @@ Exit of M3 stays: clone `wiki/` and read markdown; typing during flush still syn
 
 ## Acceptance (gate for M3)
 
-Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus hub (not keck); dirty on `crdt_update`; snapshotter beside the hub. **Revised 2026-09-01:** wiki-grain `dirty_wiki`, bulk `jobs` in Postgres, no broker; consumer TTL lease; pin at claim, persist never queued. **Re-accept this table before M3 code.** No `wiki/` writer or snapshotter implementation while this section is un-accepted **or M3.0 is open**.
+Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus hub (not keck); dirty on `crdt_update`; snapshotter beside the hub. **Revised 2026-09-01:** wiki-grain `dirty_wiki`, bulk `jobs` in Postgres, no broker; consumer TTL lease; pin at claim, persist never queued. **Accepted 2026-09-13** (M3 `step-recon-snapshot` / [M3.state.yaml](../M3/M3.state.yaml)): the 2026-09-01 table (items 1–9) is the lock. M3.0 is **closed**. M3 may implement the thin column. Revising this table still re-opens the gate.
 
 [LiveSnapshot README](./README.md) is pin-then-convert for one wiki. This file is the fleet. M3 is the **thin column** of the table above, not a second architecture. Live CRDT owner/lease/drain: [M3.0 HA](../M3.0/high-availability.md).
 
@@ -632,11 +632,11 @@ Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus
 | 4 | Dirty is `{ clock }` on `(workspace_id, docId)` (plus catalog path / blob id), not keystrokes and not markdown in Postgres. Second edit **upserts** the clock. Enqueue grain is the **wiki** (`dirty_wiki`); cut grain stays the page. |
 | 5 | Queue is the Venus **`jobs` table** (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. One pending job per wiki; upsert, do not stack; inflight **1** = **TTL lease** (`owner` / `lease_until` + heartbeat); `lease` > `flush` > `idle`. Workers **claim** with short `FOR UPDATE SKIP LOCKED`, then **COMMIT** — never hold that lock across pin/convert/git; never lock CRDT rows. Observers: ≥2 replicas, bulk insert from `dirty_wiki`, `ON CONFLICT DO NOTHING`. Tiny `LIMIT B` is M3 thin. Worker count follows queue depth. Do not hash-partition by `workspace_id % replicaCount`. Trigger never writes `jobs`. |
 | 6 | Pin starts **when the consumer claims**, not at enqueue. Each wiki has its own cut clock **T** (no fleet-wide snapshot second). Cut = consistent **plain `SELECT`** of dirty set **S** at **T** (`REPEATABLE READ` / MVCC). Copy bytes, **release the cut**, then `fromDoc`. Hub apply/broadcast/persist **never wait** (not queued, not paused). No `FOR UPDATE` on CRDT/`dirty` rows. M3 idle may use replica encode or `GET …/export` (best-effort). That is not the scale mechanism. |
-| 7 | Convert is Path B: `pinThenFromDoc` / `fromPinnedBytes` on the pin buffer, same `from-doc.js`. **Rust worker** hydrates with y-octo and hosts that adapter (including slice **`toDoc`** for apply). Not the spectator pane. Not hub export-as-markdown. Scale-out is **more convert workers**, not a second adapter and not convert inside the hub. |
+| 7 | Convert is Path B: `pinThenFromDoc` / `fromPinnedBytes` on the pin buffer, **M2 dialect**. **Rust worker** hydrates with y-octo and hosts that adapter (JS CLI, or in-process Rust `fromDoc` when [M3 step-rust-adapter](../M3/plan.md#3-step-rust-adapter) goldens are byte-identical). Including slice **`toDoc`** for apply. Not the spectator pane. Not hub export-as-markdown. Scale-out is **more convert workers**, not a different dialect and not convert inside the hub. |
 | 8 | Durable HA state is `dirty` + `dirty_wiki` + `jobs` + `last_flushed` + git remotes. Pins stay non-durable except `T0`. Worker death retries from dirty; git HEAD is the last successful commit. Step 8 (`last_flushed`) is **idempotent**. |
 | 9 | Snapshotter sits **beside** the **hub**. Hosted hub fleet: one live owner per `workspace_id` (**wiki sticky**). Shared Postgres. **Dirty** = Postgres upsert when `crdt_update` persist lands (SQL trigger preferred; hub hook only if grain cannot map). Trigger/hook must not stall persist or write `jobs`. Do not poll every space, embed convert in the hub, or two hub owners for one wiki. keck is M1 legacy. Hub merge is **y-octo**. |
 
-**Left to the [M3 plan](../M3/plan.md)** (not this gate): idle debounce inside 30–120s (plan default **60s**); first pin source (replica vs idle GET vs persist MVCC); how the Rust worker embeds JS (`from-doc.js`); whether process crash recovers `last_flushed` by reading the git sidecar clock; exact `crdt_*` table/columns for the dirty trigger (M3.0 fills Actual). M3 one-wiki may `DISTINCT` page `dirty` instead of a `dirty_wiki` table.
+**Left to the [M3 plan](../M3/plan.md)** (not this gate): idle debounce inside 30–120s (plan default **60s** — Actual `SNAPSHOT_IDLE_MS=60000`); how git2 inits the nested `wiki/` (step 2). **Filled in M3 recon (api-map):** pin source = idle GET after ≥2s; convert JS = Vite-hosted Node CLI `from-pinned-cli.js`; crash recovery = git sidecar clock + HEAD. Exact `crdt_*` columns for the dirty trigger: [M3.0](../M3.0/README.md). M3 one-wiki may `DISTINCT` page `dirty` instead of a `dirty_wiki` table.
 
 ## Do not
 
@@ -662,9 +662,9 @@ Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus
 
 | File | Role |
 |---|---|
-| [README.md](./README.md) | Pin then convert; one-wiki prototype |
-| [octobase.md](./octobase.md) | **M1 keck recon** (pipes, Format overlay). Not the product hub. |
+| [README.md](./README.md) | Pin then convert; hub collab front; one-wiki design |
 | [M3.0/high-availability.md](../M3.0/high-availability.md) | Live CRDT HA (sticky owner, persist, dirty, drain) |
 | [high-availability.md](./high-availability.md) | This scale / snapshotter HA contract |
+| [M3 plan](../M3/plan.md) | Thin-column implementation steps |
 | [MDGate pin-convert](../MDGate/pin-convert.md) | Convert helper (no git write) |
 | [LifeIndexing](../Agents/LifeIndexing.md) | Index job after step 8; not this convert worker |

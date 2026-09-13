@@ -1,9 +1,10 @@
-# M3.0: Postgres (Venus crdt_* + blobs), Venus hub (WS/HTTP), Venus web (nginx).
-# Product Compose is postgres + hub + web. There is no octobase on this path.
-# keck remains under deploy/octobase/ as M1 history; do not build it here.
+# M3.0 default: Postgres (Venus crdt_* + blobs), Venus hub (WS/HTTP), Venus web (nginx).
+# Product Compose default services are postgres + hub + web. There is no octobase
+# on this path. keck remains under deploy/octobase/ as M1 history; do not build it here.
 # Hub image is MIT/Apache Venus code — see deploy/NOTICE.
+# M3 snapshotter is Compose `sidecar` (`--profile snapshot`) until Flush lands.
 # Never omit Postgres (no SQLite fallback). Do not publish 5432.
-# Host ports bind 127.0.0.1 only (hub :3000, web :8080, hub-b :3001).
+# Host ports bind 127.0.0.1 only (hub :3000, web :8080, hub-b :3001, sidecar :3002).
 # Operators: docs/devops/compose.md  Component: docs/design/components/hub/
 
 # Pool: 32 covers 10 distinct cold exports + 10 blob GETs + 10 room flushes
@@ -107,6 +108,34 @@ services:
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  # Snapshotter beside the hub. Default `up` stays postgres+hub+web (M3.0).
+  #   docker compose --profile snapshot up --build sidecar
+  sidecar:
+    profiles: ["snapshot"]
+    build:
+      context: .
+      dockerfile: deploy/sidecar/Dockerfile
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      SIDECAR_LISTEN: "0.0.0.0:3002"
+      VENUS_BLOB_ORIGIN: "http://hub:3000"
+    ports:
+      - "127.0.0.1:3002:3002"
+    mem_limit: 1g
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3002'"]
       interval: 2s
       timeout: 3s
       retries: 20

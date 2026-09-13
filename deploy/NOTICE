@@ -1,7 +1,8 @@
 The `hub` Compose service is the Venus-owned collab front (`crates/venus-hub`).
+The `sidecar` Compose service (`--profile snapshot`) is `crates/venus-sidecar`.
 
-License of Venus hub source: MIT OR Apache-2.0.
-It is not an OctoBase fork. Apply engine: y-octo (MIT).
+License of Venus hub/sidecar source: MIT OR Apache-2.0.
+It is not an OctoBase fork. Apply / hydrate engine: y-octo (MIT).
 
 See docs/legal/licensing.md and docs/design/components/hub/.
 

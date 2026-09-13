@@ -2,7 +2,7 @@
 
 **Today (M3.0):** **three services** on the product path, one file, [docker-compose.yml](../../docker-compose.yml) at the repo root. Postgres is the only database. The collab front is the Venus **hub** (Rust + y-octo). The web image does **not** contain OctoBase source. How the hub works: [hub](../design/components/hub/). Hub HA: [M3.0/high-availability.md](../design/M3.0/high-availability.md).
 
-keck stays under `deploy/octobase/` as M1 history; product Compose does not build it. `hub-b` is an optional `--profile ha` process to prove `workspace_lease` (not in default `up`).
+keck stays under `deploy/octobase/` as M1 history; product Compose does not build it. `hub-b` is an optional `--profile ha` process to prove `workspace_lease` (not in default `up`). `sidecar` is an optional `--profile snapshot` process (`crates/venus-sidecar`, host `127.0.0.1:3002`); default `up` stays three services until Flush. Host binary: `CONVERT_CWD=apps/web cargo run -p venus-sidecar` from the repo root (health `GET /` → `venus-sidecar`).
 
 ## Services
 
@@ -11,12 +11,13 @@ keck stays under `deploy/octobase/` as M1 history; product Compose does not buil
 | `postgres` | `postgres:16` | none | `crdt_*` + blob bytes. Volume `pg-venus-data`, database `venus`. Superuser `venus`. |
 | `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, doc export. Connects as `venus_hub` (NOSUPERUSER). |
 | `web` | `deploy/web/Dockerfile` (nginx + `apps/web/dist`) | `127.0.0.1:8080` | Host UI. Same-origin proxy: `/api` and `/collaboration` → `hub:3000`. |
+| `sidecar` | `deploy/sidecar/Dockerfile` (`node:22`, `USER venus`) | `127.0.0.1:3002` | Optional `--profile snapshot`. y-octo hydrate + Path B CLI. Health `GET /`. No git yet. |
 
-Default `docker compose config --services` prints `postgres`, `hub`, `web`. Hub and Postgres must not share a container.
+Default `docker compose config --services` prints `postgres`, `hub`, `web` (plus `sidecar` / `hub-b` when those profiles are enabled). Hub and Postgres must not share a container.
 
 Hub Postgres env (required; no SQLite): `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (Compose hub: `postgres` / `venus_hub` / `venus`) and `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable` (`DATABASE_URL` wins). Service `postgres` still uses superuser `venus` to create that role (`deploy/postgres/ensure-app-role.sh`, also the healthcheck so existing volumes get it). `POSTGRES_SSLMODE` defaults to `disable` (private network); set `require` against managed Postgres.
 
-Host ports bind **`127.0.0.1` only** (`3000`, `8080`, `hub-b` `3001`). The LAN cannot reach the unauthenticated hub. Vite / Playwright on the same machine are unchanged.
+Host ports bind **`127.0.0.1` only** (`3000`, `8080`, `hub-b` `3001`, sidecar `3002`). The LAN cannot reach the unauthenticated hub. Vite / Playwright on the same machine are unchanged.
 
 Hub and postgres have memory / pids limits. Hub drops all capabilities and sets `no-new-privileges`. The hub image does not bake `POSTGRES_PASSWORD` / `DATABASE_URL`.
 
@@ -88,7 +89,7 @@ That skips Vite `webServer`. Export curl is still hub `:3000` (api-map **Export 
 ```text
 docker-compose.yml
 deploy/NOTICE                 # hub MIT/Apache; keck history
-deploy/hub/Dockerfile         # build rust:1.90-bookworm; runtime slim USER venus; no DSN in image
+deploy/hub/Dockerfile         # build rust:1.98.1-bookworm; runtime slim USER venus; no DSN in image
 deploy/postgres/ensure-app-role.sh  # venus_hub NOSUPERUSER (initdb + healthcheck)
 deploy/web/Dockerfile         # node build + nginx; no OctoBase COPY
 deploy/web/nginx.conf

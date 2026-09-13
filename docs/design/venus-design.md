@@ -39,7 +39,7 @@ This is the **product and data design**: what Venus *is*, what bytes mean, lease
 | Plan yaml / wiki vs product remotes | [venus-plan.md](../drafts/pre-design/venus-plan.md) |
 | License (hub MIT/Apache; M1 keck AGPL) | [licensing.md](../legal/licensing.md) |
 
-Shipped vs story: M0–M2 done (editor, wire, markdown pane). **M3.0 in progress** (Rust hub + y-octo apply). Dual store git is **M3**. Do not sell graph, bound chat, or apply as shipped.
+Shipped vs story: M0–M3.0 done (editor, wire, markdown pane, Venus hub). Dual store git is **M3** (in progress). M4–M8 (tree, lease, comment-commit, review, revert) are not started. Do not sell graph, bound chat, or apply as shipped.
 
 ## Product
 

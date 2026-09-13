@@ -10,7 +10,7 @@
 | **Board**     | [M3.0.state.yaml](./M3.0.state.yaml)                                                                |
 
 
-Parent design: [venus-design.md](../venus-design.md). Live CRDT HA: [high-availability.md](./high-availability.md). Dataflow: [architecture.md](../architecture.md). CRDT stack: [CRDT/README.md](../CRDT/README.md). Words: [glossary.md](../glossary.md). Tool choices: [venus-implementation-plan.md](../venus-implementation-plan.md). Licensing: [licensing.md](../../legal/licensing.md). M1 (keck, done): [M1/plan.md](../M1/plan.md). M2 (done): [M2/plan.md](../M2/plan.md). Installed symbols: [api-map.md](../api-map.md). Keck recon (legacy): [octobase.md](../LiveSnapshot/octobase.md).
+Parent design: [venus-design.md](../venus-design.md). Live CRDT HA: [high-availability.md](./high-availability.md). Dataflow: [architecture.md](../architecture.md). CRDT stack: [CRDT/README.md](../CRDT/README.md). Words: [glossary.md](../glossary.md). Tool choices: [venus-implementation-plan.md](../venus-implementation-plan.md). Licensing: [licensing.md](../../legal/licensing.md). M1 (keck, done): [M1/plan.md](../M1/plan.md). M2 (done): [M2/plan.md](../M2/plan.md). Installed symbols: [api-map.md](../api-map.md).
 
 This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
 

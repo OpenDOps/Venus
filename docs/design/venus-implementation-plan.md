@@ -14,14 +14,16 @@ Start with a **thin host** around BlockSuite. M1 proved the wire on OctoBase **k
 
 ### Editor — BlockSuite AFFiNE preset
 
-| Package | Use |
-|---|---|
-| `@blocksuite/affine` | Page editor, default `affine:*` schema, widgets |
-| `@blocksuite/store` | `DocCollection` / workspace, Y.Doc, snapshots |
-| `@blocksuite/affine/shared/adapters` | `MarkdownAdapter` |
-| Outline widget | In-page heading TOC |
-| `affine:embed-linked-doc` | Cross-page cards |
-| `affine:embed-synced-doc` | Transclusion |
+
+| Package                              | Use                                             |
+| ------------------------------------ | ----------------------------------------------- |
+| `@blocksuite/affine`                 | Page editor, default `affine:*` schema, widgets |
+| `@blocksuite/store`                  | `DocCollection` / workspace, Y.Doc, snapshots   |
+| `@blocksuite/affine/shared/adapters` | `MarkdownAdapter`                               |
+| Outline widget                       | In-page heading TOC                             |
+| `affine:embed-linked-doc`            | Cross-page cards                                |
+| `affine:embed-synced-doc`            | Transclusion                                    |
+
 
 Host: Vite + React (or vanilla playground first). Mount `AffineEditorContainer` / current page-editor API on a `Store` from the collection.
 
@@ -33,13 +35,15 @@ BlockSuite already owns a Y.Doc per page. Venus does not replace that with a sec
 
 ### Sync and persistence — Venus hub + Postgres (after M3.0)
 
-| Piece | Use |
-|---|---|
-| **Venus hub** (M3.0) | **Rust** WS front: y-octo apply + broadcast + persist, blob HTTP, export. **Own Docker** (`hub`). Wiki sticky on `workspace_id`. MIT/Apache. Not OctoBase. Not a Node product hub. |
-| **Postgres** | Hosted persist: Venus `crdt_*` + blobs + `dirty` / `workspace_lease`. **Own Docker** (`postgres:16`). Named volume. |
-| **y-octo** | MIT. **Required** hub merge (hydrate / apply / compact). Same update v1 as browser `yjs@13.6.32`. |
-| **M1 (done)** | OctoBase **keck** proved the wire. Legacy after M3.0. Recon: [octobase.md](./LiveSnapshot/octobase.md) |
-| **On device (later)** | Native hub + SQLite + **WebView BlockSuite**. No Rust in the editor. Sync to hosted hub. |
+
+| Piece                 | Use                                                                                                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Venus hub** (M3.0)  | **Rust** WS front: y-octo apply + broadcast + persist, blob HTTP, export. **Own Docker** (`hub`). Wiki sticky on `workspace_id`. MIT/Apache. Not OctoBase. Not a Node product hub. |
+| **Postgres**          | Hosted persist: Venus `crdt_*` + blobs + `dirty` / `workspace_lease`. **Own Docker** (`postgres:16`). Named volume.                                                                |
+| **y-octo**            | MIT. **Required** hub merge (hydrate / apply / compact). Same update v1 as browser `yjs@13.6.32`.                                                                                  |
+| **M1 (done)**         | OctoBase **keck** proved the wire. Legacy after M3.0. Plan: [M1](./M1/README.md)                                                                                                    |
+| **On device (later)** | Native hub + SQLite + **WebView BlockSuite**. No Rust in the editor. Sync to hosted hub.                                                                                           |
+
 
 Binding (M3.0+):
 
@@ -63,15 +67,17 @@ M1: keck in Docker. **M3.0 replaces that process** with the hub; same seam. Venu
 
 The wiki root is a real git repository. Venus is the only writer of published commits (users do not `git push` into the live tree in v1). Later: allow PRs from clones as “attach a commit” (import a patch as a review commit).
 
-Product convert worker is **Rust**: y-octo hydrates the pin, **git2** commits, and the same M2 `from-doc.js` / slice `toDoc` runs in that process (Node or embedded JS). Do not ship convert inside the hub. Do not reimplement `MarkdownAdapter` until goldens match. Node `simple-git` is recon-only.
+Product convert worker is **Rust**: y-octo hydrates the pin, **git2** commits. Dialect **oracle** is M2 `from-doc.js` (Node CLI from the sidecar). [M3 `step-rust-adapter`](./M3/plan.md#3-step-rust-adapter) may ship an in-process Rust `fromDoc` **only** if markdown (and sidecar ranges) are byte-identical to that oracle; both variants are timed on a large pin. Do not ship convert inside the hub. Node `simple-git` is recon-only.
 
 ### Folder tree — Venus catalog, not a third-party TOC
 
-| Need | Tool |
-|---|---|
-| In-page headings | BlockSuite outline widget |
-| Wiki folders | Venus catalog space on the hub (Y.Doc) + a thin tree UI |
-| Files on disk | git working tree |
+
+| Need             | Tool                                                    |
+| ---------------- | ------------------------------------------------------- |
+| In-page headings | BlockSuite outline widget                               |
+| Wiki folders     | Venus catalog space on the hub (Y.Doc) + a thin tree UI |
+| Files on disk    | git working tree                                        |
+
 
 Do not use a docs-framework TOC (Docusaurus, VitePress) as the live tree. Those assume a static build. Do not use AFFiNE’s explorer.
 
@@ -83,10 +89,12 @@ BlockSuite’s **page** widgets are in-page only: slash menu, selection format t
 
 When the wiki tree appears ([M4](#m4--folder-tree--links--product-header-12-weeks)), the host already needs a **layout chrome** (tree left, editor center, outline right). Put a **thin product header** on that same slice:
 
-| In the header | How |
-|---|---|
-| Undo / Redo | `store.undo()` / `store.redo()`; disable from `store.canUndo` / `store.canRedo` (or `store.history.canUndo$` / `canRedo$`). Same stack as ⌘Z / Ctrl+Z. |
-| Current page | Catalog title / `gitPath` of the open doc |
+
+| In the header | How                                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Undo / Redo   | `store.undo()` / `store.redo()`; disable from `store.canUndo` / `store.canRedo` (or `store.history.canUndo$` / `canRedo$`). Same stack as ⌘Z / Ctrl+Z. |
+| Current page  | Catalog title / `gitPath` of the open doc                                                                                                              |
+
 
 Do **not** build a history timeline. `store.history.undoManager` is a Yjs transaction stack, not labeled “typed hello” / “inserted list.” AFFiNE does not ship that panel either.
 
@@ -245,6 +253,21 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ## Milestone plan
 
+Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./Agents/agentic-binding.md).
+
+| # | Milestone | Status |
+|---|---|---|
+| M0 | [Empty host](#m0--empty-host-days) | done 2026-08-29 |
+| M1 | [OctoBase loop](#m1--octobase-loop-week) | done 2026-08-30 |
+| M2 | [Markdown projection](#m2--markdown-projection-week) | done 2026-08-30 |
+| M3.0 | [Venus hub](#m30--venus-hub-replace-keck-week) | done 2026-09-13 |
+| M3 | [Git snapshotter](#m3--git-snapshotter-week) | in progress (`step-recon-snapshot` done) |
+| M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | not started |
+| M5 | [Lease + freeze](#m5--lease--freeze-week) | not started |
+| M6 | [Comment-commit](#m6--comment-commit-markdown-only-2-weeks) | not started |
+| M7 | [Threads, alternatives, stacks](#m7--threads-alternatives-stacks-2-weeks) | not started |
+| M8 | [Revert + agent loop](#m8--revert--agent-loop-week) | not started |
+
 ### M0 — Empty host (days)
 
 **Status:** done (2026-08-29). Step-by-step: [M0/plan.md](./M0/plan.md). Board: [M0/M0.state.yaml](./M0/M0.state.yaml).
@@ -277,7 +300,7 @@ Optional exact restore: save `y-octo` snapshot bytes at `.venus/snapshots/<docId
 
 ### M3.0 — Venus hub (replace keck) (week)
 
-**Status:** in progress (step 1: recon / y-octo apply). Step-by-step: [M3.0/plan.md](./M3.0/plan.md). Board: [M3.0/M3.0.state.yaml](./M3.0/M3.0.state.yaml). Crate notes: [hub](./components/hub/). Live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
+**Status:** done (2026-09-13). Step-by-step: [M3.0/plan.md](./M3.0/plan.md). Board: [M3.0/M3.0.state.yaml](./M3.0/M3.0.state.yaml). Crate notes: [hub](./components/hub/). Live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
 
 Replace OctoBase **keck** with a Venus-owned **Rust + y-octo merge buffer**: apply Yjs, broadcast, persist ~1s to Venus Postgres tables (`crdt_snapshot` / `crdt_update` / `blob`). Same `AFFiNE` + `y-protocols` wire so M1 e2e stay green. One live owner per `workspace_id` (**wiki sticky** / lease — not cookie, not `doc_id`). Dirty SQL trigger on persist (no `jobs` yet). No JWST Block REST, no convert/`toDoc`/git in the hub, no Node product hub, no nbstore.
 
@@ -287,23 +310,26 @@ Do not start M3 `wiki/` until this milestone is **done**. Hub HPA, stateless gat
 
 ### M3 — Git snapshotter (week)
 
-**Status:** not started. Step-by-step: [M3/plan.md](./M3/plan.md). Board: [M3/M3.state.yaml](./M3/M3.state.yaml). **Gate:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while M3.0 is open or LiveSnapshot HA is un-accepted.
+**Status:** in progress (`step-recon-snapshot` done 2026-09-13). Step-by-step: [M3/plan.md](./M3/plan.md). Board: [M3/M3.state.yaml](./M3/M3.state.yaml). **Gate:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** accepted 2026-09-13 (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded). Do not write `wiki/` or the snapshotter process until those steps.
 
-Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. **Rust worker** hydrates the pin with y-octo, then the same `from-doc.js` as [M2](./M2/README.md) — do not `fromDoc` the live Store for git. Slice `toDoc` for apply is the same worker (M6), not the hub.
+Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. **Rust worker** hydrates the pin with y-octo, then converts with the M2 dialect ([M3](./M3/plan.md): JS CLI oracle, Rust `fromDoc` if goldens match). Do not `fromDoc` the live Store for git. Slice `toDoc` for apply is the same worker (M6), not the hub.
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in the hub; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
 Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M5–M6 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M6** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
 
-- Init `wiki/` repo.
+- First snapshot: sidecar **autoinits** `wiki/` (git2 init + catalog dirs) if missing; product git ignores it. No origin in M3.
 - Catalog v0: one folder, one doc, fixed path.
 - Dirty set: only docs whose clock moved since last git (M3: the one page).
 - Idle and/or “Flush”: **pin** Yjs bytes (sidecar replica or GET export), **then** `fromDoc` + sidecar, **one** git commit, **autocomment** (`snapshot: <title>`). No typed why. Convert the pin, not the live `Store`.
+- Rust `fromDoc` only if [step-rust-adapter](./M3/plan.md#3-step-rust-adapter) markdown is **byte-identical** to the JS CLI; both timed on a large pin ([convert-bench](./M3/convert-bench.md)).
 - UI: `git log` for that file (show autocomment vs later comment-commits).
 
 **Exit:** clone `wiki/` elsewhere and read the page as markdown; casual WYSIWYG did not require a review comment; typing during flush still syncs between tabs.
 
 ### M4 — Folder tree + links + product header (1–2 weeks)
+
+**Status:** not started. Plan lives in this file until a dedicated `M4/` board exists.
 
 - Catalog CRDT: folders, reorder, rename, `gitPath`.
 - Tree UI; drop to reparent (live CRDT).
@@ -318,6 +344,8 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 ### M5 — Lease + freeze (week)
 
+**Status:** not started. Plan lives in this file until a dedicated `M5/` board exists.
+
 - Acquire / heartbeat / release.
 - Editor readonly + banner while leased.
 - Holder opens CodeMirror on the `T0` export.
@@ -327,7 +355,7 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 ### M6 — Comment-commit (markdown only) (2 weeks)
 
-Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks; not whole-file `toDoc`).
+**Status:** not started. Plan lives in this file until a dedicated `M6/` board exists. Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks; not whole-file `toDoc`).
 
 - Diff `markdown_T0` vs buffer; attribute with frozen sidecar → hunks. Overlay on **Before** WYSIWYG (Cursor-style).
 - Submit **requires** a comment + optional selection pin on **Before** (right rail).
@@ -341,6 +369,8 @@ Parallel (**AB4**, not this exit): [history/why pack](./Agents/agentic-binding.m
 
 ### M7 — Threads, alternatives, stacks (2 weeks)
 
+**Status:** not started. Plan lives in this file until a dedicated `M7/` board exists.
+
 - Pin-only comment (no hunks) on **Before** (published or `T0`), right rail.
 - Replies.
 - Attach a later commit to that thread (needs lease).
@@ -350,6 +380,8 @@ Parallel (**AB4**, not this exit): [history/why pack](./Agents/agentic-binding.m
 **Exit:** two competing proposals on one pin; accept one; the other is superseded.
 
 ### M8 — Revert + agent loop (week+)
+
+**Status:** not started. Plan lives in this file until a dedicated `M8/` board exists.
 
 - Revert from git sha as a review commit.
 - Regenerate: comment on a hunk → holder replaces that commit’s hunks.
@@ -367,12 +399,14 @@ v1 of this plan does **not** need the runner or MCP to be useful. It needs to be
 
 Ship M2 → **M3.0** → M3 → M4, then **author the product in the wiki**, not only in `docs/` as a side tree.
 
-| Need | Milestone |
-|---|---|
-| Honest markdown on disk | M2 adapter gate + M3 snapshot git |
-| Folders PMs can navigate (spec, design, product, aims) | M4 catalog + tree + header |
-| Casual writing without a review ceremony | WYSIWYG → snapshot + autocomment |
-| Programmers read the same pages | `git clone` / pull of `wiki/` |
+
+| Need                                                   | Milestone                         |
+| ------------------------------------------------------ | --------------------------------- |
+| Honest markdown on disk                                | M2 adapter gate + M3 snapshot git |
+| Folders PMs can navigate (spec, design, product, aims) | M4 catalog + tree + header        |
+| Casual writing without a review ceremony               | WYSIWYG → snapshot + autocomment  |
+| Programmers read the same pages                        | `git clone` / pull of `wiki/`     |
+
 
 **Exit for dogfood:** a manager can create and edit pages in the tree; a second browser sees them; a clone of `wiki/` is readable markdown. Venus’s own pitch, product plan, and design notes can live (or be mounted) as wiki pages. `docs/` in this git may still be the engineering notebook until that move; the **product** docs that managers own must have a wiki home.
 
@@ -405,7 +439,7 @@ Venus/
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
-  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (M0–M3.0, M3)
+  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (M0–M8)
   docs/devops/              # Compose now; Kubernetes later; hub fleet after M3.0
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```
@@ -414,15 +448,17 @@ After M3.0 the collab image is **Venus hub** (not AGPL). Do not vendor OctoBase 
 
 ## Risks and how M0–M1 de-risk them
 
-| Risk | Mitigation |
-|---|---|
-| OctoBase JS provider is incomplete | M1 shim; M3.0 hub keeps the same `y-protocols` interface |
+
+| Risk                                     | Mitigation                                                                                                                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OctoBase JS provider is incomplete       | M1 shim; M3.0 hub keeps the same `y-protocols` interface                                                                                                                |
 | MarkdownAdapter drops block ids / jitter | **[MDGate](./MDGate/README.md)**; **export fixtures before M2 exit**; **apply fixtures before M6** ([adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)) |
-| Adapter cannot express a block | Opaque raw block; markdown commit must not rewrite it |
-| OctoBase AGPL | M1 keck only; M3.0 hub is Venus-owned. Keep app code separate either way |
-| y-octo / Yjs version skew | Pin versions to the pair AFFiNE currently ships |
-| Folder move vs dirty git tree | Only `git mv` on publish; catalog may lead git until then |
-| Comment anchors after accept | Rebase optional; v1 review threads die with the session unless copied |
+| Adapter cannot express a block           | Opaque raw block; markdown commit must not rewrite it                                                                                                                   |
+| OctoBase AGPL                            | M1 keck only; M3.0 hub is Venus-owned. Keep app code separate either way                                                                                                |
+| y-octo / Yjs version skew                | Pin versions to the pair AFFiNE currently ships                                                                                                                         |
+| Folder move vs dirty git tree            | Only `git mv` on publish; catalog may lead git until then                                                                                                               |
+| Comment anchors after accept             | Rebase optional; v1 review threads die with the session unless copied                                                                                                   |
+
 
 ## What “simple BlockSuite + hub deployment” means
 
@@ -439,8 +475,13 @@ Everything after M3.0 git is Venus snapshotter. Do not block M3.0 on review desi
 1. Playground page editor. **Done** — [M0](./M0/README.md).
 2. OctoBase sync of that one doc (Postgres + keck in Compose). **Done** — [M1](./M1/README.md).
 3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M6.
-4. **Venus hub** — [M3.0/plan.md](./M3.0/plan.md). Replaces keck. HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
-5. **Then** git snapshotter — [M3/plan.md](./M3/plan.md) ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape), gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance. Then **folder tree + product header**, then lease. Do not start M3 code if M3.0 is open.
+4. **Venus hub** — [M3.0/plan.md](./M3.0/plan.md). Replaces keck. **Done** (2026-09-13). HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
+5. **Git snapshotter** — [M3/plan.md](./M3/plan.md) ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape). **In progress.** Gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance.
+6. **Folder tree + product header** — [M4](#m4--folder-tree--links--product-header-12-weeks).
+7. **Lease + freeze** — [M5](#m5--lease--freeze-week).
+8. **Comment-commit** — [M6](#m6--comment-commit-markdown-only-2-weeks). Apply fixtures first: [apply.md](./MDGate/apply.md).
+9. **Threads, alternatives, stacks** — [M7](#m7--threads-alternatives-stacks-2-weeks).
+10. **Revert + agent loop** — [M8](#m8--revert--agent-loop-week).
 
 Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M6 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
 

@@ -125,7 +125,16 @@ steps:
         evidence: "2026-09-13 cargo test -p venus-hub --test store flush_lands_when_dirty_table_is_dropped — ALTER TABLE dirty RENAME in a tx; INSERT crdt_update still lands; rename back. EXCEPTION at statement grain. migrate_serializes_two_hubs leaves 3 STATEMENT triggers"
   step-verify: # 9
     n: 9
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Three services
+        status: pass
+        evidence: "2026-09-13 docker compose config --services → postgres hub web (no octobase); compose.test.ts Product path is postgres, hub, and web"
+      - name: Smoke
+        status: pass
+        evidence: "2026-09-13 step-parity pnpm test:e2e:m1 10 passed (hydrate / two-tabs / blob / provider / smoke) against hub; GET / is venus-hub; M2 pane stays memory-green in pnpm test mdgate"
+      - name: Manual path
+        status: pass
+        evidence: "2026-09-13 Compose postgres+hub up; GET / venus-hub; POST /collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 → AFFiNE; export seeded doc:home; keck not a product service. Close-out checklist is M1 on the hub (docs/runbook.md)."

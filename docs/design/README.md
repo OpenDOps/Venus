@@ -18,7 +18,12 @@
 | [M0](./M0/README.md) | Empty host (done 2026-08-29) |
 | [M1](./M1/README.md) | OctoBase loop (done 2026-08-30) |
 | [M2](./M2/README.md) | Markdown projection (done 2026-08-30) |
-| [M3.0](./M3.0/README.md) | Venus hub replace keck (**in progress**). Plan: [M3.0/plan.md](./M3.0/plan.md). Process: [hub](./components/hub/). Wire: [CRDT](./CRDT/README.md). HA: [M3.0/high-availability.md](./M3.0/high-availability.md). |
-| [M3](./M3/README.md) | Git snapshotter (**not started**; gated on M3.0 closed + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance). Plan: [M3/plan.md](./M3/plan.md). Pin: [LiveSnapshot](./LiveSnapshot/README.md). |
+| [M3.0](./M3.0/README.md) | Venus hub replace keck (**done** 2026-09-13). Plan: [M3.0/plan.md](./M3.0/plan.md). Process: [hub](./components/hub/). Wire: [CRDT](./CRDT/README.md). HA: [M3.0/high-availability.md](./M3.0/high-availability.md). |
+| [M3](./M3/README.md) | Git snapshotter (**in progress**; through `step-rust-adapter` done). Plan: [M3/plan.md](./M3/plan.md). Pin: [LiveSnapshot](./LiveSnapshot/README.md). |
+| [M4](./venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks) | Folder tree + links + product header (**not started**) |
+| [M5](./venus-implementation-plan.md#m5--lease--freeze-week) | Lease + freeze (**not started**) |
+| [M6](./venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks) | Comment-commit, markdown apply (**not started**). Apply: [MDGate apply](./MDGate/apply.md) |
+| [M7](./venus-implementation-plan.md#m7--threads-alternatives-stacks-2-weeks) | Threads, alternatives, stacks (**not started**) |
+| [M8](./venus-implementation-plan.md#m8--revert--agent-loop-week) | Revert + agent loop (**not started**) |
 
 Product (what to ship for orchestration, after the wiki spine): [product-plan](../product/product-plan.md). Operators: [runbook](../runbook.md). Deploy: [devops](../devops/README.md) ([hub fleet](../devops/hub-fleet.md) after M3.0). Tests: [scenarios](../scenarios/README.md).

@@ -883,7 +883,10 @@ async fn measure_p1_shape(
             if random {
                 rng.bytes(bin_len)
             } else {
-                vec![(i % 251) as u8; bin_len]
+                let fill = (i % 251) as u8;
+                let mut bin = Vec::with_capacity(bin_len);
+                bin.resize(bin_len, fill);
+                bin
             }
         })
         .collect();

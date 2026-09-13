@@ -11,14 +11,17 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 | Editor + outline | **M0 done** | [M0](./M0/README.md) |
 | Sync, persist, blobs, **doc export** (keck) | **M1 done** (legacy wire proof) | [CRDT](./CRDT/README.md), [M1](./M1/README.md) |
 | Markdown projection | **M2 done** | [MDGate](./MDGate/README.md), [M2/plan.md](./M2/plan.md) |
-| **Venus hub** (replace keck) | **M3.0 in progress** (step 1: y-octo apply) | [M3.0](./M3.0/README.md), [hub](./components/hub/), [hub HA](./M3.0/high-availability.md) |
-| Pin + git snapshotter | Later (M3, **not started**) | [M3](./M3/README.md) ([plan](./M3/plan.md)), [LiveSnapshot](./LiveSnapshot/README.md) — **after M3.0** |
+| **Venus hub** (replace keck) | **M3.0 done** (2026-09-13) | [M3.0](./M3.0/README.md), [hub](./components/hub/), [hub HA](./M3.0/high-availability.md) |
+| Pin + git snapshotter | **M3 in progress** (through step-rust-adapter) | [M3](./M3/README.md) ([plan](./M3/plan.md)), [LiveSnapshot](./LiveSnapshot/README.md) |
+| Catalog / header | **M4 not started** | [implementation plan — M4](./venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks) |
+| Lease `T0` + freeze | **M5 not started** | [implementation plan — M5](./venus-implementation-plan.md#m5--lease--freeze-week), [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
+| Comment-commit apply | **M6 not started** | [implementation plan — M6](./venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks), [MDGate apply](./MDGate/apply.md) |
+| Threads, alternatives, stacks | **M7 not started** | [implementation plan — M7](./venus-implementation-plan.md#m7--threads-alternatives-stacks-2-weeks) |
+| Revert + agent loop | **M8 not started** | [implementation plan — M8](./venus-implementation-plan.md#m8--revert--agent-loop-week) |
 | LifeIndexing | Parallel (after M3) | [Agents](./Agents/README.md) — [AB1](./Agents/agentic-binding.md#ab1--lifeindexing) / [LifeIndexing](./Agents/LifeIndexing.md) |
 | Bound chat | Parallel (after AB1; **ask-only**) | [AB2](./Agents/agentic-binding.md#ab2--bound-chat) |
 | Chat-edit markdown | Parallel (**after M5–M6 checkout**, not after AB2) | [AB3](./Agents/agentic-binding.md#ab3--chat-edit-markdown) |
 | History / why pack | Parallel (**after M6**; needs AB1 index; not after AB1) | [AB4](./Agents/agentic-binding.md#ab4--history--why-pack) |
-| Catalog / header | Later | M4 |
-| Lease `T0` + freeze | Later | [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
 | Stores (CRDT + git) | Design | [datamodel](./datamodel/README.md) |
 
 ## Dataflow (M3.0)
@@ -110,6 +113,7 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | Adapter gate (M2) | [MDGate](./MDGate/README.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md), [live pane](./MDGate/live-pane.md), [pin convert](./MDGate/pin-convert.md), [M2/plan.md](./M2/plan.md) |
 | Apply (M6) | [MDGate apply](./MDGate/apply.md) |
 | Pin + git snapshotter (M3) | [M3/plan.md](./M3/plan.md); [LiveSnapshot](./LiveSnapshot/README.md); **gated on M3.0 done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) **Acceptance** |
+| Milestone order (M0–M8) | [venus-implementation-plan.md](./venus-implementation-plan.md#milestone-plan) |
 | LifeIndexing / bound chat | [agentic-binding](./Agents/agentic-binding.md) (AB1–AB4). Contract: [LifeIndexing](./Agents/LifeIndexing.md) (spatial + temporal). |
 | Implemented tests | [scenarios](../scenarios/README.md) |
 | License split | [licensing.md](../legal/licensing.md) |

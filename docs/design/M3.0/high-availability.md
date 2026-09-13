@@ -4,7 +4,7 @@
 
 Snapshotter fleet (jobs, `SKIP LOCKED`, pin cut): [LiveSnapshot/high-availability.md](../LiveSnapshot/high-availability.md). That file does **not** own the collab process after M3.0.
 
-M1 keck is a **legacy** merge buffer ([octobase.md](../LiveSnapshot/octobase.md)). Product hosted collab after M3.0 is **this hub**.
+M1 keck is a **legacy** merge buffer ([M1](../M1/README.md)). Product hosted collab after M3.0 is **this hub**.
 
 ## What the hub is
 
@@ -174,7 +174,7 @@ Do **not** put `fromDoc` / `toDoc` / git inside the hub. Do **not** whole-file `
 
 ## Pin against this hub
 
-Same rules as [LiveSnapshot](../LiveSnapshot/README.md), with keck renamed:
+Same rules as [LiveSnapshot](../LiveSnapshot/README.md):
 
 1. **Sidecar replica** (preferred for “now” / `T0`): connect like a client; pin = encode of that `Y.Doc`. Hub apply/broadcast/persist stay untouched.
 2. **GET export** (OK for M3 idle): after persist has flushed (~1s, wait ≥2s). If export is SQL-only, it can trail live RAM. Prefer RAM encode for `T0`.

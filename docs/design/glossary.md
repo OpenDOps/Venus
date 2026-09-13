@@ -19,7 +19,7 @@ Words that collide in Venus. Product + data design: [venus-design.md](./venus-de
 | Term | Meaning |
 |---|---|
 | **Live CRDT** | BlockSuite `Store` / `store.spaceDoc` (Y.Doc). Browsers share it over the sync WebSocket. |
-| **keck** | OctoBase WebSocket + HTTP front. Compose service `octobase`. **M1 (done).** Not the product collab front after [M3.0](./M3.0/README.md). Recon: [octobase.md](./LiveSnapshot/octobase.md). |
+| **keck** | OctoBase WebSocket + HTTP front. Compose service `octobase`. **M1 (done).** Not the product collab front after [M3.0](./M3.0/README.md). Plan: [M1](./M1/README.md). |
 | **Hub** | Venus-owned **Rust + y-octo** merge buffer: apply Yjs, broadcast, persist ~1s. Compose service `hub`. Same `AFFiNE` + y-protocols wire as M1. **Wiki sticky** on `workspace_id` (lease / hash). Not JWST, not git, not `jobs`, not cookie/`doc_id` sticky. [M3.0](./M3.0/README.md), [hub HA](./M3.0/high-availability.md). |
 | **Wiki sticky** | Gateway / lease sends every socket for one `workspace_id` to **one** hub process. That is live-collab scale-out (many wikis). Not session sticky. Not per-page sticky. Fleet (HPA, drain): [hub-fleet.md](../devops/hub-fleet.md). |
 | **Postgres** | Persist for Yjs docs **and** blobs. Compose service `postgres`. M1: `jwst` via keck. After M3.0: Venus `crdt_*` + `blob` + `workspace_lease` + `dirty`. |

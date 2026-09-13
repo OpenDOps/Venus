@@ -1,6 +1,6 @@
 # Pin then convert — git / lease `T0`
 
-**Status:** helper shipped in M2 (`apps/web/src/host/mdgate/pin-from-doc.js`). Git write of `wiki/` is [M3](../M3/README.md) ([plan](../M3/plan.md)), **gated on** [M3.0](../M3.0/README.md) **closed** and [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the hub). Pin source after M3.0 is hub export / replica, not keck. Lease acquire reuses the same convert ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Apply consumes the pair ([apply.md](./apply.md)). Exporter: [README.md](./README.md). Spectator: [live-pane.md](./live-pane.md).
+**Status:** helper shipped in M2 (`apps/web/src/host/mdgate/pin-from-doc.js`). Convert CLI for the sidecar: `from-pinned-cli.js` (M3 recon). Git write of `wiki/` is [M3](../M3/README.md) ([plan](../M3/plan.md)). [M3.0](../M3.0/README.md) is **closed**; [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance** accepted 2026-09-13. Pin source is hub **GET export** after ≥2s (api-map). Lease acquire reuses the same convert ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Apply consumes the pair ([apply.md](./apply.md)). Exporter: [README.md](./README.md). Spectator: [live-pane.md](./live-pane.md).
 
 This is **Path B**: a frozen CRDT clock → markdown + sidecar. It is not the live pane.
 
@@ -11,7 +11,7 @@ This is **Path B**: a frozen CRDT clock → markdown + sidecar. It is not the li
 | **A — spectator** | Live synced Store | Read-only pane | No. Subscribe / single-flight; `fromDoc` or RAM splice. |
 | **B — convert** | **Pinned Yjs bytes** | Git flush, lease `T0`, review `old` | Yes. Full `fromDoc` on an **offline clone** of those bytes. |
 
-Typing in WYSIWYG is Path A. OctoBase sees Yjs updates. The pane photographs the live tree. There is no `Tn`.
+Typing in WYSIWYG is Path A. The hub sees Yjs updates. The pane photographs the live tree. There is no `Tn`.
 
 Path B exists because an agent (or lease holder) edits **markdown**, which has **no block ids**. Apply diffs that buffer against `markdown_T0` and looks up spans in `sidecar_T0`. Those offsets are true **only** for that baseline string. That pair must be a photograph of a **frozen pin**, not the pane’s last splice.
 
@@ -26,7 +26,7 @@ live Store (may keep mutating)
     │  + encodeStateVector clock
     │         │
     │         ▼
-    │   { bytes, clock }              the pin (RAM; keck never sees it)
+    │   { bytes, clock }              the pin (RAM; hub never sees it)
     │         │
     │         ▼
     │   hydrate pin                   y-octo in the convert worker (M3+);
@@ -40,7 +40,7 @@ live Store (may keep mutating)
     └─  { pin, markdown, sidecar }    markdown_T0 + sidecar_T0
 ```
 
-Live collaboration does not wait on convert. Clients keep sending; the **hub** applies and broadcasts; Postgres persist keeps running. Updates after the pin clock are the **next** flush ([LiveSnapshot](../LiveSnapshot/README.md)). Product convert (M3+) is the **Rust worker**: y-octo hydrate, then this helper’s `fromDoc`. Slice **`toDoc`** for apply is the same worker ([apply.md](./apply.md)).
+Live collaboration does not wait on convert. Clients keep sending; the **hub** applies and broadcasts; Postgres persist keeps running. Updates after the pin clock are the **next** flush ([LiveSnapshot](../LiveSnapshot/README.md)). Product convert (M3+): **Rust worker** hydrates with y-octo, then in-process `fromDoc` ([M3 step-rust-adapter](../M3/plan.md#3-step-rust-adapter) goldens matched 2026-09-13). JS `from-doc.js` / `fromPinnedBytes` stays the dialect **oracle**. Slice **`toDoc`** for apply is the same worker ([apply.md](./apply.md)).
 
 Do **not**:
 
@@ -95,6 +95,6 @@ Flush-before-lease: pin so `T0` is not missing in-memory-not-yet-SQL updates ([L
 | [README.md](./README.md) | Two directions; where each copy lives |
 | [live-pane.md](./live-pane.md) | Path A loop |
 | [apply.md](./apply.md) | Path B consume: md vs `T0` → hunks |
-| [LiveSnapshot](../LiveSnapshot/README.md) | Pin beside keck; git snapshotter |
+| [LiveSnapshot](../LiveSnapshot/README.md) | Pin beside the hub; git snapshotter ([M3](../M3/README.md)) |
 | [LifeIndexing](../Agents/LifeIndexing.md) | After that git SHA: gists / graphs. Not this helper. |
 | [fixtures.md](./fixtures.md) | `pin-then-fromDoc` row |

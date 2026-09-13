@@ -6,10 +6,10 @@ Source of Compose service **`hub`**. Architecture: [architecture.md](./architect
 
 ```text
 Venus/
-  Cargo.toml                 workspace; members = ["crates/venus-hub"]
+  Cargo.toml                 workspace; members = ["crates/venus-hub", "crates/venus-sidecar"]
   Cargo.lock
-  rust-toolchain.toml        channel 1.90.0; rust-analyzer component
-  deploy/hub/Dockerfile      build rust:1.90-bookworm; runtime debian:bookworm-slim USER venus
+  rust-toolchain.toml        channel 1.98.1; rust-analyzer + rust-src
+  deploy/hub/Dockerfile      build rust:1.98.1-bookworm; runtime debian:bookworm-slim USER venus
   crates/venus-hub/
     Cargo.toml               lib + bin `venus-hub`; y-octo, axum, sqlx, tokio
                              test: tokio-tungstenite, testcontainers, futures-util
@@ -30,7 +30,7 @@ Venus/
       ws.rs                  M3.0 step-ws (AFFiNE WS + persist)
 ```
 
-The workspace has **one** member. Do not add OctoBase / `jwst-*` crates here. Image build copies only `Cargo.toml`, `Cargo.lock`, and `crates/venus-hub` — not `deploy/octobase`.
+The workspace also has `crates/venus-sidecar` (M3 snapshotter). The hub crate does **not** depend on it. Image build copies `Cargo.toml`, `Cargo.lock`, and both member crates so the workspace resolves — CMD remains `venus-hub`, not `deploy/octobase`.
 
 ## Rust modules
 
@@ -144,4 +144,4 @@ No `/api/block/:id/:block` CRUD. `handle_socket`: `connect_client`, send `attach
 
 ## Deploy
 
-[`deploy/hub/Dockerfile`](../../../../deploy/hub/Dockerfile): build on `rust:1.90-bookworm`, copy the binary into `debian:bookworm-slim` with `ca-certificates`, run as `USER venus` (uid 65532). No `POSTGRES_PASSWORD` / `DATABASE_URL` in the image — Compose injects them (`venus_hub`). `EXPOSE 3000`. Do **not** `COPY deploy/octobase`.
+[`deploy/hub/Dockerfile`](../../../../deploy/hub/Dockerfile): build on `rust:1.98.1-bookworm`, copy the binary into `debian:bookworm-slim` with `ca-certificates`, run as `USER venus` (uid 65532). No `POSTGRES_PASSWORD` / `DATABASE_URL` in the image — Compose injects them (`venus_hub`). `EXPOSE 3000`. Do **not** `COPY deploy/octobase`.

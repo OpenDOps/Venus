@@ -1,6 +1,6 @@
 # Venus hub
 
-**M3.0 board:** [step-recon-hub](../../M3.0/plan.md#1-step-recon-hub) through [step-dirty](../../M3.0/plan.md#8-step-dirty) are done. Next is [step-verify](../../M3.0/plan.md#9-step-verify).
+**M3.0 board:** steps 1–9 `done` (closed 2026-09-13).
 
 Venus-owned **collab front**. Compose service **`hub`**. Source: [`crates/venus-hub`](../../../../crates/venus-hub). Image: [`deploy/hub/Dockerfile`](../../../../deploy/hub/Dockerfile).
 

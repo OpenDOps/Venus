@@ -90,7 +90,7 @@ Postgres crdt_* + blobs  (hosted)
         └── Venus snapshotter beside the hub (not inside it)
 ```
 
-Do not call OctoBase **block** APIs from the web bundle. Depend on Yjs binaries, space ids, blobs, and the dirty trigger. M1 keck recon: [octobase.md](../design/LiveSnapshot/octobase.md).
+Do not call OctoBase **block** APIs from the web bundle. Depend on Yjs binaries, space ids, blobs, and the dirty trigger. M1 keck (legacy): [M1](../design/M1/README.md).
 
 ## Venus’s own license
 
