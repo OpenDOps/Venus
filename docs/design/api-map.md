@@ -1,6 +1,6 @@
 # API map
 
-One contract for **installed** symbols. Milestone plans ([M0](./M0/plan.md), [M1](./M1/plan.md), [M2](./M2/plan.md), [M3.0](./M3.0/plan.md), …) use **design names** from [venus-implementation-plan.md](./venus-implementation-plan.md). This file is the Actual column. Do not keep a second map per milestone.
+One contract for **installed** symbols. Milestone plans ([M0](./M0/plan.md), [M1](./M1/plan.md), [M2](./M2/plan.md), [M3.0](./M3.0/plan.md), [M3](./M3/plan.md), …) use **design names** from [venus-implementation-plan.md](./venus-implementation-plan.md). This file is the Actual column. Do not keep a second map per milestone.
 
 Fill new rows when recon for that slice runs. Do not keep coding against names that are not in this table. If packages disagree with a plan’s hints, **this file wins**.
 
@@ -17,7 +17,7 @@ Fill new rows when recon for that slice runs. Do not keep coding against names t
 | JS sync client | No npm OctoBase client. Venus class `OctoBaseKeckProvider` (`apps/web/src/host/providers/octobase-keck-provider.js`). **Kind `'octobase'` is a wire alias for the hub.** Wire: `yjs@13.6.32` + `y-protocols@1.0.7` + `lib0@0.2.117`, `new WebSocket(url, ['AFFiNE'])`. **Not** `y-websocket` `WebsocketProvider`. | M1 / M3.0 |
 | Blob HTTP | Hub: `POST /api/blobs/:workspace` (`application/octet-stream`) → `{ id, exists }`; `GET`/`HEAD`/`DELETE /api/blobs/:workspace/:hash`. Hash = SHA-256 base64url **with padding**. | M3.0 |
 | `y-octo` crate | crates.io **`0.1.0`**: `Doc::try_from_binary_v1`, `apply_update_from_binary_v1`, `encode_update_v1`. Product apply is the hub, not keck `jwst-codec`. | M1 / M3.0 |
-| Docker image / compose file | `deploy/hub/Dockerfile` builds `venus-hub`. `deploy/web/Dockerfile` is nginx + `apps/web/dist` (`VITE_SYNC_URL=same-origin`). `docker-compose.yml`: **`postgres`** (`postgres:16`, volume `pg-venus-data`, db `venus`) + **`hub`** + **`web`** (`8080:80`). Profile `ha` adds `hub-b` on `:3001`. Do not put hub and Postgres in one container. keck image may remain under `deploy/octobase/` as M1 history. | M3.0 |
+| Docker image / compose file | `deploy/hub/Dockerfile` builds `venus-hub`. `deploy/web/Dockerfile` is nginx + `apps/web/dist` (`VITE_SYNC_URL=same-origin`). `docker-compose.yml`: **`postgres`** (`postgres:16`, volume `pg-venus-data`, db `venus`) + **`hub`** + **`web`**. Host ports `127.0.0.1:3000` / `:8080` (not `0.0.0.0`). Profile `ha` adds `hub-b` on `127.0.0.1:3001`. Hub DSN user is `venus_hub` (NOSUPERUSER). Do not put hub and Postgres in one container. keck image may remain under `deploy/octobase/` as M1 history. | M3.0 |
 
 ## Pin notes (BlockSuite / Vite)
 
@@ -105,7 +105,7 @@ Recon notes (2026-09-01, [M3.0 `step-recon-hub`](./M3.0/plan.md#1-step-recon-hub
 | Blob HTTP | OctoBase blob REST or `POST /blobs/:id` on a tiny Venus service | `POST /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00` body `application/octet-stream` → `{ id, exists }`; `GET`/`HEAD`/`DELETE /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00/:hash` | Nested under `/api` (default features). No list endpoint. CORS has POST, not PUT. |
 | Image in page | slash / paste → `affine:image` | flavour `affine:image` (`ImageBlockSchema`); props `sourceId`. Tag `affine-image`; page child `affine-page-image` in `.affine-image-container`. Playwright: `affine-image .affine-image-container img` | Slash Image → `blobSync.set(file)` → `sourceId`. Pixels after blob HTTP (step 6). |
 | Doc export | keck REST **or** `y-octo` `Doc::try_from_binary_v1` + `encode_update_v1` | `GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export` → Yjs update v1 (`application/octet-stream`). Optional decode: y-octo `0.1.0` `Doc::try_from_binary_v1`. | Current tree, not a pinned `T0` or git snapshot. [glossary](./glossary.md). |
-| Compose | `postgres` + `hub` + `web` | `docker-compose.yml` at repo root. Full stack: `docker compose up --build` (`pnpm compose:up`). Hub-only: `docker compose up --build postgres hub` (`pnpm sync:up`). Volume `pg-venus-data`. Database `venus`. Hub env: `POSTGRES_HOST=postgres`, `POSTGRES_USER=venus`, `POSTGRES_PASSWORD=venus`. Web URL **http://127.0.0.1:8080**. | Three containers. Do not `down -v` if you need the doc. [devops/compose](../devops/compose.md). [hub](./components/hub/). |
+| Compose | `postgres` + `hub` + `web` | `docker-compose.yml` at repo root. Full stack: `docker compose up --build` (`pnpm compose:up`). Hub-only: `docker compose up --build postgres hub` (`pnpm sync:up`). Volume `pg-venus-data`. Database `venus`. Cluster superuser `venus`; hub role `venus_hub` (NOSUPERUSER). Hub env: `POSTGRES_HOST=postgres`, `POSTGRES_USER=venus_hub`, `POSTGRES_PASSWORD=venus`, `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable`. Host ports bind `127.0.0.1` (`:3000`, `:8080`). Persist across restart: `pnpm compose:dod`. | Three containers. Do not `down -v` if you need the doc. [devops/compose](../devops/compose.md). [hub](./components/hub/). |
 
 ### Chosen backend (M3.0)
 
@@ -115,7 +115,7 @@ Product Compose is **`postgres` + `hub` + `web`**. M1 keck rows above stay as hi
 |---|---|
 | **kind** | `octobase` (**wire alias**). Server is the Venus hub (`crates/venus-hub`), not keck. Client class stays `OctoBaseKeckProvider`. Product name `venus` may replace the alias later. Not stock `y-websocket`. |
 | **Why** | Same `AFFiNE` + y-protocols bytes as M1; apply is **y-octo 0.1.0 (MIT)** in Venus-owned Rust (keep; not yrs, not Node, not AGPL keck). |
-| **Server start** | From the Venus root: `docker compose up --build` (postgres + hub + web) or `docker compose up --build postgres hub` (`pnpm sync:up`). Hub listens `http://127.0.0.1:3000`. Web listens **http://127.0.0.1:8080**. Postgres via `POSTGRES_HOST` / `POSTGRES_USER` / `POSTGRES_PASSWORD` (Compose: `postgres` / `venus` / `venus`, db `venus`). `DATABASE_URL` overrides if set. Must not be omitted (no SQLite). Health: `curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` → `{"protocol":"AFFiNE"}`. Second owner: `docker compose --profile ha up --build hub-b` (`:3001`). **Not DoD:** host `cargo run -p venus-hub`. |
+| **Server start** | From the Venus root: `docker compose up --build` (postgres + hub + web) or `docker compose up --build postgres hub` (`pnpm sync:up`). Hub listens `http://127.0.0.1:3000`. Web listens **http://127.0.0.1:8080**. Postgres via `POSTGRES_HOST` / `POSTGRES_USER` / `POSTGRES_PASSWORD` (Compose hub: `postgres` / `venus_hub` / `venus`, db `venus`) **and** `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable`. Cluster superuser is service `postgres` `POSTGRES_USER=venus`. Must not be omitted (no SQLite). Health: `curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` → `{"protocol":"AFFiNE"}`. `GET /` is `venus-hub`. Persist proof: `pnpm compose:dod`. Second owner: `pnpm compose:ha` (`hub-b` `127.0.0.1:3001` is 503 while A holds the M0 UUID). **Not DoD:** host `cargo run -p venus-hub`. |
 | **Client package** | `yjs@13.6.32` + `y-protocols@1.0.7` + `lib0@0.2.117`. Class: `OctoBaseKeckProvider`. `new WebSocket('ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00', ['AFFiNE'])`. |
 | **Storage** | **Postgres 16**, Compose service **`postgres`**, named volume `pg-venus-data`, database `venus`. Tables `crdt_snapshot`, `crdt_update`, `blob`, `workspace_lease`, `dirty`. `workspace_id` / `doc_id` are UUID. Not SQLite. Never omit Postgres env / `DATABASE_URL`. Cut over from M1 `pg-data` / `jwst` — re-seed. |
 | **Blob store** | Same Postgres via hub HTTP: `POST /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00`, `GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00/:hash`. |
@@ -159,6 +159,23 @@ Recon notes (2026-08-30, Node Vitest, `MemoryNoopProvider`, BlockSuite **0.22.4*
 | Pane host | `mount-md-pane.js`, `data-testid="venus-md-pane"` | `mountMdPane` from `apps/web/src/host/mdgate/mount-md-pane.js` | Read-only `<pre><code data-testid="venus-md-pane">`. `contenteditable="false"`. `store.slots.blockUpdated` → `createMdPaneLoop` (`md-pane-loop.js`) → `incrementalFromDoc` or full `fromDoc`. Each run `highlight()` of the **whole** string. Theme CSS imported here, not in `from-doc.js`. Not CodeMirror. |
 | Highlight.js | `highlight.js/lib/core` + `languages/markdown` + one theme CSS | **11.11.1** `highlight.js/lib/core` + `highlight.js/lib/languages/markdown`; theme `highlight.js/styles/github.css` | `highlight-md.js` `highlight(md)` → HTML. Vitest: seed golden text round-trips after stripping tags. Not imported from `from-doc.js` or `mount-editor.js`. |
 
+## Names — git snapshotter
+
+Fill Actual in [M3 `step-recon-snapshot`](./M3/plan.md#1-step-recon-snapshot). Do not code M3 against empty cells. If this section disagrees with [M3/plan.md](./M3/plan.md) **Chosen stack**, **this file wins** after recon.
+
+| Design name | Likely | Actual | Notes |
+|---|---|---|---|
+| Snapshotter process | `crates/venus-sidecar`, Compose `sidecar` | | Rust + y-octo hydrate + git2. Not `crates/venus-hub`. |
+| Pin source | Idle/Flush: `GET` Export command after ≥2s, or replica encode | | Not the live tab `Store`. Not `incrementalFromDoc`. |
+| Convert JS | Node CLI importing `fromPinnedBytes` from `pin-from-doc.js` | | Same `from-doc.js` as the pane. |
+| gitPath | `spec/home.md` for `doc:home` | | Catalog v0 constant. No catalog CRDT. |
+| Sidecar on disk | `wiki/.venus/ids/<docId>.json` | | Pin clock. `docId` vs `PAGE_DOC_ID` is recon. |
+| Idle | 60s (`SNAPSHOT_IDLE_MS`) | | Inside 30–120s. Do not reset on second keystroke. |
+| Flush | Host `data-testid="venus-flush"` → sidecar | | Immediate after persist wait. |
+| Git log | `data-testid="venus-git-log"`; sidecar `GET /git/log` | | Subjects, not Yjs undo. |
+| `last_flushed` | RAM; crash recovery = sidecar `clock` | | No `jobs` table in M3. |
+| Wiki repo | Nested `wiki/` (product git ignores it) | | Separate history from the product remote. |
+
 ## Forbidden imports
 
 Always forbidden in `apps/web`:
@@ -167,6 +184,6 @@ Always forbidden in `apps/web`:
 - AFFiNE Cloud Socket.IO protocol
 - Docusaurus / VitePress / AFFiNE explorer as a TOC
 
-`mount-editor.js` / `editor-container.js` / `boot.js` must not import OctoBase, `y-websocket`, Hocuspocus, `y-indexeddb`, `y-protocols`, `lib0`, or blob HTTP clients. They must not import `MarkdownAdapter` or `src/host/mdgate/` ([M2](./M2/plan.md) — pane is host chrome).
+`mount-editor.js` / `editor-container.js` / `boot.js` must not import OctoBase, `y-websocket`, Hocuspocus, `y-indexeddb`, `y-protocols`, `lib0`, or blob HTTP clients. They must not import `MarkdownAdapter` or `src/host/mdgate/` ([M2](./M2/plan.md) — pane is host chrome). They must not import git, `venus-sidecar`, or snapshot Flush ([M3](./M3/plan.md)).
 
 `y-protocols` / `lib0` and `OctoBaseKeckProvider` live in `src/host/providers/` and `package.json`. OctoBase must not be an npm dependency of `@venus/web` (AGPL server process only). Do not add `y-websocket` unless the backend kind changes.

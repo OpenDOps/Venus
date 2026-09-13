@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectedCollaborationWs } from './keck-ws';
+import { expectedCollaborationWs, assertHubOn3000 } from './keck-ws';
 
 const NOTE = 'affine-note affine-paragraph rich-text';
-const KECK_WS = expectedCollaborationWs();
+const HUB_WS = expectedCollaborationWs();
 
 async function waitForEditor(page: Page) {
   const pageErrors: string[] = [];
@@ -30,21 +30,10 @@ async function waitForEditor(page: Page) {
 }
 
 test.beforeAll(async () => {
-  try {
-    await fetch('http://127.0.0.1:3000/', {
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
-      throw new Error(
-        `hub is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
-      );
-    }
-  }
+  await assertHubOn3000();
 });
 
-test('octobase kind and AFFiNE websocket when VITE_SYNC_URL is set', async ({
+test('octobase kind (hub wire alias) and AFFiNE websocket when VITE_SYNC_URL is set', async ({
   page,
 }) => {
   const wsUrls: string[] = [];
@@ -69,8 +58,8 @@ test('octobase kind and AFFiNE websocket when VITE_SYNC_URL is set', async ({
   );
 
   await expect
-    .poll(() => wsUrls.find((u) => u.includes(KECK_WS)))
-    .toBe(KECK_WS);
+    .poll(() => wsUrls.find((u) => u.includes(HUB_WS)))
+    .toBe(HUB_WS);
 
   const protocols = await page.evaluate(() => window.__VENUS_WS_PROTOCOLS__);
   expect(protocols).toEqual(['AFFiNE']);

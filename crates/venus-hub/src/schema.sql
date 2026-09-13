@@ -4,6 +4,9 @@
 -- `venus_hub::DEFAULT_WORKSPACE_ID` / `PAGE_DOC_ID`.
 -- BlockSuite `createDoc` stays `doc:home` (Yjs guid); the hub does not
 -- store that string.
+-- Dirty grain is (workspace_id, doc_id): one row per page. M3 many pages
+-- keep that pair; lease grain stays workspace_id. The hub does not
+-- write `jobs` — M3 observer reads `dirty`.
 
 CREATE TABLE IF NOT EXISTS crdt_snapshot (
     workspace_id UUID NOT NULL,
@@ -40,6 +43,9 @@ CREATE TABLE IF NOT EXISTS workspace_lease (
     lease_until TIMESTAMPTZ NOT NULL
 );
 
+-- Page grain. Hub never DELETEs these rows; M3 observer GC may.
+-- Only `crdt_update` marks dirty, so compact cannot resurrect a GCed row.
+-- M3 still ignores `clock <= last_flushed` (a retried flush is not a new pin).
 CREATE TABLE IF NOT EXISTS dirty (
     workspace_id UUID NOT NULL,
     doc_id UUID NOT NULL,
@@ -134,45 +140,77 @@ BEGIN
 END $$;
 
 -- Installed only after `dirty` exists. Inner EXCEPTION so a missing
--- `dirty` table cannot roll back the persist INSERT/UPDATE.
-CREATE OR REPLACE FUNCTION venus_mark_dirty() RETURNS trigger AS $$
-DECLARE
-    clk bigint;
+-- `dirty` table cannot roll back persist (one savepoint per statement,
+-- not per row — P13). ROW branch is only for the boot that recreates
+-- leftover FOR EACH ROW triggers as STATEMENT.
+-- P1: only `crdt_update` marks dirty. Compact rewrites rows that already
+-- marked it, so the whole-page snapshot `bin` never enters a NEW TABLE.
+-- A leftover crdt_snapshot trigger is a no-op until `migrate` drops it.
+-- D1: GREATEST so an out-of-order flush statement cannot rewind the clock.
+-- D2: RAISE WARNING (do not RAISE EXCEPTION).
+-- D4: pin search_path; qualify public.dirty (do not follow "$user").
+CREATE OR REPLACE FUNCTION venus_mark_dirty() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 BEGIN
-    IF TG_TABLE_NAME = 'crdt_update' THEN
-        clk := NEW.seq;
-    ELSE
-        clk := NEW.clock;
+    IF TG_TABLE_NAME <> 'crdt_update' THEN
+        IF TG_LEVEL = 'ROW' THEN
+            RETURN NEW;
+        END IF;
+        RETURN NULL;
     END IF;
     BEGIN
-        INSERT INTO dirty (workspace_id, doc_id, clock, first_dirty_at)
-        VALUES (NEW.workspace_id, NEW.doc_id, clk, now())
-        ON CONFLICT (workspace_id, doc_id) DO UPDATE
-            SET clock = EXCLUDED.clock;
+        IF TG_LEVEL = 'STATEMENT' THEN
+            INSERT INTO public.dirty (workspace_id, doc_id, clock, first_dirty_at)
+            SELECT workspace_id, doc_id, max(seq), now()
+            FROM ins
+            GROUP BY workspace_id, doc_id
+            ON CONFLICT (workspace_id, doc_id) DO UPDATE
+                SET clock = GREATEST(dirty.clock, EXCLUDED.clock)
+                WHERE dirty.clock IS DISTINCT FROM GREATEST(dirty.clock, EXCLUDED.clock);
+        ELSE
+            INSERT INTO public.dirty (workspace_id, doc_id, clock, first_dirty_at)
+            VALUES (NEW.workspace_id, NEW.doc_id, NEW.seq, now())
+            ON CONFLICT (workspace_id, doc_id) DO UPDATE
+                SET clock = GREATEST(dirty.clock, EXCLUDED.clock)
+                WHERE dirty.clock IS DISTINCT FROM GREATEST(dirty.clock, EXCLUDED.clock);
+        END IF;
     EXCEPTION
-        WHEN undefined_table THEN
-            NULL;
-        WHEN undefined_column THEN
-            NULL;
+        WHEN undefined_table OR undefined_column THEN
+            IF TG_LEVEL = 'ROW' THEN
+                RAISE WARNING 'venus_mark_dirty: % (workspace_id=%, doc_id=%)',
+                    SQLERRM, NEW.workspace_id, NEW.doc_id;
+            ELSE
+                RAISE WARNING 'venus_mark_dirty: % (table=%)', SQLERRM, TG_TABLE_NAME;
+            END IF;
     END;
-    RETURN NEW;
+    IF TG_LEVEL = 'ROW' THEN
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- venus:triggers
--- First-install only. `db::migrate` skips this batch when both triggers exist
--- so a second hub boot does not take AccessExclusive on live tables (L20).
+-- First-install, cutover from FOR EACH ROW (P13: tgnewtable set), or removal
+-- of the snapshot triggers (P1). `db::migrate` skips this batch once
+-- `crdt_update_dirty` is STATEMENT and no snapshot dirty trigger is left, so a
+-- second hub boot does not take AccessExclusive on live tables (L20).
 -- Lock order matches compact's table grabs (update, then snapshot, then dirty).
 LOCK TABLE crdt_update, crdt_snapshot, dirty IN ACCESS EXCLUSIVE MODE;
 
 DROP TRIGGER IF EXISTS crdt_update_dirty ON crdt_update;
 CREATE TRIGGER crdt_update_dirty
     AFTER INSERT ON crdt_update
-    FOR EACH ROW
+    REFERENCING NEW TABLE AS ins
+    FOR EACH STATEMENT
     EXECUTE FUNCTION venus_mark_dirty();
 
+-- P1: no snapshot trigger. Compact merges trail rows that `crdt_update_dirty`
+-- already marked at the same clock (`crdt_snapshot.clock` = that `max_seq`), so
+-- these only copied the whole page `bin` into a transition table to rewrite one
+-- bigint. `crdt_snapshot_dirty` is the pre-P13 name.
 DROP TRIGGER IF EXISTS crdt_snapshot_dirty ON crdt_snapshot;
-CREATE TRIGGER crdt_snapshot_dirty
-    AFTER INSERT OR UPDATE ON crdt_snapshot
-    FOR EACH ROW
-    EXECUTE FUNCTION venus_mark_dirty();
+DROP TRIGGER IF EXISTS crdt_snapshot_dirty_ins ON crdt_snapshot;
+DROP TRIGGER IF EXISTS crdt_snapshot_dirty_upd ON crdt_snapshot;

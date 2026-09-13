@@ -634,7 +634,7 @@ M3 may assume:
 
 M3 exit is clone `wiki/` and read markdown. M2 exit is “WYSIWYG and a read-only pane stay aligned on a documented subset.”
 
-M3 **implementation** is gated on [M3.0](../M3.0/README.md) **closed** and [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance**. Next after this plan: **[M3.0 Venus hub](../M3.0/README.md)**. M3 is the thin column of the snapshotter shape (RAM dirty, in-process idle, replica or idle GET). Do not invert it: no `fromDoc` of the live Store for git, no snapshotter in the hub, no markdown in Postgres.
+M3 **implementation** is gated on [M3.0](../M3.0/README.md) **closed** and [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance**. Step-by-step: [M3/plan.md](../M3/plan.md). Next after this plan: **[M3.0 Venus hub](../M3.0/README.md)**. M3 is the thin column of the snapshotter shape (RAM dirty, in-process idle, replica or idle GET). Do not invert it: no `fromDoc` of the live Store for git, no snapshotter in the hub, no markdown in Postgres.
 
 ## Invariants (M2 only)
 

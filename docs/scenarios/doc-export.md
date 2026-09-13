@@ -21,8 +21,9 @@ Exact command: api-map **Export command**. [runbook](../runbook.md#sync-m1).
 | Spec | Proves |
 |---|---|
 | `snapshot.test.ts` — Export command string | `docs/design/api-map.md` still contains the exact `curl …/export` (fails if the cell is an empty template) |
+| `snapshot.test.ts` — hub live_export | `http.rs` calls `live_export`; crate has no `jwst` / keck |
 | `snapshot.test.ts` — not in the editor UI | `mount-editor.js` / `editor-container.js` / `boot.js` / `App.tsx` do not call `/api/block/…/export` |
-| `snapshot.test.ts` — Reachable | `curl -sSSf …/export -o /tmp/venus-page.yjs` exit 0; file length **> 2** bytes |
+| `snapshot.test.ts` — Reachable | `curl -sSSf …/export -o /tmp/venus-page.yjs` exit 0; file length **> 2** bytes; `GET /` is `venus-hub` |
 | `snapshot.test.ts` — Decodes | `Y.applyUpdate(new Y.Doc(), bytes)` does not throw; `Y.encodeStateAsUpdate` length **> 2** |
 
 Reachable / Decodes **skip** when nothing listens on `127.0.0.1:3000` so `pnpm test` stays Docker-free. If the hub is up and export is empty or HTTP-fails, they **fail**. Local DoD: Compose up, `doc:home` hydrated at least once, those tests pass (not skipped).

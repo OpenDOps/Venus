@@ -67,6 +67,8 @@ test('Seam holds: editor host files do not import live sync clients', () => {
     expect(src, name).not.toMatch(importOf('y-protocols'));
     expect(src, name).not.toMatch(importOf('lib0'));
     expect(src, name).not.toMatch(/octobase-keck-provider/);
+    expect(src, name).not.toMatch(/from-env/);
+    expect(src, name).not.toMatch(/providers\//);
     expect(src, name).not.toMatch(/venus-hub/);
     expect(src, name).not.toMatch(/blob-source/);
   }

@@ -14,7 +14,9 @@
     "sync:up": "docker compose up --build postgres hub",
     "sync:down": "docker compose down",
     "compose:up": "docker compose up --build",
-    "compose:down": "docker compose down"
+    "compose:down": "docker compose down",
+    "compose:dod": "pnpm --filter @venus/web exec node ./scripts/m30-compose-dod.mjs",
+    "compose:ha": "pnpm --filter @venus/web exec node ./scripts/m30-ha-dod.mjs"
   },
   "pnpm": {
     "overrides": {

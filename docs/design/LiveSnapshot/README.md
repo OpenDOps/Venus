@@ -1,6 +1,6 @@
 # Live snapshot (pin + git snapshotter)
 
-**Status:** design (one-wiki pin). Implement in [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) **only after** [M3.0](../M3.0/README.md) **is closed** (Venus hub replaces keck) **and** [high-availability.md](./high-availability.md) **Acceptance** (snapshotter beside the hub). 2026-08-31 “OctoBase stays” is superseded. Lease `T0` reuses the same pin ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Live CRDT HA: [M3.0/high-availability.md](../M3.0/high-availability.md). M1 keck recon: [octobase.md](./octobase.md). Scale for git/jobs is this HA file — M3 is a thin instance and must not invert it.
+**Status:** design (one-wiki pin). Implement in [M3](../M3/README.md) ([plan](../M3/plan.md)) **only after** [M3.0](../M3.0/README.md) **is closed** (Venus hub replaces keck) **and** [high-availability.md](./high-availability.md) **Acceptance** (snapshotter beside the hub). 2026-08-31 “OctoBase stays” is superseded. Lease `T0` reuses the same pin ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Live CRDT HA: [M3.0/high-availability.md](../M3.0/high-availability.md). M1 keck recon: [octobase.md](./octobase.md). Scale for git/jobs is this HA file — M3 is a thin instance and must not invert it.
 
 Product rules (two git classes, markdown is a projection): [venus-design.md](../venus-design.md). **Git tree:** [datamodel — git](../datamodel/git.md). Idle / flush-before-lease: [v1-concerns.md](../../drafts/pre-design/v1-concerns.md). Adapter: [MDGate](../MDGate/README.md). Exporter lands in [M2](../M2/README.md); this folder converts a **pin**, not the live Store.
 
@@ -127,6 +127,7 @@ The hub **does not** offer “hold persist until pin copy finishes.” It alread
 | [octobase.md](./octobase.md) | **M1 keck recon** (export, persist, Format overlay). Not the product hub. |
 | [M3.0/high-availability.md](../M3.0/high-availability.md) | Live CRDT HA (sticky owner, persist, dirty, drain) |
 | [high-availability.md](./high-availability.md) | Queue, dirty list, pin cut, worker fleet. **Re-accept;** M3 code is gated on it **and** M3.0 closed. |
+| [M3 plan](../M3/plan.md) | Thin-column implementation steps (not started). |
 | [MDGate pin-convert](../MDGate/pin-convert.md) | Host convert helper (no git write) |
 | [LifeIndexing](../Agents/LifeIndexing.md) | After commit: gists, tags, direct + logical graphs. Not convert. Plan: [agentic-binding](../Agents/agentic-binding.md). |
 

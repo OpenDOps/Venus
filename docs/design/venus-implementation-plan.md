@@ -287,7 +287,7 @@ Do not start M3 `wiki/` until this milestone is **done**. Hub HPA, stateless gat
 
 ### M3 — Git snapshotter (week)
 
-**Status:** not started. **Gate:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while M3.0 is open or LiveSnapshot HA is un-accepted. An M3 step plan comes **after** this gate.
+**Status:** not started. Step-by-step: [M3/plan.md](./M3/plan.md). Board: [M3/M3.state.yaml](./M3/M3.state.yaml). **Gate:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded). Do not implement (`wiki/` writer, snapshotter process, git commit from the host) while M3.0 is open or LiveSnapshot HA is un-accepted.
 
 Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 is the **thin column** of [HA — M3 must keep this shape](./LiveSnapshot/high-availability.md#m3-must-keep-this-shape): RAM dirty list, in-process idle/Flush, replica encode or idle GET, one process, one `wiki/`. **Rust worker** hydrates the pin with y-octo, then the same `from-doc.js` as [M2](./M2/README.md) — do not `fromDoc` the live Store for git. Slice `toDoc` for apply is the same worker (M6), not the hub.
 
@@ -405,7 +405,7 @@ Venus/
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
-  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (incl. M3.0)
+  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (M0–M3.0, M3)
   docs/devops/              # Compose now; Kubernetes later; hub fleet after M3.0
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```
@@ -440,7 +440,7 @@ Everything after M3.0 git is Venus snapshotter. Do not block M3.0 on review desi
 2. OctoBase sync of that one doc (Postgres + keck in Compose). **Done** — [M1](./M1/README.md).
 3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M6.
 4. **Venus hub** — [M3.0/plan.md](./M3.0/plan.md). Replaces keck. HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
-5. **Then** git snapshotter ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape), gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance. Then **folder tree + product header**, then lease. Do not start M3 code if M3.0 is open.
+5. **Then** git snapshotter — [M3/plan.md](./M3/plan.md) ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape), gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance. Then **folder tree + product header**, then lease. Do not start M3 code if M3.0 is open.
 
 Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M6 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
 

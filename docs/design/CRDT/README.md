@@ -95,5 +95,5 @@ The hub does **not** ask browsers. This is not a named version. A **pin** keeps 
 - **What spaces and git hold** — [datamodel](../datamodel/README.md).
 - Hub **process** (run, Rust, SQL, HTTP) — [hub](../components/hub/). Software architecture: [architecture](../components/hub/architecture.md). Crate map: [files](../components/hub/files.md). Milestone: [M3.0](../M3.0/README.md).
 - No Rust in the editor — [wasm.md](./wasm.md).
-- Pin + git snapshotter — [LiveSnapshot](../LiveSnapshot/README.md), then M3 (after M3.0).
+- Pin + git snapshotter — [LiveSnapshot](../LiveSnapshot/README.md), then [M3](../M3/README.md) (after M3.0).
 - Lease freeze — M5.

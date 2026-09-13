@@ -36,7 +36,7 @@ Do not `docker compose down -v` between M1 specs. One Playwright worker for M1.
 | [Collaboration](./collaboration.md) | Tab A / Tab B, WS | two tabs, no reload |
 | [Blobs](./blobs.md) | Blob HTTP, Postgres | image upload, second tab, reload |
 | [Doc export](./doc-export.md) | curl → hub export | Vitest `snapshot.test.ts` (skip Reachable/Decodes if hub is down) |
-| [Compose stack](./compose.md) | postgres, hub, web | Vitest `compose.test.ts`; A→B on `:8080` optional |
+| [Compose stack](./compose.md) | postgres, hub, web | Vitest `compose.test.ts`; persist DoD `pnpm compose:dod`; HA DoD `pnpm compose:ha`; A→B on `:8080` optional |
 | [Markdown projection](./markdown-projection.md) | Host pane, Store `fromDoc` | Vitest `mdgate/*.test.ts`; Playwright `e2e/m2-pane.spec.ts` |
 
 Milestone DoD prose stays in [M0/plan](../design/M0/plan.md), [M1/plan](../design/M1/plan.md), and [M2/plan](../design/M2/plan.md). When a spec and the plan disagree, the **spec file** is what CI runs. Markdown projection: [markdown-projection.md](./markdown-projection.md).

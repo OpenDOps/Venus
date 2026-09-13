@@ -8,15 +8,19 @@ keck stays under `deploy/octobase/` as M1 history; product Compose does not buil
 
 | Service | Image | Host port | Role |
 |---|---|---|---|
-| `postgres` | `postgres:16` | none | `crdt_*` + blob bytes. Volume `pg-venus-data`, database `venus`. |
-| `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `3000` | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, doc export. |
-| `web` | `deploy/web/Dockerfile` (nginx + `apps/web/dist`) | `8080` | Host UI. Same-origin proxy: `/api` and `/collaboration` → `hub:3000`. |
+| `postgres` | `postgres:16` | none | `crdt_*` + blob bytes. Volume `pg-venus-data`, database `venus`. Superuser `venus`. |
+| `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, doc export. Connects as `venus_hub` (NOSUPERUSER). |
+| `web` | `deploy/web/Dockerfile` (nginx + `apps/web/dist`) | `127.0.0.1:8080` | Host UI. Same-origin proxy: `/api` and `/collaboration` → `hub:3000`. |
 
 Default `docker compose config --services` prints `postgres`, `hub`, `web`. Hub and Postgres must not share a container.
 
-Hub Postgres env (required; no SQLite): `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (Compose: `postgres` / `venus` / `venus`). `DATABASE_URL` overrides if set. `POSTGRES_SSLMODE` defaults to `disable` (private network); set `require` against managed Postgres.
+Hub Postgres env (required; no SQLite): `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (Compose hub: `postgres` / `venus_hub` / `venus`) and `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable` (`DATABASE_URL` wins). Service `postgres` still uses superuser `venus` to create that role (`deploy/postgres/ensure-app-role.sh`, also the healthcheck so existing volumes get it). `POSTGRES_SSLMODE` defaults to `disable` (private network); set `require` against managed Postgres.
 
-Pool and timers are **required** on the hub (no sqlx defaults): `HUB_DB_MAX_CONNECTIONS=32`, `HUB_DB_MIN_CONNECTIONS=4`, `HUB_DB_ACQUIRE_TIMEOUT_SECS=10`, `HUB_PERSIST_INTERVAL_MS=1000`, `HUB_COMPACT_AFTER=32`. Missing or blank is a start error that names the var. `32` is sized for 10 distinct cold exports + 10 blob GETs + 10 room flushes overlapping. Two hubs (`hub` + `hub-b`) hold up to 64 of Postgres’s default 100.
+Host ports bind **`127.0.0.1` only** (`3000`, `8080`, `hub-b` `3001`). The LAN cannot reach the unauthenticated hub. Vite / Playwright on the same machine are unchanged.
+
+Hub and postgres have memory / pids limits. Hub drops all capabilities and sets `no-new-privileges`. The hub image does not bake `POSTGRES_PASSWORD` / `DATABASE_URL`.
+
+Pool and timers are **required** on the hub (no sqlx defaults): `HUB_DB_MAX_CONNECTIONS=32`, `HUB_DB_MIN_CONNECTIONS=4`, `HUB_DB_ACQUIRE_TIMEOUT_SECS=10`, `HUB_DB_WORK_MEM=16MB`, `HUB_PERSIST_INTERVAL_MS=1000`, `HUB_COMPACT_AFTER=32`. Missing or blank is a start error that names the var. `32` is sized for 10 distinct cold exports + 10 blob GETs + 10 room flushes overlapping. Two hubs (`hub` + `hub-b`) hold up to 64 of Postgres’s default 100. `HUB_DB_WORK_MEM` is per session per sort/hash, so `16MB` × 64 is the worst case to budget; it exists because a cap-sized flush spills at the 4 MB default ([P5](../design/M3.0/logicals-and-performance.md#p5--cap-sized-flush-spills-at-default-work_mem)).
 
 `HUB_CORS_ORIGINS` is the six localhost Vite/Compose origins so Playwright can preflight `hub:3000`. Set it empty to disable CORS when the browser is same-origin through nginx. The hub does not echo the request `Origin`. Methods are `GET,HEAD,POST,DELETE` (not `any()`).
 
@@ -47,6 +51,22 @@ docker compose down
 
 `docker compose down -v` **deletes** `pg-venus-data`. Do not use `-v` if the page must survive.
 
+Step 4 persist proof (spike `k=v`, wait ≥2s, `restart hub`, then `down` without `-v` and `up`):
+
+```bash
+pnpm compose:dod
+# apps/web/scripts/m30-compose-dod.mjs
+```
+
+That command also asserts `GET /` is `venus-hub` and no `octobase` container.
+
+Second owner + SIGTERM drain (Compose profile `ha`, `hub-b` on `127.0.0.1:3001`):
+
+```bash
+pnpm compose:ha
+# apps/web/scripts/m30-ha-dod.mjs
+```
+
 M1 used volume `pg-data` and database `jwst`. This cutover uses a **new** volume so keck rows are not mistaken for hub tables. Re-seed the M0 wiki. TEXT `workspace_id` / `doc_id` from earlier hub boots are altered to UUID on migrate (`venus-m0` / `doc:home` map to the v5 constants; other slugs fail — `docker compose down -v`).
 
 ## Same-origin
@@ -68,7 +88,8 @@ That skips Vite `webServer`. Export curl is still hub `:3000` (api-map **Export 
 ```text
 docker-compose.yml
 deploy/NOTICE                 # hub MIT/Apache; keck history
-deploy/hub/Dockerfile         # build rust:1.90-bookworm; runtime slim USER venus
+deploy/hub/Dockerfile         # build rust:1.90-bookworm; runtime slim USER venus; no DSN in image
+deploy/postgres/ensure-app-role.sh  # venus_hub NOSUPERUSER (initdb + healthcheck)
 deploy/web/Dockerfile         # node build + nginx; no OctoBase COPY
 deploy/web/nginx.conf
 crates/venus-hub/

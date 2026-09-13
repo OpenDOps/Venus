@@ -27,8 +27,8 @@ pnpm test:e2e:m1
 |---|---|---|
 | `e2e/m0-provider.spec.ts` | memory Vite | type `hello`, reload → `hello` **absent**; seed back |
 | `e2e/m0-smoke.spec.ts` — refresh discards | memory Vite | same M0 contract |
-| `e2e/m1-hydrate.spec.ts` — typed hello after refresh | Compose | type `hello`, reload → `hello` **still there**; title + H1 remain |
-| `e2e/m1-hydrate.spec.ts` — second session | Compose | new context: one `doc-title` Venus, one outline H1 |
-| `e2e/m1-smoke.spec.ts` | Compose | kind `octobase`; outline H1; type `hello`; reload **keeps** it |
+| `e2e/m1-hydrate.spec.ts` — typed hello after refresh | Compose **hub** | type `hello`, reload → `hello` **still there**; title + H1 remain |
+| `e2e/m1-hydrate.spec.ts` — second session | Compose **hub** | new context: one `doc-title` Venus, one outline H1 |
+| `e2e/m1-smoke.spec.ts` | Compose **hub** | kind `octobase`; outline H1; type `hello`; reload **keeps** it |
 
 Postgres persist across `docker compose restart hub` is a hub persist test (wait ≥2s after a write), not a Playwright file. Operator notes: [runbook Sync](../runbook.md#sync-hub).

@@ -1,0 +1,71 @@
+# Board for docs/design/M3/plan.md
+# Canonical workflow state. Not a second copy of the step prose.
+planId: m3-git-snapshotter
+docId: null # design-folder plan; no BlockSuite page yet
+authors:
+  plannerAgentId: null
+  dodAgentId: null
+  implementerAgentId: null
+dodAccepted:
+  gitSha: null
+  acceptedBy: null
+columns:
+  implement: {}
+  autotests: {}
+  review: {}
+  done: {}
+steps:
+  step-recon-snapshot: # 1
+    n: 1
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-wiki-init: # 2
+    n: 2
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-worker: # 3
+    n: 3
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-pin: # 4
+    n: 4
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-dirty-idle: # 5
+    n: 5
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-flush: # 6
+    n: 6
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-live-during-flush: # 7
+    n: 7
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-git-log: # 8
+    n: 8
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []
+  step-verify: # 9
+    n: 9
+    state: pending
+    breakpoint: human
+    pr: null
+    dodResults: []

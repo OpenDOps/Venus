@@ -1,6 +1,6 @@
 # High-load / high-availability snapshotter
 
-**Status:** revised 2026-09-01 — **re-accept before M3 code.** Live CRDT is the **Venus hub** after [M3.0](../M3.0/README.md) (keck does not stay). **Dirty:** Postgres upsert on hub persist (`crdt_update`). **Jobs:** Venus `jobs` table (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. Consumers: **TTL lease** on that row, not a held `FOR UPDATE`. Pin starts at **claim**. Pin rules: [README.md](./README.md). Hub fleet: [M3.0/high-availability.md](../M3.0/high-availability.md). Convert: [pin-convert.md](../MDGate/pin-convert.md). Git tree: [datamodel — git](../datamodel/git.md). Milestone: [implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week). **Do not start M3 while M3.0 is open.**
+**Status:** revised 2026-09-01 — **re-accept before M3 code.** Live CRDT is the **Venus hub** after [M3.0](../M3.0/README.md) (keck does not stay). **Dirty:** Postgres upsert on hub persist (`crdt_update`). **Jobs:** Venus `jobs` table (observer `INSERT…SELECT` in Postgres), not Akka/Kafka/Redis. Consumers: **TTL lease** on that row, not a held `FOR UPDATE`. Pin starts at **claim**. Pin rules: [README.md](./README.md). Hub fleet: [M3.0/high-availability.md](../M3.0/high-availability.md). Convert: [pin-convert.md](../MDGate/pin-convert.md). Git tree: [datamodel — git](../datamodel/git.md). Milestone: [M3/plan.md](../M3/plan.md) ([implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). **Do not start M3 while M3.0 is open.**
 
 2026-08-31 morning “OctoBase stays / keck dirty notify” is **superseded**. Invariants 1–8 (live never waits, two buffers, queue, cut then convert) are unchanged; item 9 is hub not keck. **2026-09-01:** wiki-grain enqueue, bulk `jobs` insert, no broker; consumer **TTL lease** (not held `FOR UPDATE`); pin starts at **claim**, persist never queued. Revising this file **re-opens the M3 gate** — stop M3 implementation until this revision is accepted **and M3.0 is closed**.
 
@@ -140,7 +140,7 @@ flowchart TB
   observer -.->|"writes after T: clock greater than T<br/>stay dirty, next snapshot"| dirty
 ```
 
-**Hub persist writes `crdt_*` only** (never paused). **Dirty** is a second table in the **same Postgres**: a tiny `AFTER INSERT/UPDATE` on persist rows upserts `dirty(workspace_id, docId, clock)`. No hub hook unless that map is impossible. [M3.0 HA — dirty](../M3.0/high-availability.md#dirty-mark-postgres-not-a-hub-hook).
+**Hub persist writes `crdt_*` only** (never paused). **Dirty** is a second table in the **same Postgres**: a tiny `AFTER INSERT` on `crdt_update` upserts `dirty(workspace_id, docId, clock)`. Compact has no trigger — it rewrites rows already marked at that clock. No hub hook unless that map is impossible. [M3.0 HA — dirty](../M3.0/high-availability.md#dirty-mark-postgres-not-a-hub-hook).
 
 **Observer** turns new `dirty` into a `jobs` row. The hub is neither jobs producer nor consumer. M3.0 already ships the trigger; M3 may still thin pin **source** to replica / idle GET.
 
@@ -316,6 +316,8 @@ last_flushed   ← flush worker after git commit
 | **`last_flushed[workspace_id, docId]`** | Flush path after `git commit` | Pin Map `{ clock: T }` + commit SHA | Observer / next trigger compare | RAM in M3; Venus table at scale |
 
 First run: `last_flushed` is missing → page is dirty → first snapshot. Crash: RAM gone; retry from live clock vs git sidecar / empty `last_flushed`. Scale stores `dirty` + `dirty_wiki` + `last_flushed` in **Venus tables**, still not the Yjs blob columns.
+
+**A re-mark is not a new edit** (M3.0 D3 / P1): the trigger fires on `crdt_update` only — compact merges rows it already marked, so a snapshot rewrite cannot resurrect a GCed `dirty` row. A **retried flush** still can. The hub never `DELETE`s `dirty`. **Observer and cut ignore `dirty` rows with `clock <= last_flushed`.**
 
 Drop `dirty_wiki` when that wiki has no page `dirty` left (flush path), not in the persist trigger.
 
@@ -614,7 +616,7 @@ M3 may degenerate every box. It must not invert them.
 | Workers | One process | Link into the hub |
 | Git | One `wiki/` | Per-block commits |
 
-Exit of M3 stays: clone `wiki/` and read markdown; typing during flush still syncs ([implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). This file is the checklist when that process grows a queue.
+Exit of M3 stays: clone `wiki/` and read markdown; typing during flush still syncs ([M3/plan.md](../M3/plan.md), [implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). This file is the checklist when that process grows a queue.
 
 ## Acceptance (gate for M3)
 
@@ -634,7 +636,7 @@ Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus
 | 8 | Durable HA state is `dirty` + `dirty_wiki` + `jobs` + `last_flushed` + git remotes. Pins stay non-durable except `T0`. Worker death retries from dirty; git HEAD is the last successful commit. Step 8 (`last_flushed`) is **idempotent**. |
 | 9 | Snapshotter sits **beside** the **hub**. Hosted hub fleet: one live owner per `workspace_id` (**wiki sticky**). Shared Postgres. **Dirty** = Postgres upsert when `crdt_update` persist lands (SQL trigger preferred; hub hook only if grain cannot map). Trigger/hook must not stall persist or write `jobs`. Do not poll every space, embed convert in the hub, or two hub owners for one wiki. keck is M1 legacy. Hub merge is **y-octo**. |
 
-**Left to the M3 plan** (not this gate): idle debounce inside 30–120s; first pin source (replica vs idle GET vs persist MVCC); how the Rust worker embeds JS (`from-doc.js`); whether process crash recovers `last_flushed` by reading the git sidecar clock; exact `crdt_*` table/columns for the dirty trigger (M3.0 fills Actual). M3 one-wiki may `DISTINCT` page `dirty` instead of a `dirty_wiki` table.
+**Left to the [M3 plan](../M3/plan.md)** (not this gate): idle debounce inside 30–120s (plan default **60s**); first pin source (replica vs idle GET vs persist MVCC); how the Rust worker embeds JS (`from-doc.js`); whether process crash recovers `last_flushed` by reading the git sidecar clock; exact `crdt_*` table/columns for the dirty trigger (M3.0 fills Actual). M3 one-wiki may `DISTINCT` page `dirty` instead of a `dirty_wiki` table.
 
 ## Do not
 

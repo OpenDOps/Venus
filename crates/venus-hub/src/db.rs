@@ -1,6 +1,7 @@
 //! Postgres CRDT / blob store. Opaque Yjs bytes — do not stringify history.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::future::Future;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -132,11 +133,14 @@ async fn load_snapshot_and_trail(
 }
 
 /// Product pool knobs (P17). `Config::from_env` requires the matching `HUB_DB_*` vars.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PoolSettings {
     pub max_connections: u32,
     pub min_connections: u32,
     pub acquire_timeout: Duration,
+    /// Session `work_mem` (P5). `None` leaves the server default, which is what
+    /// tests want; the product path sets it from `HUB_DB_WORK_MEM`.
+    pub work_mem: Option<String>,
 }
 
 /// Tests: sqlx-shaped defaults (max 10, min 0, 30s). Product path is [`connect_with`].
@@ -147,19 +151,33 @@ pub async fn connect(database_url: &str) -> Result<PgPool> {
             max_connections: 10,
             min_connections: 0,
             acquire_timeout: Duration::from_secs(30),
+            work_mem: None,
         },
     )
     .await
 }
 
 pub async fn connect_with(database_url: &str, pool: &PoolSettings) -> Result<PgPool> {
-    PgPoolOptions::new()
+    let mut opts = PgPoolOptions::new()
         .max_connections(pool.max_connections)
         .min_connections(pool.min_connections)
-        .acquire_timeout(pool.acquire_timeout)
-        .connect(database_url)
-        .await
-        .context("connect postgres")
+        .acquire_timeout(pool.acquire_timeout);
+    // P5: per session, not per statement — a flush is one statement and cannot
+    // carry a `SET`. `set_config` because `SET work_mem` takes no bind
+    // parameter and this value comes from the environment.
+    if let Some(work_mem) = pool.work_mem.clone() {
+        opts = opts.after_connect(move |conn, _meta| {
+            let work_mem = work_mem.clone();
+            Box::pin(async move {
+                sqlx::query("SELECT set_config('work_mem', $1, false)")
+                    .bind(work_mem)
+                    .execute(&mut *conn)
+                    .await?;
+                Ok(())
+            })
+        });
+    }
+    opts.connect(database_url).await.context("connect postgres")
 }
 
 pub async fn migrate(pool: &PgPool) -> Result<()> {
@@ -190,14 +208,17 @@ const SCHEMA_MIGRATE_LOCK: i64 = 859_321_001;
 const SCHEMA_SQL: &str = include_str!("schema.sql");
 const SCHEMA_TRIGGER_MARK: &str = "-- venus:triggers\n";
 
-/// Tables+function, then triggers only if either dirty trigger is missing.
+/// Tables+function, then the dirty trigger batch if `crdt_update_dirty` is
+/// missing or still `FOR EACH ROW` (`tgnewtable` unset — P13 cutover), or if an
+/// older volume still has a `crdt_snapshot` dirty trigger (P1 removal).
 ///
 /// Re-running `DROP TRIGGER` / `CREATE TRIGGER` on every start takes
 /// AccessExclusive on `crdt_update` and `crdt_snapshot`. Hydrate grabs those
 /// tables snapshot-then-update; compact does update-then-snapshot. Either order
 /// of `LOCK TABLE` deadlocks one of those live txs (Compose `hub-b` restart).
-/// The function is `CREATE OR REPLACE` in the first batch; the trigger body is
-/// that function, so replacing the function is enough on a later boot.
+/// The function is `CREATE OR REPLACE` in the first batch (ROW+STATEMENT body
+/// so a live hub can persist during the one cutover). The trigger body is that
+/// function; later boots skip the trigger batch.
 async fn run_schema(conn: &mut PgConnection) -> Result<()> {
     let Some((tables, triggers)) = SCHEMA_SQL.split_once(SCHEMA_TRIGGER_MARK) else {
         anyhow::bail!("schema.sql missing `-- venus:triggers` batch marker");
@@ -206,15 +227,25 @@ async fn run_schema(conn: &mut PgConnection) -> Result<()> {
         .execute(&mut *conn)
         .await
         .context("hub schema")?;
-    let (n,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*)::bigint FROM pg_trigger
-         WHERE NOT tgisinternal
-           AND tgname IN ('crdt_update_dirty', 'crdt_snapshot_dirty')",
+    let (statement_update, leftover_snapshot): (i64, i64) = sqlx::query_as(
+        "SELECT
+           COUNT(*) FILTER (
+             WHERE tgname = 'crdt_update_dirty' AND tgnewtable IS NOT NULL
+           )::bigint,
+           COUNT(*) FILTER (
+             WHERE tgname IN (
+               'crdt_snapshot_dirty',
+               'crdt_snapshot_dirty_ins',
+               'crdt_snapshot_dirty_upd'
+             )
+           )::bigint
+         FROM pg_trigger
+         WHERE NOT tgisinternal",
     )
     .fetch_one(&mut *conn)
     .await
     .context("migrate trigger probe")?;
-    if n >= 2 {
+    if statement_update >= 1 && leftover_snapshot == 0 {
         return Ok(());
     }
     sqlx::raw_sql(triggers)
@@ -285,7 +316,7 @@ pub async fn push_update(
 /// The whole batch in one statement (P4). A lone `INSERT` is its own
 /// transaction, so a failure commits nothing and `Room::flush` can put the
 /// bins back in order. `WITH ORDINALITY` + `ORDER BY` keep `seq` ascending in
-/// array order; the dirty trigger still fires per row.
+/// array order; the dirty trigger upserts `max(seq)` once per statement (P13).
 ///
 /// Bins are `&[u8]` so the caller can pass views of `Bytes` without copying
 /// the payload (P15).
@@ -342,7 +373,15 @@ pub async fn compact(
     doc_id: &str,
     threshold: i64,
 ) -> Result<CompactOutcome> {
-    compact_after_load(pool, workspace_id, doc_id, threshold, |_| async {}).await
+    compact_with_hooks(
+        pool,
+        workspace_id,
+        doc_id,
+        threshold,
+        |_| async {},
+        |_| async {},
+    )
+    .await
 }
 
 /// Same as [`compact`], with a hook after the read tx commits (P11 tests).
@@ -356,7 +395,57 @@ pub async fn compact_after_load<F, Fut>(
 ) -> Result<CompactOutcome>
 where
     F: FnOnce(i64) -> Fut,
-    Fut: std::future::Future<Output = ()>,
+    Fut: Future<Output = ()>,
+{
+    compact_with_hooks(
+        pool,
+        workspace_id,
+        doc_id,
+        threshold,
+        after_load,
+        |_| async {},
+    )
+    .await
+}
+
+/// Same as [`compact`], with a hook after `now_max` matches and before the
+/// snapshot UPSERT (D1: concurrent flush must not rewind `dirty.clock`).
+#[doc(hidden)]
+pub async fn compact_after_now_max<F, Fut>(
+    pool: &PgPool,
+    workspace_id: &str,
+    doc_id: &str,
+    threshold: i64,
+    after_now_max: F,
+) -> Result<CompactOutcome>
+where
+    F: FnOnce(i64) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    compact_with_hooks(
+        pool,
+        workspace_id,
+        doc_id,
+        threshold,
+        |_| async {},
+        after_now_max,
+    )
+    .await
+}
+
+async fn compact_with_hooks<FL, FutL, FN, FutN>(
+    pool: &PgPool,
+    workspace_id: &str,
+    doc_id: &str,
+    threshold: i64,
+    after_load: FL,
+    after_now_max: FN,
+) -> Result<CompactOutcome>
+where
+    FL: FnOnce(i64) -> FutL,
+    FutL: Future<Output = ()>,
+    FN: FnOnce(i64) -> FutN,
+    FutN: Future<Output = ()>,
 {
     match load_compact(pool, workspace_id, doc_id, threshold).await? {
         CompactRead::Skip { trail_len } => Ok(CompactOutcome {
@@ -370,7 +459,7 @@ where
         } => {
             after_load(max_seq).await;
             let merged = merge_compact_bin(workspace_id, doc_id, snap.as_deref(), &trail)?;
-            commit_compact(pool, workspace_id, doc_id, max_seq, &merged).await
+            commit_compact(pool, workspace_id, doc_id, max_seq, &merged, after_now_max).await
         }
     }
 }
@@ -410,12 +499,13 @@ async fn load_compact(
         return Ok(CompactRead::Skip { trail_len: count });
     }
 
-    let snap: Option<(Vec<u8>,)> =
-        sqlx::query_as("SELECT bin FROM crdt_snapshot WHERE workspace_id = $1::uuid AND doc_id = $2::uuid")
-            .bind(workspace_id)
-            .bind(doc_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let snap: Option<(Vec<u8>,)> = sqlx::query_as(
+        "SELECT bin FROM crdt_snapshot WHERE workspace_id = $1::uuid AND doc_id = $2::uuid",
+    )
+    .bind(workspace_id)
+    .bind(doc_id)
+    .fetch_optional(&mut *tx)
+    .await?;
 
     let trail: Vec<(i64, Vec<u8>)> = sqlx::query_as(
         "SELECT seq, bin FROM crdt_update WHERE workspace_id = $1::uuid AND doc_id = $2::uuid AND seq <= $3 ORDER BY seq",
@@ -451,13 +541,18 @@ fn merge_compact_bin(
     encode_v1(&doc)
 }
 
-async fn commit_compact(
+async fn commit_compact<F, Fut>(
     pool: &PgPool,
     workspace_id: &str,
     doc_id: &str,
     max_seq: i64,
     merged: &[u8],
-) -> Result<CompactOutcome> {
+    after_now_max: F,
+) -> Result<CompactOutcome>
+where
+    F: FnOnce(i64) -> Fut,
+    Fut: Future<Output = ()>,
+{
     let mut tx: Transaction<'_, Postgres> = pool.begin().await.context("compact write begin")?;
     lock_doc_exclusive(&mut *tx, workspace_id, doc_id)
         .await
@@ -492,6 +587,8 @@ async fn commit_compact(
         });
     }
 
+    after_now_max(max_seq).await;
+
     let _snap: Option<(Vec<u8>,)> = sqlx::query_as(
         "SELECT bin FROM crdt_snapshot WHERE workspace_id = $1::uuid AND doc_id = $2::uuid FOR UPDATE",
     )
@@ -513,12 +610,14 @@ async fn commit_compact(
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query("DELETE FROM crdt_update WHERE workspace_id = $1::uuid AND doc_id = $2::uuid AND seq <= $3")
-        .bind(workspace_id)
-        .bind(doc_id)
-        .bind(max_seq)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "DELETE FROM crdt_update WHERE workspace_id = $1::uuid AND doc_id = $2::uuid AND seq <= $3",
+    )
+    .bind(workspace_id)
+    .bind(doc_id)
+    .bind(max_seq)
+    .execute(&mut *tx)
+    .await?;
 
     let (remaining,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*)::bigint FROM crdt_update WHERE workspace_id = $1::uuid AND doc_id = $2::uuid",

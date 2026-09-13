@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, test } from 'vitest';
@@ -18,37 +17,47 @@ const EXPORT_URL = `http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
 const EXPORT_FILE = '/tmp/venus-page.yjs';
 const CURL_ARGV = ['-sSSf', EXPORT_URL, '-o', EXPORT_FILE];
 
-function tcpOpen(
-  host: string,
-  port: number,
-  timeoutMs: number,
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({ host, port });
-    const finish = (ok: boolean) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(ok);
-    };
-    socket.setTimeout(timeoutMs);
-    socket.once('connect', () => finish(true));
-    socket.once('timeout', () => finish(false));
-    socket.once('error', () => finish(false));
-  });
+async function hubRootBody(): Promise<string | null> {
+  try {
+    const res = await fetch('http://127.0.0.1:3000/', {
+      signal: AbortSignal.timeout(1500),
+    });
+    return (await res.text()).trim();
+  } catch {
+    return null;
+  }
 }
 
-const keckUp = await tcpOpen('127.0.0.1', 3000, 1500);
+const hubBody = await hubRootBody();
+const hubUp = hubBody === 'venus-hub';
 
-if (!keckUp) {
+if (hubBody && hubBody !== 'venus-hub') {
+  throw new Error(
+    `:3000 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
+  );
+}
+
+if (!hubUp) {
   console.warn(
     'snapshot.test.ts: skipping Reachable/Decodes — nothing on 127.0.0.1:3000. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
   );
 }
 
-test('api-map Export command is the keck GET (not an empty template)', () => {
+test('api-map Export command is the hub GET (not an empty template)', () => {
   const map = readFileSync(join(repoRoot, 'docs/design/api-map.md'), 'utf8');
   expect(map).toContain(EXPORT_COMMAND);
   expect(`curl ${CURL_ARGV.join(' ')}`).toBe(EXPORT_COMMAND);
+});
+
+test('export is hub live_export, not keck Block REST', () => {
+  const http = readFileSync(
+    join(repoRoot, 'crates/venus-hub/src/http.rs'),
+    'utf8',
+  );
+  expect(http).toMatch(/st\.hub\.live_export/);
+  expect(http).not.toMatch(/jwst/i);
+  const cargo = readFileSync(join(repoRoot, 'crates/venus-hub/Cargo.toml'), 'utf8');
+  expect(cargo).not.toMatch(/jwst|octobase|keck/);
 });
 
 test('export is not wired into the editor UI', () => {
@@ -61,7 +70,7 @@ test('export is not wired into the editor UI', () => {
   expect(app).not.toMatch(/\/api\/block\/.+\/export/);
 });
 
-describe.skipIf(!keckUp)(`hub GET /api/block/${WORKSPACE_ID}/export`, () => {
+describe.skipIf(!hubUp)(`hub GET /api/block/${WORKSPACE_ID}/export`, () => {
   beforeAll(() => {
     execFileSync('curl', CURL_ARGV, { stdio: 'pipe' });
   });

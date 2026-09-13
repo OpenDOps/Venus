@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { assertHubOn3000 } from './keck-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -37,18 +38,7 @@ async function waitForHydrated(page: Page, editorTimeout = 120_000) {
 }
 
 test.beforeAll(async () => {
-  try {
-    await fetch('http://127.0.0.1:3000/', {
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
-      throw new Error(
-        `keck is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
-      );
-    }
-  }
+  await assertHubOn3000();
 });
 
 test('typed hello is still there after refresh', async ({ page }) => {
@@ -57,7 +47,7 @@ test('typed hello is still there after refresh', async ({ page }) => {
   await expect(page.locator('affine-page-root')).toBeFocused();
   await page.keyboard.type('hello');
   await expect(page.locator(NOTE).first()).toContainText('hello');
-  // keck batches doc writes (~1s). Stay connected so the update is on the
+  // Hub persist tick is ~1s. Stay connected so the update is on the
   // server before reload closes the socket.
   await page.waitForTimeout(2000);
 

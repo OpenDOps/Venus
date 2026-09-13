@@ -3,6 +3,7 @@
 # keck remains under deploy/octobase/ as M1 history; do not build it here.
 # Hub image is MIT/Apache Venus code — see deploy/NOTICE.
 # Never omit Postgres (no SQLite fallback). Do not publish 5432.
+# Host ports bind 127.0.0.1 only (hub :3000, web :8080, hub-b :3001).
 # Operators: docs/devops/compose.md  Component: docs/design/components/hub/
 
 # Pool: 32 covers 10 distinct cold exports + 10 blob GETs + 10 room flushes
@@ -11,17 +12,31 @@
 x-hub-env: &hub-env
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
-  POSTGRES_USER: venus
+  # NOSUPERUSER role. Cluster superuser is POSTGRES_USER on service postgres.
+  POSTGRES_USER: venus_hub
   POSTGRES_PASSWORD: venus
   POSTGRES_DB: venus
+  # Product DSN. DATABASE_URL wins over POSTGRES_* (no SQLite fallback).
+  DATABASE_URL: "postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable"
   HUB_LISTEN: "0.0.0.0:3000"
   HUB_DB_MAX_CONNECTIONS: "32"
   HUB_DB_MIN_CONNECTIONS: "4"
   HUB_DB_ACQUIRE_TIMEOUT_SECS: "10"
+  # P5: an 8 MiB flush spills to a temp file at the 4 MB server default.
+  # Per session per sort/hash, so keep it modest against MAX_CONNECTIONS.
+  HUB_DB_WORK_MEM: "16MB"
   HUB_PERSIST_INTERVAL_MS: "1000"
   HUB_COMPACT_AFTER: "32"
   # Vite/Playwright talk to hub:3000. Empty string disables CORS (same-origin nginx).
   HUB_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080"
+
+x-hub-limits: &hub-limits
+  mem_limit: 1g
+  pids_limit: 512
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
 
 services:
   postgres:
@@ -33,14 +48,26 @@ services:
     volumes:
       # New volume so M1 keck `jwst` rows on `pg-data` are not mistaken for hub tables.
       - pg-venus-data:/var/lib/postgresql/data
+      - ./deploy/postgres/ensure-app-role.sh:/docker-entrypoint-initdb.d/02-ensure-app-role.sh:ro
+      - ./deploy/postgres/ensure-app-role.sh:/ensure-app-role.sh:ro
+    # 1g: trail + snapshot BYTEA for one wiki plus two hub pools (hub + hub-b).
+    mem_limit: 1g
+    pids_limit: 256
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U venus -d venus"]
+      # Init scripts do not re-run on an existing volume; the probe creates
+      # venus_hub and checks that role can SELECT.
+      test:
+        [
+          "CMD-SHELL",
+          "bash /ensure-app-role.sh && psql -U venus_hub -d venus -c 'SELECT 1'",
+        ]
       interval: 2s
       timeout: 5s
       retries: 20
       start_period: 5s
 
   hub:
+    <<: *hub-limits
     build:
       context: .
       dockerfile: deploy/hub/Dockerfile
@@ -49,18 +76,22 @@ services:
         condition: service_healthy
     environment:
       <<: *hub-env
+      HUB_OWNER: hub
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    # SIGTERM drain (flush persist, drop lease) before SIGKILL. Default 10s is tight.
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
       interval: 2s
       timeout: 3s
       retries: 20
-      start_period: 5s
+      start_period: 20s
 
   # Second process against the same Postgres. Prove workspace_lease refuses a second owner.
   #   docker compose --profile ha up --build hub-b
   hub-b:
+    <<: *hub-limits
     profiles: ["ha"]
     build:
       context: .
@@ -72,7 +103,14 @@ services:
       <<: *hub-env
       HUB_OWNER: hub-b
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
 
   web:
     build:
@@ -82,7 +120,11 @@ services:
       hub:
         condition: service_healthy
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
+    mem_limit: 128m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 5s

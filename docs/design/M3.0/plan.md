@@ -131,8 +131,6 @@ Ids stay:
 TestWorkspace.id  =  77e4a2b1-8b40-5979-a73c-fd4477216d00  =  hub /collaboration/:workspace
 doc:home          =  store.spaceDoc on that room (one Y.Doc); SQL doc_id is UUID v5 of that name
 ```
-```
-
 
 
 ## Chosen stack
@@ -172,17 +170,17 @@ Locked in [step-recon-hub](#1-step-recon-hub). If this section disagrees with [a
 What each step **adds** to the product (not how to test it — that is under each step).
 
 
-| #   | id                                        | Adds                                                                                                    |
-| --- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 1   | `[step-recon-hub](#1-step-recon-hub)`     | Language + apply engine; api-map Chosen backend **venus hub**; spike two `Y.Doc`s without keck.         |
-| 2   | `[step-store](#2-step-store)`             | `crdt_snapshot` / `crdt_update` / `blob`; hydrate, flush, compact tests; no WS required.                |
-| 3   | `[step-ws](#3-step-ws)`                   | `AFFiNE` WebSocket: apply, broadcast, persist ~1s; marks do not panic.                                  |
-| 4   | `[step-compose-hub](#4-step-compose-hub)` | Compose `postgres` **+** `hub`. Restart hub without `-v` keeps the doc. **No** `octobase` on this path. |
-| 5   | `[step-provider](#5-step-provider)`       | App talks to hub. Editor mount stays ignorant. Memory default unchanged.                                |
-| 6   | `[step-parity](#6-step-parity)`           | M1 hydrate, two tabs, blobs, export green on the hub.                                                   |
-| 7   | `[step-ha-owner](#7-step-ha-owner)`       | `workspace_lease`; second process is not a second owner; SIGTERM drain.                                 |
-| 8   | `[step-dirty](#8-step-dirty)`             | SQL trigger → `dirty`. Hub does not write `jobs`.                                                       |
-| 9   | `[step-verify](#9-step-verify)`           | Close-out: person + Playwright; product Compose has no keck.                                            |
+| #   | id                                          | Adds                                                                                                          |
+| --- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | [`step-recon-hub`](#1-step-recon-hub)       | ✅ **done.** Language + apply engine; api-map Chosen backend **venus hub**; spike two `Y.Doc`s without keck.     |
+| 2   | [`step-store`](#2-step-store)               | ✅ **done.** `crdt_snapshot` / `crdt_update` / `blob`; hydrate, flush, compact tests; no WS required.            |
+| 3   | [`step-ws`](#3-step-ws)                     | ✅ **done.** `AFFiNE` WebSocket: apply, broadcast, persist ~1s; marks do not panic.                              |
+| 4   | [`step-compose-hub`](#4-step-compose-hub)   | ✅ **done.** Compose `postgres` **+** `hub`. Restart hub without `-v` keeps the doc. **No** `octobase` on this path. |
+| 5   | [`step-provider`](#5-step-provider)         | ✅ **done.** App talks to hub. Editor mount stays ignorant. Memory default unchanged.                            |
+| 6   | [`step-parity`](#6-step-parity)             | ✅ **done.** M1 hydrate, two tabs, blobs, export green on the hub.                                               |
+| 7   | [`step-ha-owner`](#7-step-ha-owner)         | ✅ **done.** `workspace_lease`; second process is not a second owner; SIGTERM drain.                                     |
+| 8   | [`step-dirty`](#8-step-dirty)               | ✅ **done.** SQL trigger → `dirty`. Hub does not write `jobs`.                                                  |
+| 9   | [`step-verify`](#9-step-verify)             | Close-out: person + Playwright; product Compose has no keck.                                                |
 
 
 ---
@@ -371,6 +369,7 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 | **title**     | Compose: postgres + hub |
 | **dependsOn** | `step-ws`               |
 | **kind**      | implement               |
+| **status**    | **done** ([board](./M3.0.state.yaml); breakpoint `human`) |
 
 
 **Adds:** two Docker services on the product path. `web` **may still proxy to** `hub:3000`**.** Do not require `octobase` to pass this step.
@@ -399,12 +398,12 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
   - **Given** this repo and Docker.
   - **When** you run api-map **Server start** (`docker compose up --build postgres hub`) until hub listens `:3000` and Postgres is healthy.
   - **Then** `docker compose ps` shows **postgres** and **hub**. `curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` returns `{"protocol":"AFFiNE"}`. No `octobase` container is required.
-  - **How:** runbook. Fail if keck is the process on `:3000`.
+  - **How:** `pnpm compose:dod` (runbook). `GET /` is `venus-hub`. Fail if keck is the process on `:3000`.
 2. **Persists**
   - **Given** both services and the named volume.
   - **When** spike writes, wait ≥2s, `restart hub`, then `down` without `-v` and `up` again.
   - **Then** a new client still sees the spike (or export decodes it).
-  - **How:** spike / export. Fail if persistence was keck `jwst` docs from a leftover volume without a documented cutover.
+  - **How:** `pnpm compose:dod` (spike / export). Fail if persistence was keck `jwst` docs from a leftover volume without a documented cutover.
 
 ---
 
@@ -422,6 +421,7 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 | **title**     | SyncProvider talks to the hub |
 | **dependsOn** | `step-compose-hub`            |
 | **kind**      | implement                     |
+| **status**    | **done** ([board](./M3.0.state.yaml); breakpoint `human`) |
 
 
 **Adds:** the App uses the hub when `VITE_SYNC_URL` is set. `mount-editor.js` still has no server imports.
@@ -449,13 +449,13 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
   - **Given** `mount-editor.js`, `editor-container.js`, `boot.js`.
   - **When** you search for hub/keck/`y-websocket`/`y-protocols` imports.
   - **Then** none of those files import them.
-  - **How:** extend `sync-provider.test.ts`.
+  - **How:** `pnpm --filter @venus/web exec vitest run src/host/sync-provider.test.ts`.
 2. **Env switch**
   - **Given** unset `VITE_SYNC_URL` → `kind === 'memory'`.
   - **Given** hub up and `VITE_SYNC_URL` set.
   - **When** the browser loads `/`.
   - **Then** WS to `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with `AFFiNE`. Kind is `'venus'` or documented `'octobase'` alias.
-  - **How:** Playwright provider spec (update M1 spec or add `m30-provider.spec.ts`).
+  - **How:** `PLAYWRIGHT_M1=1` Playwright `e2e/m1-provider.spec.ts`. Fail if `GET /` is not `venus-hub`.
 
 ---
 
@@ -473,6 +473,7 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 | **title**     | M1 hydrate, two tabs, blobs, export on the hub |
 | **dependsOn** | `step-provider`                                |
 | **kind**      | implement                                      |
+| **status**    | **done** ([board](./M3.0.state.yaml); breakpoint `human`) |
 
 
 **Adds:** product close of M1 behavior with keck gone.
@@ -497,13 +498,18 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 
 1. **Refresh keeps**
   - **Then** `m1-hydrate.spec.ts` passes with hub (type `hello`, wait ≥2s, reload).
-  - **How:** `PLAYWRIGHT_M1=1` with `VITE_SYNC_URL` → hub.
+  - **How:** `PLAYWRIGHT_M1=1` `e2e/m1-hydrate.spec.ts` with `VITE_SYNC_URL` → hub. Fail if `GET /` is not `venus-hub`.
 2. **A→B**
   - **Then** `m1-two-tabs.spec.ts` passes (no keck).
+  - **How:** `PLAYWRIGHT_M1=1` `e2e/m1-two-tabs.spec.ts`.
 3. **Blobs**
   - **Then** `m1-blob.spec.ts` passes (POST `/api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00`, second tab + reload).
+  - **How:** `PLAYWRIGHT_M1=1` `e2e/m1-blob.spec.ts`.
 4. **Export**
   - **Then** api-map Export command writes >2 bytes; `Y.applyUpdate` succeeds (`snapshot.test.ts` or equivalent). Fail if the handler is still keck Block REST implementation copied as a black box from OctoBase source.
+  - **How:** `pnpm --filter @venus/web exec vitest run src/host/snapshot.test.ts` (Reachable/Decodes when hub is up).
+
+Named suite: `pnpm test:e2e:m1` (all `m1-*.spec.ts`).
 
 ---
 
@@ -521,6 +527,7 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 | **title**     | One live owner per workspace_id (lease + drain) |
 | **dependsOn** | `step-parity`                                   |
 | **kind**      | implement                                       |
+| **status**    | **done** ([board](./M3.0.state.yaml); breakpoint `human`) |
 
 
 **Adds:** the thin instance of [high-availability.md](./high-availability.md): `workspace_lease`, refuse a second owner, flush on SIGTERM.
@@ -551,12 +558,12 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
   - **Given** hub A holds the M0 workspace UUID; hub B is a second process, same `DATABASE_URL`.
   - **When** a client tries `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` on B.
   - **Then** B does not apply a second live doc (connection fails, or redirects, or waits — Actual). Postgres has one lease row for that workspace UUID.
-  - **How:** Compose profile `hub-b` or `docker compose run` second container. Fail if both apply and clients diverge.
+  - **How:** `pnpm compose:ha` (Compose profile `hub-b` on `:3001`). Fail if both apply and clients diverge.
 2. **Drain**
   - **Given** a write on A; SIGTERM A immediately after (before 1s tick if possible).
   - **When** A exits.
   - **Then** persist was flushed **or** the test documents remaining loss ≤ one batch **and** lease is gone so B can become owner and hydrate SQL.
-  - **How:** script. Fail if lease stays forever (`lease_until` in the past must be stealable).
+  - **How:** `pnpm compose:ha` (SIGTERM `hub` immediately after a write). Fail if lease stays forever (`lease_until` in the past must be stealable).
 
 ---
 
@@ -574,15 +581,16 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 | **title**     | Postgres trigger upserts dirty on persist |
 | **dependsOn** | `step-ha-owner`                           |
 | **kind**      | implement                                 |
+| **status**    | **done** ([board](./M3.0.state.yaml); breakpoint `human`) |
 
 
 **Adds:** `dirty(workspace_id, doc_id, clock)` for M3. No snapshotter, no `jobs`.
 
 #### Work
 
-1. Table `dirty`. `AFTER INSERT` (and snapshot replace if that path writes) on `crdt_update` → `UPSERT` clock.
-2. Map `workspace_id` + `doc_id`: M3.0 `doc_id` may equal workspace id (one page) — document the map for M3 many pages.
-3. Trigger fail-safe: missing `dirty` must not roll back persist (or install trigger only after the table exists).
+1. Table `dirty`. Statement-level `AFTER INSERT` on `crdt_update` → `UPSERT` `max(seq)`. No `crdt_snapshot` trigger: compact merges rows that flush already marked at the same clock ([P1](./logicals-and-performance.md#p1--new-table-copies-bin)).
+2. Map `workspace_id` + `doc_id`: product persist uses the M0 workspace UUID `77e4a2b1-8b40-5979-a73c-fd4477216d00` and SQL `PAGE_DOC_ID` (`395cd07b-bdb1-5f54-ada8-e9a3fabb6a20`, v5 of BlockSuite `doc:home`). Lease grain stays `workspace_id`. Dirty grain is `(workspace_id, doc_id)` so M3 many pages keep that pair. Tests use a unique workspace + the same `PAGE_DOC_ID` so they do not collide with a live Compose M0 wiki.
+3. Trigger fail-safe: install only after `dirty` exists; inner `EXCEPTION` so a missing `dirty` cannot roll back persist.
 4. Hub code does **not** insert `jobs`.
 
 
@@ -600,13 +608,13 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 1. **Upsert**
   - **Given** empty `dirty`.
   - **When** a WS client writes and persist flushes (≥2s).
-  - **Then** `dirty` has one row for the M0 workspace UUID / SQL `PAGE_DOC_ID` (or documented ids) with a clock that moves on a second write (upsert, not a second row).
-  - **How:** `psql` in CI or a hub integration test. Fail if hub inserted a `jobs` row.
+  - **Then** `dirty` has one row for that workspace / SQL `PAGE_DOC_ID` with a clock that moves on a second write (upsert, not a second row).
+  - **How:** `cargo test -p venus-hub --test ws persist_after_ws_upserts_dirty_clock_not_jobs`. Fail if hub inserted a `jobs` row.
 2. **Persist if dirty missing**
   - **Given** trigger uninstalled or `dirty` dropped (as documented).
   - **When** persist runs.
   - **Then** `crdt_update` still lands (or the runbook only installs trigger after `dirty` exists — pick one and test that).
-  - **How:** migration test.
+  - **How:** `cargo test -p venus-hub --test store flush_lands_when_dirty_table_is_dropped` (transactional `ALTER TABLE dirty RENAME`; `crdt_update` still lands).
 
 ---
 
@@ -663,4 +671,4 @@ Product apply is **Rust + y-octo**. A Node spike may prove the handshake; it mus
 
 ## After M3.0
 
-[M3 — Git snapshotter](../venus-implementation-plan.md#m3--git-snapshotter-week): pin from hub export/replica, `fromDoc` off live Store, dirty already in Postgres. Gate: this plan **done** + [LiveSnapshot HA Acceptance](../LiveSnapshot/high-availability.md#acceptance-gate-for-m3) (snapshotter beside **hub**, not keck).
+[M3 — Git snapshotter](../M3/README.md) ([plan](../M3/plan.md)): pin from hub export/replica, `fromDoc` off live Store, dirty already in Postgres. Gate: this plan **done** + [LiveSnapshot HA Acceptance](../LiveSnapshot/high-availability.md#acceptance-gate-for-m3) (snapshotter beside **hub**, not keck).

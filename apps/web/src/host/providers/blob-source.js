@@ -43,7 +43,7 @@ export class OctoBaseBlobSource {
 
   /**
    * @param {{ workspaceId?: string, origin?: string }} [options]
-   *   `origin` empty → same-origin `/api/blobs/...` (Vite proxies to keck).
+   *   `origin` empty → same-origin `/api/blobs/...` (Vite proxies to the hub).
    */
   constructor({ workspaceId = WORKSPACE_ID, origin = '' } = {}) {
     this.workspaceId = workspaceId;
@@ -86,7 +86,7 @@ export class OctoBaseBlobSource {
     const id = json && typeof json.id === 'string' ? json.id : '';
     if (id && id !== key) {
       console.warn(
-        `keck blob id ${id} !== BlockSuite key ${key}; GET uses the BlockSuite key`,
+        `hub blob id ${id} !== BlockSuite key ${key}; GET uses the BlockSuite key`,
       );
     }
     return key;

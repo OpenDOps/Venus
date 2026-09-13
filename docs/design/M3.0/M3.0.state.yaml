@@ -59,34 +59,70 @@ steps:
         evidence: "2026-09-12 cargo test -p venus-hub --test ws crash_unflushed_client_resend_restores — abort persist without flush; SQL hydrate misses spike; client Update restores; no Redis"
   step-compose-hub: # 4
     n: 4
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Server up
+        status: pass
+        evidence: "2026-09-13 pnpm compose:dod — docker compose up --build postgres hub; ps hub postgres (no octobase); GET / venus-hub; POST /collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 → {\"protocol\":\"AFFiNE\"}"
+      - name: Persists
+        status: pass
+        evidence: "2026-09-13 pnpm compose:dod workspace f2f861dc-d7f4-4b3e-8b72-d272b7935c0a SPIKE OK; wait ≥2s; compose restart hub → export 23 bytes spike.k=v + WS; down (no -v) + up → export 23 bytes spike.k=v + WS; volume pg-venus-data not keck jwst"
   step-provider: # 5
     n: 5
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Seam holds
+        status: pass
+        evidence: "2026-09-13 vitest src/host/sync-provider.test.ts — mount-editor.js / editor-container.js / boot.js have no from-env, providers/, y-protocols, octobase-keck-provider, venus-hub, blob-source; unset VITE_SYNC_URL is memory with no WebSocket"
+      - name: Env switch
+        status: pass
+        evidence: "2026-09-13 PLAYWRIGHT_M1=1 e2e/m1-provider.spec.ts — GET / is venus-hub (not keck); kind octobase (wire alias); WS ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 protocols [AFFiNE]"
   step-parity: # 6
     n: 6
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Refresh keeps
+        status: pass
+        evidence: "2026-09-13 PLAYWRIGHT_M1=1 e2e/m1-hydrate.spec.ts — type hello, wait ≥2s, reload keeps hello; second session one title / one H1; GET / venus-hub"
+      - name: A→B
+        status: pass
+        evidence: "2026-09-13 PLAYWRIGHT_M1=1 e2e/m1-two-tabs.spec.ts — A from-a in B without reload; B from-b in A; both tabs one seed; hub WS not keck"
+      - name: Blobs
+        status: pass
+        evidence: "2026-09-13 PLAYWRIGHT_M1=1 e2e/m1-blob.spec.ts — POST /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00 PNG; second tab + reload show pixels"
+      - name: Export
+        status: pass
+        evidence: "2026-09-13 vitest snapshot.test.ts — GET / venus-hub; curl export >2 bytes; Y.applyUpdate; http.rs live_export not jwst/keck Block REST. Full suite pnpm test:e2e:m1 10 passed"
   step-ha-owner: # 7
     n: 7
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Second owner refused
+        status: pass
+        evidence: "2026-09-13 pnpm compose:ha — hub A holds 77e4a2b1-8b40-5979-a73c-fd4477216d00; hub-b :3001 WS upgrade HTTP 503 owned by another hub; workspace_lease rows=1 owners=hub (not hub-b)"
+      - name: Drain
+        status: pass
+        evidence: "2026-09-13 pnpm compose:ha — spike.drain=2d66d47f-aff8-40bc-9989-bdce2ed9bafb then SIGTERM hub before persist tick; lease gone; hub-b export 8179 bytes + WS Step2 has drain; crate L4 heartbeat_miss_sheds_room_no_further_insert; P6 idle_room_is_shed_and_lease_dropped"
   step-dirty: # 8
     n: 8
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Upsert
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-hub --test ws persist_after_ws_upserts_dirty_clock_not_jobs — unique workspace + PAGE_DOC_ID; wait ≥2s; one dirty row; second write moves clock; to_regclass(jobs) empty or COUNT=0. Product map is M0 UUID + PAGE_DOC_ID (v5 of doc:home). P13: cargo test -p venus-hub --test store flush_batch_keeps_array_order_and_marks_dirty (tgnewtable=ins, max(seq)); compact_if_needed_sql_rebuild_merges_trail (snapshot clock)"
+      - name: Persist if dirty missing
+        status: pass
+        evidence: "2026-09-13 cargo test -p venus-hub --test store flush_lands_when_dirty_table_is_dropped — ALTER TABLE dirty RENAME in a tx; INSERT crdt_update still lands; rename back. EXCEPTION at statement grain. migrate_serializes_two_hubs leaves 3 STATEMENT triggers"
   step-verify: # 9
     n: 9
     state: pending

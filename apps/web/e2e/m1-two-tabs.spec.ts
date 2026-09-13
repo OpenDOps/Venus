@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectedCollaborationWs } from './keck-ws';
+import { expectedCollaborationWs, assertHubOn3000 } from './keck-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -7,7 +7,7 @@ const NOTE = 'affine-note affine-paragraph rich-text';
 const OUTLINE = 'affine-outline-panel';
 const OUTLINE_H1 = '[data-testid="outline-block-preview-h1"]';
 const MD_PANE = '[data-testid="venus-md-pane"]';
-const KECK_WS = expectedCollaborationWs();
+const HUB_WS = expectedCollaborationWs();
 
 test.describe.configure({ mode: 'serial' });
 
@@ -46,7 +46,7 @@ async function focusNote(page: Page) {
   await expect(page.locator('affine-page-root')).toBeFocused();
 }
 
-function collectKeckSockets(page: Page) {
+function collectHubSockets(page: Page) {
   const urls: string[] = [];
   page.on('websocket', (ws) => {
     urls.push(ws.url());
@@ -55,37 +55,26 @@ function collectKeckSockets(page: Page) {
 }
 
 test.beforeAll(async () => {
-  try {
-    await fetch('http://127.0.0.1:3000/', {
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
-      throw new Error(
-        `keck is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
-      );
-    }
-  }
+  await assertHubOn3000();
 });
 
 test('A typing appears in B without reload', async ({ page, context }) => {
   const pageA = page;
-  const wsA = collectKeckSockets(pageA);
+  const wsA = collectHubSockets(pageA);
   await waitForHydrated(pageA);
 
   const pageB = await context.newPage();
-  const wsB = collectKeckSockets(pageB);
+  const wsB = collectHubSockets(pageB);
   await waitForHydrated(pageB);
 
   expect(
-    wsA.find((u) => u.includes(KECK_WS)),
-    'tab A must open a keck websocket',
-  ).toBe(KECK_WS);
+    wsA.find((u) => u.includes(HUB_WS)),
+    'tab A must open a hub websocket',
+  ).toBe(HUB_WS);
   expect(
-    wsB.find((u) => u.includes(KECK_WS)),
-    'tab B must open a keck websocket',
-  ).toBe(KECK_WS);
+    wsB.find((u) => u.includes(HUB_WS)),
+    'tab B must open a hub websocket',
+  ).toBe(HUB_WS);
 
   await focusNote(pageA);
   const fromA = `from-a-${Date.now()}`;

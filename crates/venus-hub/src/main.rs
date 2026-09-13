@@ -30,6 +30,7 @@ async fn main() -> Result<()> {
         db_max_connections = cfg.db_max_connections,
         db_min_connections = cfg.db_min_connections,
         db_acquire_timeout_secs = cfg.db_acquire_timeout.as_secs(),
+        db_work_mem = %cfg.db_work_mem,
         cors_origins = cfg.cors_origins.len(),
         "venus-hub starting"
     );
@@ -40,13 +41,14 @@ async fn main() -> Result<()> {
             max_connections: cfg.db_max_connections,
             min_connections: cfg.db_min_connections,
             acquire_timeout: cfg.db_acquire_timeout,
+            work_mem: Some(cfg.db_work_mem.clone()),
         },
     )
     .await?;
     db::migrate(&pool).await?;
 
     let lease = Lease::new(pool.clone(), cfg.owner.clone(), cfg.lease_ttl);
-    let hub = Hub::new(pool, lease.clone(), cfg.persist_interval, cfg.compact_after);
+    let hub = Hub::new(pool, lease, cfg.persist_interval, cfg.compact_after);
 
     let listener = TcpListener::bind(cfg.listen)
         .await
@@ -54,18 +56,13 @@ async fn main() -> Result<()> {
     tracing::info!("listening on {}", cfg.listen);
 
     let hb_hub = hub.clone();
-    let hb_lease = lease.clone();
     let heartbeat_interval = cfg.heartbeat_interval;
     let heartbeat = tokio::spawn(async move {
         let mut tick = tokio::time::interval(heartbeat_interval);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;
-            let ids = hb_hub.workspace_ids().await;
-            let missed = hb_lease.heartbeat_many(&ids).await;
-            if !missed.is_empty() {
-                tracing::warn!(n = missed.len(), "lease heartbeat misses");
-            }
+            hb_hub.heartbeat().await;
         }
     });
 

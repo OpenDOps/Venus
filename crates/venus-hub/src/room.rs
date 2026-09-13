@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
@@ -28,9 +28,11 @@ type ClientId = u64;
 /// growing hub memory. Reconnect gets a fresh Step2.
 pub const OUTBOUND_CAP: usize = 256;
 
-/// Queued-byte budget per client (S6). Far below `OUTBOUND_CAP × 4 MiB`
-/// (`WS_MAX_MESSAGE`). Detach when a send would exceed this, even if slots remain.
-pub const OUTBOUND_BYTES: usize = 8 * 1024 * 1024;
+/// Queued-byte budget per client (S6). Two max frames (`WS_MAX_MESSAGE` =
+/// 512 KiB) so a full-size paste plus a bit of follow-on does not detach a
+/// slightly lagging peer. Far below `OUTBOUND_CAP × WS_MAX_MESSAGE`. Detach
+/// when a send would exceed this, even if slots remain.
+pub const OUTBOUND_BYTES: usize = 1024 * 1024;
 
 /// Persist buffer cap per room (S10). Oldest bins are dropped (loudly) when a
 /// push would exceed this; the newest stays. Must be ≥ `WS_MAX_MESSAGE` so one
@@ -193,6 +195,8 @@ pub struct Room {
     /// Join handle for this room's persist loop (P8). Shutdown/abort take it
     /// from here so there is no process-wide Vec of every room ever opened.
     persist_task: StdMutex<Option<JoinHandle<()>>>,
+    /// Last time `clients` became empty (P6). `None` while anyone is attached.
+    last_empty: StdMutex<Option<Instant>>,
 }
 
 impl Room {
@@ -230,6 +234,7 @@ impl Room {
             stop: AtomicBool::new(false),
             stop_notify: Notify::const_new(),
             persist_task: StdMutex::new(None),
+            last_empty: StdMutex::new(Some(Instant::now())),
         }
     }
 
@@ -250,7 +255,9 @@ impl Room {
 
     pub async fn attach(&self, id: ClientId, tx: Outbound) -> Result<Vec<Vec<u8>>> {
         let hello = Self::hello_frames(&*self.doc.read().await)?;
-        self.clients.lock().await.insert(id, tx);
+        let mut clients = self.clients.lock().await;
+        clients.insert(id, tx);
+        self.note_client_count(clients.len());
         Ok(hello)
     }
 
@@ -264,10 +271,49 @@ impl Room {
     }
 
     pub async fn detach(&self, id: ClientId) {
-        self.clients.lock().await.remove(&id);
+        let mut clients = self.clients.lock().await;
+        clients.remove(&id);
+        self.note_client_count(clients.len());
+    }
+
+    /// Drop outbound senders so `handle_socket` sees `recv` None (L4).
+    pub async fn drop_clients(&self) {
+        let mut clients = self.clients.lock().await;
+        clients.clear();
+        self.note_client_count(0);
+    }
+
+    fn note_client_count(&self, n: usize) {
+        let mut t = self.last_empty.lock().unwrap_or_else(|e| e.into_inner());
+        if n == 0 {
+            if t.is_none() {
+                *t = Some(Instant::now());
+            }
+        } else {
+            *t = None;
+        }
+    }
+
+    pub async fn is_idle(&self, ttl: Duration) -> bool {
+        if !self.clients.lock().await.is_empty() {
+            return false;
+        }
+        {
+            let p = self.persist.lock().await;
+            if !p.bins.is_empty() || p.in_flight > 0 {
+                return false;
+            }
+        }
+        match *self.last_empty.lock().unwrap_or_else(|e| e.into_inner()) {
+            Some(t) => t.elapsed() >= ttl,
+            None => false,
+        }
     }
 
     pub async fn handle_binary(&self, from: ClientId, bytes: &[u8]) {
+        if self.stopped() {
+            return;
+        }
         let decoded = crate::protocol::decode_sync_messages(bytes);
         if decoded.remaining > 0 {
             tracing::warn!(
@@ -312,7 +358,7 @@ impl Room {
     }
 
     async fn apply_and_fanout(&self, from: ClientId, bin: Vec<u8>) -> Result<()> {
-        if is_noop_update(&bin) {
+        if self.stopped() || is_noop_update(&bin) {
             return Ok(());
         }
         // Frame first (L21): a framing error must not leave the update in RAM
@@ -320,11 +366,20 @@ impl Room {
         let frame = Bytes::from(encode_doc_update(bin.clone())?);
         {
             let mut doc = self.doc.write().await;
+            if self.stopped() {
+                return Ok(());
+            }
             apply_v1(&mut doc, &bin)?;
         }
         {
             let mut buf = self.persist.lock().await;
+            if self.stopped() {
+                return Ok(());
+            }
             buf.push_capped(Bytes::from(bin), self.persist_budget, &self.workspace_id);
+        }
+        if self.stopped() {
+            return Ok(());
         }
         self.broadcast_except(from, frame).await;
         Ok(())
@@ -338,6 +393,7 @@ impl Room {
         };
         if lagged {
             clients.remove(&id);
+            self.note_client_count(clients.len());
             tracing::warn!(
                 workspace = %self.workspace_id,
                 client = id,
@@ -369,6 +425,7 @@ impl Room {
                 );
                 clients.remove(&id);
             }
+            self.note_client_count(clients.len());
         }
     }
 
@@ -694,6 +751,78 @@ impl Hub {
 
     pub async fn workspace_ids(&self) -> Vec<String> {
         self.rooms.lock().await.keys().cloned().collect()
+    }
+
+    /// Refresh leases for live rooms. Misses are stolen or missing: shed RAM
+    /// without `try_acquire` (L4). Idle rooms (no clients, empty persist,
+    /// idle ≥ lease TTL) get the same shed plus `drop_one` (P6).
+    pub async fn heartbeat(&self) {
+        if self.stopping.load(Ordering::SeqCst) {
+            return;
+        }
+        let ids = self.workspace_ids().await;
+        let missed = self.lease.heartbeat_many(&ids).await;
+        for id in &missed {
+            self.shed(id, false).await;
+        }
+        if self.stopping.load(Ordering::SeqCst) {
+            return;
+        }
+        let idle_ttl = self.lease.ttl();
+        let rooms: Vec<Arc<Room>> = self.rooms.lock().await.values().cloned().collect();
+        for room in rooms {
+            if room.is_idle(idle_ttl).await {
+                self.shed(&room.workspace_id, true).await;
+            }
+        }
+    }
+
+    /// Take the room out of the map, stop persist, close clients. Idle
+    /// eviction also drops the lease so the next `get_room` can acquire.
+    /// Stolen shed does not `drop_one` or `try_acquire` — the thief owns SQL.
+    async fn shed(&self, workspace_id: &str, drop_lease: bool) {
+        let room = {
+            let mut g = self.rooms.lock().await;
+            g.remove(workspace_id)
+        };
+        let Some(room) = room else {
+            return;
+        };
+        if drop_lease {
+            if let Err(e) = self.lease.drop_one(workspace_id).await {
+                tracing::error!(
+                    workspace_id = %workspace_id,
+                    error = %e,
+                    "idle shed could not drop lease; it expires on TTL"
+                );
+            }
+        }
+        room.request_stop();
+        room.drop_clients().await;
+        let timeout = drain_join_timeout(self.persist_interval);
+        if let Some(handle) = room.take_persist_task() {
+            let abort = handle.abort_handle();
+            match tokio::time::timeout(timeout, handle).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    if !e.is_cancelled() {
+                        tracing::warn!(error = %e, workspace_id, "persist join");
+                    }
+                }
+                Err(_) => {
+                    tracing::warn!(workspace_id, "persist drain timed out");
+                    abort.abort();
+                }
+            }
+        }
+        if let Err(e) = room.flush(&self.pool).await {
+            tracing::error!(
+                error = %e,
+                workspace_id,
+                "shed flush"
+            );
+        }
+        tracing::warn!(workspace_id, drop_lease, "shed room");
     }
 
     pub fn hydrate_attempts(&self) -> u64 {

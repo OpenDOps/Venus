@@ -21,11 +21,23 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use crate::blobs::{blob_hash, sniff_content_type};
 use crate::config::default_cors_origins;
 use crate::db;
-use crate::room::{GetRoomError, Hub, Room};
+use crate::room::{GetRoomError, Hub, Room, OUTBOUND_BYTES, PERSIST_BYTES};
 use crate::SUBPROTOCOL;
 
-/// Realistic Yjs update batch. `DefaultBodyLimit` does not apply to WS frames.
-pub const WS_MAX_MESSAGE: usize = 4 * 1024 * 1024;
+/// One inbound Yjs/CRDT WS frame. `DefaultBodyLimit` does not apply to WS.
+/// A paste larger than this closes the socket. Outbound budget is two of
+/// these so a max-size frame plus follow-on typing does not detach a slightly
+/// lagging peer.
+pub const WS_MAX_MESSAGE: usize = 512 * 1024;
+
+const _: () = assert!(
+    OUTBOUND_BYTES >= WS_MAX_MESSAGE,
+    "a max-size frame must fit in one client's outbound budget"
+);
+const _: () = assert!(
+    PERSIST_BYTES >= WS_MAX_MESSAGE,
+    "a max-size frame must fit in the persist buffer"
+);
 /// Server ping so half-open sockets are reaped (S3).
 pub const WS_PING_EVERY: Duration = Duration::from_secs(30);
 /// Detach if this many seconds pass with no Pong after a ping.

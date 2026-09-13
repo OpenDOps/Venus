@@ -22,7 +22,7 @@ use venus_hub::config::database_url_from_env;
 use venus_hub::db;
 use venus_hub::http::{router, AppState};
 use venus_hub::lease::Lease;
-use venus_hub::protocol::{apply_v1, decode_sync_messages, encode_doc_update};
+use venus_hub::protocol::{apply_v1, decode_sync_messages, encode_doc_update, encode_v1};
 use venus_hub::room::{GetRoomError, Hub};
 use venus_hub::{PAGE_DOC_ID, SUBPROTOCOL};
 use y_octo::{Doc, DocMessage, SyncMessage};
@@ -108,6 +108,51 @@ async fn lease_count(pool: &PgPool, owner: &str) -> i64 {
             .await
             .expect("lease count");
     n
+}
+
+async fn trail_count(pool: &PgPool, workspace: &str) -> i64 {
+    let (n,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::bigint FROM crdt_update WHERE workspace_id = $1::uuid AND doc_id = $2::uuid",
+    )
+    .bind(workspace)
+    .bind(PAGE_DOC_ID)
+    .fetch_one(pool)
+    .await
+    .expect("trail count");
+    n
+}
+
+async fn dirty_clock(pool: &PgPool, workspace: &str) -> Option<(i64, i64)> {
+    sqlx::query_as(
+        "SELECT clock, (SELECT COUNT(*)::bigint FROM dirty WHERE workspace_id = $1::uuid AND doc_id = $2::uuid)
+         FROM dirty WHERE workspace_id = $1::uuid AND doc_id = $2::uuid",
+    )
+    .bind(workspace)
+    .bind(PAGE_DOC_ID)
+    .fetch_optional(pool)
+    .await
+    .expect("dirty")
+}
+
+async fn assert_no_jobs_row(pool: &PgPool) {
+    let reg: Option<String> = sqlx::query_scalar("SELECT to_regclass('public.jobs')::text")
+        .fetch_one(pool)
+        .await
+        .expect("jobs regclass");
+    if let Some(name) = reg {
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*)::bigint FROM jobs")
+            .fetch_one(pool)
+            .await
+            .expect("jobs count");
+        assert_eq!(n, 0, "hub must not insert a {name} row");
+    }
+}
+
+fn extra_spike_bin() -> Vec<u8> {
+    let d = Doc::default();
+    let mut map = d.get_or_create_map("spike").expect("map");
+    map.insert("k2".to_string(), "v2").expect("insert");
+    encode_v1(&d).expect("encode")
 }
 
 async fn start_pg() -> TestPg {
@@ -602,6 +647,108 @@ async fn second_hub_ws_is_503_while_lease_held() {
     stop_hub(live_a).await;
 }
 
+/// L4: a stolen lease must shed RAM. The old hub must not INSERT after that.
+#[tokio::test(flavor = "multi_thread")]
+async fn heartbeat_miss_sheds_room_no_further_insert() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let owner_a = ["owner-l4-a-", &uuid_like()].concat();
+    let thief = ["owner-l4-b-", &uuid_like()].concat();
+
+    let live_a = spawn_hub(pool.clone(), owner_a.clone()).await;
+    let room = live_a.hub.get_room(&workspace).await.expect("A acquires");
+    send_update_to_room(&room, spike_bin()).await;
+    room.flush(&pool).await.expect("flush spike");
+    let n_before = trail_count(&pool, &workspace).await;
+    assert!(n_before >= 1, "spike must be in SQL before the steal");
+
+    sqlx::query(
+        "UPDATE workspace_lease
+         SET owner = $1, lease_until = now() + interval '1 hour'
+         WHERE workspace_id = $2::uuid",
+    )
+    .bind(&thief)
+    .bind(&workspace)
+    .execute(&pool)
+    .await
+    .expect("steal lease");
+
+    live_a.hub.heartbeat().await;
+    assert!(room.stopped(), "stolen lease must stop the RAM room");
+    assert!(
+        !room.persist_task_is_some(),
+        "shed must take the persist task"
+    );
+
+    match live_a.hub.get_room(&workspace).await {
+        Err(GetRoomError::Held { workspace_id, .. }) => {
+            assert_eq!(workspace_id, workspace);
+        }
+        Err(GetRoomError::Store(e)) => panic!("stolen lease must be Held, not Store: {e:#}"),
+        Ok(_) => panic!("old hub must not keep or re-open the room after a steal"),
+    }
+
+    send_update_to_room(&room, extra_spike_bin()).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        trail_count(&pool, &workspace).await,
+        n_before,
+        "old hub must not INSERT after shed"
+    );
+
+    let hub_b = Hub::new(
+        pool.clone(),
+        Lease::new(pool.clone(), thief, Duration::from_secs(20)),
+        Duration::from_secs(1),
+        32,
+    );
+    hub_b
+        .get_room(&workspace)
+        .await
+        .expect("thief owns SQL and must hydrate");
+    hub_b.shutdown().await;
+    stop_hub(live_a).await;
+}
+
+/// P6: no clients, empty persist buffer, idle ≥ lease TTL → shed + drop_one.
+#[tokio::test(flavor = "multi_thread")]
+async fn idle_room_is_shed_and_lease_dropped() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let owner = ["owner-p6-", &uuid_like()].concat();
+    let hub = Hub::new(
+        pool.clone(),
+        Lease::new(pool.clone(), owner.clone(), Duration::from_millis(80)),
+        Duration::from_secs(1),
+        32,
+    );
+    let room = hub.get_room(&workspace).await.expect("open idle room");
+    let opened = hub.hydrate_attempts();
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    hub.heartbeat().await;
+    assert!(room.stopped(), "idle TTL must shed the room");
+    assert_eq!(
+        lease_count(&pool, &owner).await,
+        0,
+        "idle shed must drop the lease so the next get_room can acquire"
+    );
+
+    hub.get_room(&workspace)
+        .await
+        .expect("next WS hydrates and acquires again");
+    assert_eq!(
+        hub.hydrate_attempts(),
+        opened + 1,
+        "idle shed must drop RAM so the next get_room hydrates"
+    );
+    hub.shutdown().await;
+}
+
+async fn send_update_to_room(room: &venus_hub::room::Room, yjs_update: Vec<u8>) {
+    let frame = encode_doc_update(yjs_update).expect("encode Update");
+    room.handle_binary(1, &frame).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn format_mark_over_ws_does_not_crash() {
     let pool = connect_pool().await;
@@ -623,6 +770,41 @@ async fn format_mark_over_ws_does_not_crash() {
         body.contains("AFFiNE"),
         "hub must still serve after Format apply: {body}"
     );
+
+    stop_hub(live).await;
+}
+
+/// Step 8: persist upserts one `dirty` row; a second write moves `clock`.
+/// Product ids are M0 workspace UUID + `PAGE_DOC_ID`; this test uses a unique
+/// workspace and the same SQL `doc_id`. Hub must not insert `jobs`.
+#[tokio::test(flavor = "multi_thread")]
+async fn persist_after_ws_upserts_dirty_clock_not_jobs() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let live = spawn_hub(pool.clone(), ["owner-dirty-", &uuid_like()].concat()).await;
+    let mut a = connect_affine(live.addr, &workspace).await;
+    let _ = drain_hello(&mut a).await;
+    send_update(&mut a, spike_bin()).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let (clock1, n1) = dirty_clock(&pool, &workspace)
+        .await
+        .expect("dirty row after first persist");
+    assert_eq!(n1, 1, "one dirty row per (workspace_id, PAGE_DOC_ID)");
+    assert!(clock1 >= 1, "clock must be the flushed seq, got {clock1}");
+    assert_no_jobs_row(&pool).await;
+
+    send_update(&mut a, extra_spike_bin()).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let (clock2, n2) = dirty_clock(&pool, &workspace)
+        .await
+        .expect("dirty row after second persist");
+    assert_eq!(n2, 1, "second write must upsert, not insert a second row");
+    assert!(
+        clock2 > clock1,
+        "second persist must move dirty.clock ({clock1} → {clock2})"
+    );
+    assert_no_jobs_row(&pool).await;
 
     stop_hub(live).await;
 }

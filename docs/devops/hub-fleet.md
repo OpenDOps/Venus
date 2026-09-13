@@ -66,6 +66,26 @@ Do not treat HPA replica count as the shard function. Adding a pod must not rema
 
 Observer/worker replica counts stay [LiveSnapshot HA](../design/LiveSnapshot/high-availability.md#snapshotter-fleet-competing-consumers-not-hash-shards): not this gateway, not wiki sticky.
 
+## Memory budget as replicas grow
+
+`work_mem` ([P5](../design/M3.0/logicals-and-performance.md#p5--cap-sized-flush-spills-at-default-work_mem)) is **per backend per node**, not per workspace. Thousands of wikis do not multiply it — flushes funnel through a bounded pool. What multiplies it is **replicas**:
+
+```text
+Postgres worst case = replicas × HUB_DB_MAX_CONNECTIONS × HUB_DB_WORK_MEM
+Compose today       = 2 × 32 × 16MB = 1 GB   (postgres mem_limit is 1g)
+```
+
+It is a ceiling taken lazily per sort/hash node and released at statement end, not a reservation, so steady state is a fraction of that — but the worst case already equals the whole container, and **each added hub replica books another ~512 MB of it**. Size `HUB_DB_WORK_MEM` against `replicas × pool`, not per pod, and keep the fleet's total connections under the server `max_connections` (image default 100).
+
+The **larger** budget at thousands of wikis is the hub's own RAM, not Postgres: one live `Y.Doc` per room plus a persist buffer capped at `PERSIST_BYTES` (8 MiB) **per room**. A thousand backed-up rooms is 8 GB against `mem_limit: 1g`. Room eviction and that cap are the levers there; `work_mem` is a rounding error beside it. Do not tune `work_mem` to fix a hub OOM. Process-level caps vs working set: [hub architecture — Memory](../design/components/hub/architecture.md#memory-caps-not-working-set).
+
+Two ways to make the allowance shared rather than multiplied, if the Postgres side ever binds. Neither is built — measure first:
+
+1. **Split the pool.** The 32 connections are sized for cold exports and blob GETs; only flushes need the memory. A 4–8 connection writer pool at `16MB` with everything else at the server default takes a hub from 512 MB to ~176 MB of worst case.
+2. **Statement-scoped.** `BEGIN; SET LOCAL work_mem …; INSERT …; COMMIT` on batches above a threshold returns the allowance at commit instead of parking it on every idle session. Costs two round trips, so keep typing-sized flushes on the single-statement path. It cannot be folded into one statement: `SET` takes no parameters, and a CTE calling `set_config` has no guaranteed evaluation order against the insert.
+
+**Pooler caveat:** with PgBouncer in transaction pooling, a session-level `SET work_mem` is wrong — sessions no longer map to backends, so it is lost or leaks to unrelated clients. In that topology option 2 is the only correct mechanism, and `connect_with`'s `after_connect` must go.
+
 ## Session movement (the actual problem)
 
 Hub RAM is not shared. You **cannot** live-migrate a `Y.Doc`. “Move a session” means: old owner **sheds**, clients **reconnect**, new owner **hydrates from SQL**. Same loss bound as crash failover (~1s unflushed) if drain skips flush; with a proper drain, persist is flushed first.
@@ -142,6 +162,7 @@ Do not start these steps while M3.0 is open. No board yaml until the track is st
 - Use HPA `replicaCount` as P in `hash % P`.
 - Hub gossip / custom EDS that hubs push to proxies.
 - Cookie/IP/`doc_id` sticky.
+- Set `work_mem` on the `venus_hub` role or in `postgresql.conf` — that hands the same allowance to snapshotters, observers, exports and admin sessions, so every fleet multiplies the budget.
 - Start this track (or k8s YAML for a hub ring) while M3.0 is open.
 
 ## Files

@@ -79,18 +79,20 @@ dirty         (workspace_id, doc_id) → { clock, first_dirty_at }  # trigger on
 
 ```text
 hub persist  →  INSERT crdt_update
-             →  AFTER INSERT/UPDATE UPSERT dirty(workspace_id, doc_id, clock)
+             →  AFTER INSERT UPSERT dirty(workspace_id, doc_id, clock)
+
+compact      →  UPSERT crdt_snapshot   (no trigger: same clock, already marked)
 ```
 
 | Rule | |
 |---|---|
-| **When** | Persist row lands, not apply/broadcast |
-| **What** | UPSERT `{ workspace_id, docId, clock }` — one row, coalesce |
+| **When** | A `crdt_update` row lands, not apply/broadcast and not compact |
+| **What** | UPSERT `{ workspace_id, docId, clock }` — one row, coalesce. `clock` is **monotonic** (`GREATEST` with the existing row) |
 | **Who writes `jobs`** | M3 observer, **not** the hub |
-| **Trigger** | Tiny. Must not fail persist if `dirty` is missing (install after `dirty` exists, or `EXCEPTION` log) |
+| **Trigger** | Tiny. Must not fail persist if `dirty` is missing (install after `dirty` exists, or `EXCEPTION` **WARNING**). `SET search_path = public` |
 | **Do not** | Pause persist; skip `INSERT` during convert; convert in the hub; Kafka in front of Yjs |
 
-M3.0 ships the trigger and `dirty` table. `jobs` / observer / `dirty_wiki` are M3. Queue is the Venus **`jobs` table**, not Akka/Kafka ([LiveSnapshot HA — queue](../LiveSnapshot/high-availability.md#jobs-stay-in-postgres-not-akka--kafka--redis)).
+M3.0 ships the trigger and `dirty` table. `jobs` / observer / `dirty_wiki` are M3. Queue is the Venus **`jobs` table**, not Akka/Kafka ([LiveSnapshot HA — queue](../LiveSnapshot/high-availability.md#jobs-stay-in-postgres-not-akka--kafka--redis)). M3 observer **ignores** `dirty.clock <= last_flushed` (a retried flush can re-mark a clock the pin already covered).
 
 ## Fleet (one live owner)
 
@@ -198,7 +200,7 @@ Re-accept before treating M3.0 HA as done (the plan’s `step-ha-owner` + `step-
 | H1 | Hub is apply + broadcast + persist. No convert, git, or `jobs` inside the hub. |
 | H2 | One live owner per `workspace_id` (**wiki sticky**). Lease or fixed hash. Not cookie/IP. Not `doc_id` sticky. |
 | H3 | Persist ~1s, never paused for pin. Crash loss ≤ persist window; SIGTERM flushes then drops lease. |
-| H4 | Dirty = SQL upsert on `crdt_update` (or snapshot replace). Hub does not write `jobs`. |
+| H4 | Dirty = SQL upsert on `crdt_update` **only** (compact is not an edit). Hub does not write `jobs`. |
 | H5 | Export / blobs do not require Block REST. Wire stays Yjs v1 + `AFFiNE`. |
 | H6 | Snapshotters are a different fleet ([LiveSnapshot HA](../LiveSnapshot/high-availability.md)). |
 | H7 | Product hub merge is **Rust + y-octo**. BlockSuite / `spaceDoc` stay JS. No client WASM. |

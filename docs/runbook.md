@@ -36,7 +36,7 @@ Browser console noise from extensions (`contentscript.js`, MetaMask, ObjectMulti
 
 ## Sync (hub)
 
-Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/hub/)). The browser talks to the hub on `:3000`; Postgres is not published. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
+Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/hub/)). The browser talks to the hub on `127.0.0.1:3000`; Postgres is not published. Host ports bind localhost only. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
 
 ```bash
 docker compose up --build postgres hub
@@ -48,7 +48,11 @@ Wait until hub logs `listening on 0.0.0.0:3000` and `docker compose ps` shows bo
 ```bash
 curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
 # {"protocol":"AFFiNE"}
+curl -sSSf http://127.0.0.1:3000/
+# venus-hub
 ```
+
+Persist across `restart hub` and `down` without `-v`: `pnpm compose:dod`. Second owner / drain: `pnpm compose:ha`.
 
 **Doc export** (current Y.Doc as Yjs update v1; no browser; not `T0`):
 

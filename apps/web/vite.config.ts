@@ -261,8 +261,8 @@ export default defineConfig({
     react(),
   ],
   server: {
-    // keck CORS lists :5173 only. Playwright M1 uses :5174; same-origin /api
-    // avoids that. WS still talks to keck directly (not CORS).
+    // Playwright M1 uses :5174; same-origin /api proxy to hub:3000.
+    // WS still talks to the hub directly (not CORS).
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',

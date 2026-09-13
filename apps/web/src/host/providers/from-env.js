@@ -43,7 +43,7 @@ export function providerFromEnv(env = import.meta.env) {
 /**
  * HTTP blob store when sync env is set. Otherwise TestWorkspace keeps
  * MemoryBlobSource. Browser (and Compose `same-origin`) uses same-origin
- * `/api` (Vite or nginx proxy). Node uses the keck origin from VITE_SYNC_URL.
+ * `/api` (Vite or nginx proxy). Node uses the hub origin from VITE_SYNC_URL.
  *
  * @param {{ VITE_SYNC_URL?: string }} [env]
  */

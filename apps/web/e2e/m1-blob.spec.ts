@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { WORKSPACE_ID } from './keck-ws';
+import { WORKSPACE_ID, assertHubOn3000 } from './keck-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -80,18 +80,7 @@ async function insertSlashImage(page: Page, filePath: string) {
 }
 
 test.beforeAll(async () => {
-  try {
-    await fetch('http://127.0.0.1:3000/', {
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
-      throw new Error(
-        `keck is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
-      );
-    }
-  }
+  await assertHubOn3000();
 });
 
 test('upload posts the PNG and shows pixels', async ({ page }) => {
@@ -108,14 +97,14 @@ test('upload posts the PNG and shows pixels', async ({ page }) => {
   await waitForHydrated(page);
   await insertSlashImage(page, DOT_PNG);
   await expectImagePixels(page, 30_000);
-  // keck batches doc writes (~1s). Stay connected so the image block is on
+  // Hub persist tick is ~1s. Stay connected so the image block is on
   // the server before this test's page closes.
   await page.waitForTimeout(2000);
 
   expect(posts.length, `expected POST /api/blobs/${WORKSPACE_ID}`).toBeGreaterThan(0);
   expect(
     posts.some((p) => p.status === 413),
-    '413: raise keck/proxy body size, do not stub the image',
+    '413: raise hub/proxy body size, do not stub the image',
   ).toBe(false);
   expect(posts.some((p) => p.status >= 200 && p.status < 300)).toBe(true);
 });

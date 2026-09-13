@@ -1,6 +1,7 @@
 /**
- * Thin Yjs ↔ keck bridge. Speaks y-protocols/sync over WebSocket with
- * subprotocol AFFiNE. Do not import this from mount-editor.js.
+ * Thin Yjs ↔ Venus hub bridge. Speaks y-protocols/sync over WebSocket with
+ * subprotocol AFFiNE. `kind: 'octobase'` is a wire alias. Do not import this
+ * from mount-editor.js.
  */
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';

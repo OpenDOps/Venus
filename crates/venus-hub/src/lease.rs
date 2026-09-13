@@ -62,6 +62,10 @@ impl Lease {
         &self.owner
     }
 
+    pub fn ttl(&self) -> Duration {
+        self.ttl
+    }
+
     /// Insert or steal an expired lease. `Held` if another live owner holds it.
     pub async fn try_acquire(&self, workspace_id: &str) -> Result<(), LeaseError> {
         let secs = self.ttl.as_secs() as i64;

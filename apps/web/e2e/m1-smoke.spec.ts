@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { assertHubOn3000 } from './keck-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -34,18 +35,7 @@ async function waitForHydrated(page: Page) {
 }
 
 test.beforeAll(async () => {
-  try {
-    await fetch('http://127.0.0.1:3000/', {
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
-      throw new Error(
-        `keck is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
-      );
-    }
-  }
+  await assertHubOn3000();
 });
 
 test('smoke: seed H1, type hello, reload keeps it', async ({ page }) => {

@@ -27,6 +27,11 @@ pub struct Config {
     pub db_max_connections: u32,
     pub db_min_connections: u32,
     pub db_acquire_timeout: Duration,
+    /// Session `work_mem` for hub connections (P5). A cap-sized flush
+    /// materialises an 8 MiB `bytea[]` parameter and spills to a temp file at
+    /// the 4 MB server default. Per node per sort/hash — size it against
+    /// [`Self::db_max_connections`].
+    pub db_work_mem: String,
     /// CORS allow list (S9). Unset env → [`DEFAULT_CORS_ORIGINS`]. Empty env → no CORS (same-origin nginx).
     pub cors_origins: Vec<String>,
 }
@@ -67,6 +72,7 @@ impl Config {
         let db_max_connections = db_max_connections_from_env()?;
         let db_min_connections = db_min_connections_from_env()?;
         let db_acquire_timeout = db_acquire_timeout_from_env()?;
+        let db_work_mem = db_work_mem_from_env()?;
         validate_pool_sizes(db_max_connections, db_min_connections)?;
         let cors_origins = cors_origins_from_env()?;
         let (database_url, pg_sslmode) = dsn_from_env()?;
@@ -82,6 +88,7 @@ impl Config {
             db_max_connections,
             db_min_connections,
             db_acquire_timeout,
+            db_work_mem,
             cors_origins,
         })
     }
@@ -236,6 +243,38 @@ fn db_min_connections_from_env() -> Result<u32> {
         "HUB_DB_MIN_CONNECTIONS",
         &required_env("HUB_DB_MIN_CONNECTIONS")?,
     )
+}
+
+fn db_work_mem_from_env() -> Result<String> {
+    parse_work_mem("HUB_DB_WORK_MEM", &required_env("HUB_DB_WORK_MEM")?)
+}
+
+/// Normalize a Postgres memory size for `work_mem` (P5). Validated at start so
+/// a typo names the var instead of failing every pool connection. The value is
+/// still passed to `set_config` as a **bind parameter**, never interpolated —
+/// `SET` takes no parameters, so this would otherwise be env into SQL.
+///
+/// A bare integer is rejected on purpose: Postgres would read `16` as 16 kB.
+pub fn parse_work_mem(name: &str, raw: &str) -> Result<String> {
+    let s = raw.trim();
+    let digits: String = s.chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        bail!("{name} must be a size like 16MB; got {raw:?}");
+    }
+    let n: u64 = digits
+        .parse()
+        .with_context(|| format!("{name} must be a size like 16MB; got {raw:?}"))?;
+    if n < 1 {
+        bail!("{name} must be >= 1");
+    }
+    let unit = match s[digits.len()..].trim().to_ascii_lowercase().as_str() {
+        "kb" => "kB",
+        "mb" => "MB",
+        "gb" => "GB",
+        "" => bail!("{name} needs an explicit unit (kB, MB, GB); got {raw:?}"),
+        other => bail!("{name} unit must be kB, MB or GB; got {other:?}"),
+    };
+    Ok(format!("{n}{unit}"))
 }
 
 fn db_acquire_timeout_from_env() -> Result<Duration> {
@@ -581,6 +620,29 @@ mod tests {
         let sizes = validate_pool_sizes(4, 5).unwrap_err().to_string();
         assert!(sizes.contains("HUB_DB_MIN_CONNECTIONS"));
         assert!(sizes.contains("HUB_DB_MAX_CONNECTIONS"));
+    }
+
+    #[test]
+    fn work_mem_normalizes_units_and_rejects_junk() {
+        assert_eq!(parse_work_mem("HUB_DB_WORK_MEM", "16MB").unwrap(), "16MB");
+        assert_eq!(parse_work_mem("HUB_DB_WORK_MEM", " 64mb ").unwrap(), "64MB");
+        assert_eq!(
+            parse_work_mem("HUB_DB_WORK_MEM", "4096kB").unwrap(),
+            "4096kB"
+        );
+        assert_eq!(parse_work_mem("HUB_DB_WORK_MEM", "1GB").unwrap(), "1GB");
+        // Postgres would read a bare integer as kB; make the operator say it.
+        let bare = parse_work_mem("HUB_DB_WORK_MEM", "16")
+            .unwrap_err()
+            .to_string();
+        assert!(bare.contains("HUB_DB_WORK_MEM"));
+        assert!(bare.contains("unit"));
+        assert!(parse_work_mem("HUB_DB_WORK_MEM", "").is_err());
+        assert!(parse_work_mem("HUB_DB_WORK_MEM", "0MB").is_err());
+        assert!(parse_work_mem("HUB_DB_WORK_MEM", "lots").is_err());
+        assert!(parse_work_mem("HUB_DB_WORK_MEM", "16TB").is_err());
+        // Bound, not interpolated — but a token like this must never parse.
+        assert!(parse_work_mem("HUB_DB_WORK_MEM", "16MB'; DROP TABLE dirty --").is_err());
     }
 
     #[test]
