@@ -14,6 +14,7 @@ COPY apps/web/src apps/web/src
 
 # Runtime WS/blob URLs come from window.location (see resolveSyncUrl).
 ENV VITE_SYNC_URL=same-origin
+ENV VITE_SIDECAR_URL=http://127.0.0.1:3002
 RUN pnpm --filter @venus/web exec vite build
 
 FROM nginx:1.27-alpine

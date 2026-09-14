@@ -25,7 +25,7 @@ Pin: `@blocksuite/affine` **0.22.4** ([api-map.md](../api-map.md)). There is **n
 <!-- venus:doc:doc:lease -->
 ```
 
-**Actual (no catalog, Node):** `titleMiddleware` has no meta for a synthetic `pageId`, so the link text is `untitled`. `docLinkBaseURLMiddleware` in Node uses base `.` → URL `./workspace/<workspace.id>/<pageId>`. Venus appends `<!-- venus:doc:<pageId> -->` after that line. Import still resolves `venus:doc:` first, path second ([venus-design](../venus-design.md#cross-document-references)). Catalog titles/paths are M4.
+**Actual (no catalog, Node):** `titleMiddleware` has no meta for a synthetic `pageId`, so the link text is `untitled`. `docLinkBaseURLMiddleware` in Node uses base `.` → URL `./workspace/<workspace.id>/<pageId>`. Venus appends `<!-- venus:doc:<pageId> -->` after that line. Import still resolves `venus:doc:` first, path second ([venus-design](../venus-design.md#cross-document-references)). Catalog titles/paths are [M4](../M4/README.md).
 
 ### Linked-doc export vs toDoc
 

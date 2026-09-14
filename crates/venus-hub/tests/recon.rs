@@ -77,6 +77,75 @@ fn hub_crate_does_not_link_keck() {
     );
 }
 
+/// M3 step-pin-schema: hub sources and `venus_mark_dirty` must not write `jobs`.
+#[test]
+fn hub_sources_do_not_insert_into_jobs() {
+    let schema = include_str!("../src/schema.sql");
+    assert!(
+        !sql_inserts_into_jobs(schema),
+        "schema.sql / venus_mark_dirty must not INSERT INTO jobs"
+    );
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut rust = String::new();
+    collect_rs(&src, &mut rust);
+    assert!(
+        !sql_inserts_into_jobs(&rust),
+        "crates/venus-hub/src must not INSERT INTO jobs"
+    );
+}
+
+fn collect_rs(dir: &std::path::Path, out: &mut String) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|_| panic!("read {}", dir.display())) {
+        let entry = entry.expect("dirent");
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push_str(&std::fs::read_to_string(&path).unwrap_or_default());
+            out.push('\n');
+        }
+    }
+}
+
+/// True if the blob contains an INSERT targeting `jobs` (not CREATE TABLE).
+fn sql_inserts_into_jobs(sql: &str) -> bool {
+    let stripped = strip_sql_line_comments(sql).to_ascii_lowercase();
+    let mut rest = stripped.as_str();
+    while let Some(i) = rest.find("insert") {
+        let after = rest[i + 6..].trim_start();
+        let Some(after_into) = after.strip_prefix("into") else {
+            rest = &rest[i + 6..];
+            continue;
+        };
+        let after_into = after_into.trim_start();
+        let after_into = after_into
+            .strip_prefix("public.")
+            .unwrap_or(after_into)
+            .trim_start();
+        if after_into.starts_with("jobs") {
+            let next = after_into.as_bytes().get(4).copied();
+            if next
+                .map(|b| !b.is_ascii_alphanumeric() && b != b'_')
+                .unwrap_or(true)
+            {
+                return true;
+            }
+        }
+        rest = &rest[i + 6..];
+    }
+    false
+}
+
+fn strip_sql_line_comments(sql: &str) -> String {
+    sql.lines()
+        .map(|line| match line.find("--") {
+            Some(i) => &line[..i],
+            None => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn apply_browser_yjs_map_key() {
     let bin = from_hex(YJS_SPIKE_KV_HEX);

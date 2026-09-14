@@ -1,6 +1,6 @@
 # M3.0 — steps 1–3 review
 
-Review of `crates/venus-hub` against [plan.md](./plan.md) DoD for [step-recon-hub](./plan.md#1-step-recon-hub), [step-store](./plan.md#2-step-store), and [step-ws](./plan.md#3-step-ws). Board: [M3.0.state.yaml](./M3.0.state.yaml) (those three **done**). Crate map: [hub files](../components/hub/files.md). Process: [hub architecture](../components/hub/architecture.md). HA contract (not closed): [high-availability.md](./high-availability.md).
+Review of `crates/venus-hub` against [plan.md](./plan.md) DoD for [step-recon-hub](./plan.md#1-step-recon-hub), [step-store](./plan.md#2-step-store), and [step-ws](./plan.md#3-step-ws). Board: [M3.0.state.yaml](./M3.0.state.yaml) (those three **done**). Crate map: [hub files](../components/backend/hub/files.md). Process: [hub architecture](../components/backend/hub/architecture.md). HA contract (not closed): [high-availability.md](./high-availability.md).
 
 **This does not reopen those steps.** Named Given/When/Then scenarios passed. Findings below are remaining **correctness**, **performance**, and **resource exhaustion** in that crate, each with a fix proposal. Do not invent extra plan scenarios from this file.
 
@@ -183,7 +183,7 @@ Verified against a running hub: plain `GET /collaboration/<id>` returns `400 Bad
 Pick one and make the docs match:
 
 1. Keep the documented behaviour: take `Option<WebSocketUpgrade>` (or the `OptionalFromRequestParts` form) and return the protocol JSON when it is `None`.
-2. Or delete `wants_websocket` and the branch, and fix the three places that claim otherwise: [hub README](../components/hub/README.md), [hub architecture](../components/hub/architecture.md), [hub files](../components/hub/files.md).
+2. Or delete `wants_websocket` and the branch, and fix the three places that claim otherwise: [hub README](../components/backend/hub/README.md), [hub architecture](../components/backend/hub/architecture.md), [hub files](../components/backend/hub/files.md).
 
 Prefer (1) — `POST` already answers the same JSON, and a GET-able health URL is cheap. Either way add a `tests/ws.rs` assertion on the status, so this cannot drift again.
 
@@ -196,7 +196,7 @@ Verified against a running hub: plain `GET /collaboration/<id>` returns `400 Bad
 Pick one and make the docs match:
 
 1. Keep the documented behaviour: take `Option<WebSocketUpgrade>` (or the `OptionalFromRequestParts` form) and return the protocol JSON when it is `None`.
-2. Or delete `wants_websocket` and the branch, and fix the three places that claim otherwise: [hub README](../components/hub/README.md), [hub architecture](../components/hub/architecture.md), [hub files](../components/hub/files.md).
+2. Or delete `wants_websocket` and the branch, and fix the three places that claim otherwise: [hub README](../components/backend/hub/README.md), [hub architecture](../components/backend/hub/architecture.md), [hub files](../components/backend/hub/files.md).
 
 Prefer (1) — `POST` already answers the same JSON, and a GET-able health URL is cheap. Either way add a `tests/ws.rs` assertion on the status, so this cannot drift again.
 

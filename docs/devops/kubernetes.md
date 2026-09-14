@@ -5,7 +5,7 @@
 | Compose | Cluster (intent) |
 |---|---|
 | `postgres` + volume `pg-venus-data` | StatefulSet or a managed Postgres. Same DSN shape (`POSTGRES_*` or `DATABASE_URL`). Against managed Postgres set `POSTGRES_SSLMODE=require` (Compose default is `disable`). Hub pool knobs (`HUB_DB_MAX_CONNECTIONS` / `MIN` / `ACQUIRE_TIMEOUT_SECS` / `WORK_MEM`, persist/compact) are required; copy Compose values or size against the cluster `max_connections`. `HUB_DB_WORK_MEM` is per session, so budget it against replicas × pool size, not per pod. Same-origin Ingress: `HUB_CORS_ORIGINS` empty. |
-| **`hub`** | Deployment. **One replica:** ClusterIP is enough. **Fleet:** gateway in [hub-fleet.md](./hub-fleet.md), not ClusterIP RR. Hub is Venus-owned ([hub](../design/components/hub/)). Do not put keck in the web image. |
+| **`hub`** | Deployment. **One replica:** ClusterIP is enough. **Fleet:** gateway in [hub-fleet.md](./hub-fleet.md), not ClusterIP RR. Hub is Venus-owned ([hub](../design/components/backend/hub/)). Do not put keck in the web image. |
 | `web` (nginx + static) | Deployment. Ingress / TLS to this Service. Keep same-origin `/api` and `/collaboration` to the collab Service. |
 
 `VITE_SYNC_URL=same-origin` is already baked for that Ingress host. Rebuild the web image only when the host app changes; do not bake a cluster hostname.

@@ -1,6 +1,6 @@
 # CRDT implementation
 
-Prototype **stack and dataflow** for the live page. Product meaning of the CRDT vs git: [datamodel](../datamodel/README.md). Product rules: [venus-design.md](../venus-design.md). System map: [architecture.md](../architecture.md). Words: [glossary.md](../glossary.md). Actuals: [api-map.md](../api-map.md). Hub **process** (run, Rust, SQL, HTTP): [hub](../components/hub/).
+Prototype **stack and dataflow** for the live page. Product meaning of the CRDT vs git: [datamodel](../datamodel/README.md). Product rules: [venus-design.md](../venus-design.md). System map: [architecture.md](../architecture.md). Words: [glossary.md](../glossary.md). Actuals: [api-map.md](../api-map.md). Hub **process** (run, Rust, SQL, HTTP): [hub](../components/backend/hub/).
 
 This is **not** a second CRDT. BlockSuite already owns a Y.Doc. Venus syncs that doc. Proof: [scenarios](../../scenarios/README.md).
 
@@ -8,7 +8,7 @@ This is **not** a second CRDT. BlockSuite already owns a Y.Doc. Venus syncs that
 
 ## Stack (M3.0)
 
-M1 Actuals proved the wire. Product **Sync server** is Compose `hub`; persist tables are Venus `crdt_*`; client kind stays `'octobase'` as a wire alias. How the process runs: [hub](../components/hub/).
+M1 Actuals proved the wire. Product **Sync server** is Compose `hub`; persist tables are Venus `crdt_*`; client kind stays `'octobase'` as a wire alias. How the process runs: [hub](../components/backend/hub/).
 
 | Piece | What we use | Not |
 |---|---|---|
@@ -93,7 +93,7 @@ The hub does **not** ask browsers. This is not a named version. A **pin** keeps 
 
 - Markdown adapter, pane, or sidecar ids — [MDGate](../MDGate/README.md), then [M2](../M2/README.md).
 - **What spaces and git hold** — [datamodel](../datamodel/README.md).
-- Hub **process** (run, Rust, SQL, HTTP) — [hub](../components/hub/). Software architecture: [architecture](../components/hub/architecture.md). Crate map: [files](../components/hub/files.md). Milestone: [M3.0](../M3.0/README.md).
+- Hub **process** (run, Rust, SQL, HTTP) — [hub](../components/backend/hub/). Software architecture: [architecture](../components/backend/hub/architecture.md). Crate map: [files](../components/backend/hub/files.md). Milestone: [M3.0](../M3.0/README.md).
 - No Rust in the editor — [wasm.md](./wasm.md).
 - Pin + git snapshotter — [LiveSnapshot](../LiveSnapshot/README.md), then [M3](../M3/README.md) (after M3.0).
 - Lease freeze — M5.

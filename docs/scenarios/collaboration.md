@@ -22,5 +22,6 @@ Open tab B **after** A has the seed H1 (DoD: no double page).
 | `e2e/m1-two-tabs.spec.ts` — A typing appears in B | A types `from-a-…`; B’s note shows it within 10s without reload (not page-wide `getByText` — the markdown pane repeats the body) |
 | `e2e/m1-two-tabs.spec.ts` — both tabs same seed once | both titles `Venus`, one H1 `Why Venus` each |
 | `e2e/m1-two-tabs.spec.ts` — B typing appears in A | B types `from-b-…`; A’s note shows it without reload |
+| `e2e/m3-live-during-flush.spec.ts` — A→B during convert | Opt-in (`pnpm test:e2e:m3:live`): sidecar convert delayed ≥2s; A types `during-flush` after Flush; B’s note shows it before convert sleep ends; editors stay editable |
 
 Person-in-browser two windows is [M1 step 9](../design/M1/plan.md#9-step-verify), not a substitute for this spec.

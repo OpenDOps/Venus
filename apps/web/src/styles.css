@@ -14,8 +14,44 @@ body,
 
 .m0-shell {
   display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.m0-columns {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.host-chrome {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--affine-border-color, #e3e2e4);
+}
+
+.host-chrome button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.host-chrome-log {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 3.2em;
+  overflow: auto;
+  color: var(--affine-text-secondary-color, #8e8d91);
 }
 
 .editor-host {

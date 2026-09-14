@@ -19,4 +19,6 @@ test('one-exporter: pane imports from-doc.js; exporter has no highlight.js; edit
   expect(editor).not.toMatch(/from-doc\.js/);
   expect(editor).not.toMatch(/highlight\.js/);
   expect(editor).not.toMatch(/highlight-md/);
+  expect(editor).not.toMatch(/venus-flush/);
+  expect(editor).not.toMatch(/\/flush/);
 });

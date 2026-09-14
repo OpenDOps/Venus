@@ -1,8 +1,8 @@
 # Compose
 
-**Today (M3.0):** **three services** on the product path, one file, [docker-compose.yml](../../docker-compose.yml) at the repo root. Postgres is the only database. The collab front is the Venus **hub** (Rust + y-octo). The web image does **not** contain OctoBase source. How the hub works: [hub](../design/components/hub/). Hub HA: [M3.0/high-availability.md](../design/M3.0/high-availability.md).
+**Today (M3.0):** **three services** on the product path, one file, [docker-compose.yml](../../docker-compose.yml) at the repo root. Postgres is the only database. The collab front is the Venus **hub** (Rust + y-octo). The web image does **not** contain OctoBase source. How the hub works: [hub](../design/components/backend/hub/). Hub HA: [M3.0/high-availability.md](../design/M3.0/high-availability.md).
 
-keck stays under `deploy/octobase/` as M1 history; product Compose does not build it. `hub-b` is an optional `--profile ha` process to prove `workspace_lease` (not in default `up`). `sidecar` is an optional `--profile snapshot` process (`crates/venus-sidecar`, host `127.0.0.1:3002`); default `up` stays three services until Flush. Host binary: `CONVERT_CWD=apps/web cargo run -p venus-sidecar` from the repo root (health `GET /` → `venus-sidecar`).
+keck stays under `deploy/octobase/` as M1 history; product Compose does not build it. `hub-b` is an optional `--profile ha` process to prove `workspace_lease` (not in default `up`). `sidecar` is an optional `--profile snapshot` process (`crates/venus-sidecar`, host `127.0.0.1:3002`); default `up` stays three services. Host binary: `CONVERT_CWD=apps/web WIKI_DIR=wiki cargo run -p venus-sidecar` from the repo root (health `GET /` → `venus-sidecar`). Observer/workers start when `DATABASE_URL` or `POSTGRES_HOST` is set. First Flush **autoinits** `WIKI_DIR` (default `wiki/`, gitignored). Compose bind-mounts `./wiki:/wiki`; `mkdir -p wiki && chmod a+rwx wiki` so `USER venus` can write. Host Flush chrome: `VITE_SIDECAR_URL=http://127.0.0.1:3002` (Compose web bakes that). `POST /flush` pulls `jobs.not_before` to now; a worker then pins, converts, and git-commits. Host `data-testid="venus-git-log"` lists `GET /git/log?path=spec/home.md` subjects. After Flush, `pnpm wiki:clone` copies `wiki/` to `/tmp/venus-wiki-clone` (no hub needed to read `spec/home.md`). Optional `SNAPSHOT_CONVERT_SLEEP_MS` (default **0**) sleeps after cut, before `fromDoc` — test hook only ([step-live-during-flush](../design/M3/plan.md#7-step-live-during-flush)); do not set it in ordinary Compose.
 
 ## Services
 
@@ -11,7 +11,7 @@ keck stays under `deploy/octobase/` as M1 history; product Compose does not buil
 | `postgres` | `postgres:16` | none | `crdt_*` + blob bytes. Volume `pg-venus-data`, database `venus`. Superuser `venus`. |
 | `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, doc export. Connects as `venus_hub` (NOSUPERUSER). |
 | `web` | `deploy/web/Dockerfile` (nginx + `apps/web/dist`) | `127.0.0.1:8080` | Host UI. Same-origin proxy: `/api` and `/collaboration` → `hub:3000`. |
-| `sidecar` | `deploy/sidecar/Dockerfile` (`node:22`, `USER venus`) | `127.0.0.1:3002` | Optional `--profile snapshot`. y-octo hydrate + Path B CLI. Health `GET /`. No git yet. |
+| `sidecar` | `deploy/sidecar/Dockerfile` (`node:22`, `USER venus`) | `127.0.0.1:3002` | Optional `--profile snapshot`. Observer + N workers on Venus `jobs` (`SKIP LOCKED`). Health `GET /`. `POST /flush` pulls `jobs.not_before` to now (does not pin). `GET /git/log?path=spec/home.md` → `{ subject, sha }[]`. Workers autoinit `WIKI_DIR` and git-commit. DSN required for the queue (`DATABASE_URL` / `POSTGRES_*`, same role as hub). Bind-mount `./wiki:/wiki`. |
 
 Default `docker compose config --services` prints `postgres`, `hub`, `web` (plus `sidecar` / `hub-b` when those profiles are enabled). Hub and Postgres must not share a container.
 
@@ -75,6 +75,16 @@ M1 used volume `pg-data` and database `jwst`. This cutover uses a **new** volume
 Compose `web` bakes `VITE_SYNC_URL=same-origin`. The browser opens `ws://127.0.0.1:8080/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` (and `/api/blobs/…` on the same origin). nginx forwards the `AFFiNE` subprotocol to the hub.
 
 Host Vite still uses `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` and proxies `/api` only ([vite.config.ts](../../apps/web/vite.config.ts)). Playwright `pnpm test:e2e:m1` stays on that path (Vite `:5174`).
+
+M3 Flush e2e (`pnpm test:e2e:m3`) needs `docker compose --profile snapshot up` so sidecar `:3002` and `./wiki` are up. Typing-during-convert (`pnpm test:e2e:m3:live`) also needs sidecar `SNAPSHOT_CONVERT_SLEEP_MS=3000` (Compose interpolates `${SNAPSHOT_CONVERT_SLEEP_MS:-0}`; default **0** so ordinary Flush is not delayed):
+
+```bash
+mkdir -p wiki && chmod a+rwx wiki
+SNAPSHOT_CONVERT_SLEEP_MS=3000 docker compose --profile snapshot up --build sidecar
+pnpm test:e2e:m3:live
+```
+
+Host binary: `SNAPSHOT_CONVERT_SLEEP_MS=3000 CONVERT_CWD=apps/web WIKI_DIR=wiki cargo run -p venus-sidecar`. Do not bake `3000` into Compose defaults.
 
 Point Playwright at Compose web:
 

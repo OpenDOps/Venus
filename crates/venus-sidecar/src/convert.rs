@@ -103,9 +103,8 @@ pub async fn from_pinned_bytes(bytes: &[u8], cfg: &ConvertConfig) -> Result<Conv
         .context("wait convert CLI")?;
 
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    let stdout = std::fs::read_to_string(&json_path).with_context(|| {
-        format!("read convert JSON stdout {}", json_path.display())
-    })?;
+    let stdout = std::fs::read_to_string(&json_path)
+        .with_context(|| format!("read convert JSON stdout {}", json_path.display()))?;
     if !output.status.success() {
         bail!(
             "convert CLI exited {}: stderr={stderr} stdout={stdout}",
@@ -130,11 +129,7 @@ fn write_tmp(ext: &str, bytes: &[u8]) -> Result<PathBuf> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let path = std::env::temp_dir().join(format!(
-        "venus-pin-{}-{nanos}.{ext}",
-        std::process::id()
-    ));
-    std::fs::write(&path, bytes)
-        .with_context(|| format!("write temp file {}", path.display()))?;
+    let path = std::env::temp_dir().join(format!("venus-pin-{}-{nanos}.{ext}", std::process::id()));
+    std::fs::write(&path, bytes).with_context(|| format!("write temp file {}", path.display()))?;
     Ok(path)
 }

@@ -2,15 +2,37 @@ import { useEffect, useRef, useState } from 'react';
 import { mountEditor } from './host/mount-editor.js';
 import { mountOutline, waitForEditorHost } from './host/mount-outline.js';
 import { mountMdPane } from './host/mdgate/mount-md-pane.js';
-import { providerFromEnv, blobSourcesFromEnv } from './host/providers/from-env.js';
+import {
+  providerFromEnv,
+  blobSourcesFromEnv,
+  sidecarUrlFromEnv,
+} from './host/providers/from-env.js';
 import { seedMarkdownDemo } from './host/seed.js';
 import { createM0Workspace } from './host/workspace.js';
 
 type Session = Awaited<ReturnType<typeof createM0Workspace>>;
+type GitLogEntry = { subject: string; sha: string };
+
+const SIDECAR_URL = sidecarUrlFromEnv();
+const CATALOG_PATH = 'spec/home.md';
+
+function parseGitLog(data: unknown): GitLogEntry[] {
+  if (!Array.isArray(data)) return [];
+  const out: GitLogEntry[] = [];
+  for (const row of data) {
+    if (!row || typeof row !== 'object') continue;
+    const subject = (row as { subject?: unknown }).subject;
+    const sha = (row as { sha?: unknown }).sha;
+    if (typeof subject !== 'string' || typeof sha !== 'string') continue;
+    out.push({ subject, sha });
+  }
+  return out;
+}
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [gitLog, setGitLog] = useState<GitLogEntry[]>([]);
   const editorRef = useRef<HTMLDivElement>(null);
   const outlineRef = useRef<HTMLDivElement>(null);
   const mdPaneRef = useRef<HTMLDivElement>(null);
@@ -88,6 +110,28 @@ export function App() {
     };
   }, [session]);
 
+  useEffect(() => {
+    if (!SIDECAR_URL || !session) return;
+    const loadGitLog = () => {
+      void fetch(`${SIDECAR_URL}/git/log?path=${CATALOG_PATH}`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => setGitLog(parseGitLog(data)))
+        .catch((err) => {
+          console.error(err);
+        });
+    };
+    loadGitLog();
+    const id = window.setInterval(loadGitLog, 2000);
+    return () => window.clearInterval(id);
+  }, [session]);
+
+  function onFlush() {
+    if (!SIDECAR_URL) return;
+    void fetch(`${SIDECAR_URL}/flush`, { method: 'POST' }).catch((err) => {
+      console.error(err);
+    });
+  }
+
   if (error) {
     return <div className="m0-shell">{error}</div>;
   }
@@ -98,9 +142,29 @@ export function App() {
 
   return (
     <div className="m0-shell">
-      <aside className="md-pane-host" ref={mdPaneRef} />
-      <div className="editor-host" ref={editorRef} />
-      <aside className="outline-host" ref={outlineRef} />
+      {SIDECAR_URL ? (
+        <div className="host-chrome">
+          <button
+            type="button"
+            data-testid="venus-flush"
+            onClick={onFlush}
+          >
+            Flush
+          </button>
+          <ol className="host-chrome-log" data-testid="venus-git-log">
+            {gitLog.map((row) => (
+              <li key={row.sha} data-sha={row.sha}>
+                {row.subject}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+      <div className="m0-columns">
+        <aside className="md-pane-host" ref={mdPaneRef} />
+        <div className="editor-host" ref={editorRef} />
+        <aside className="outline-host" ref={outlineRef} />
+      </div>
     </div>
   );
 }

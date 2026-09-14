@@ -26,13 +26,14 @@ function serviceNames(src: string): string[] {
   return names;
 }
 
-test('Product path is postgres, hub, and web (hub-b is an ha profile only)', () => {
+test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () => {
   const src = readFileSync(composeFile, 'utf8');
   const names = serviceNames(src);
   expect(names, 'docker-compose.yml service keys').toEqual([
     'postgres',
     'hub',
     'hub-b',
+    'sidecar',
     'web',
   ]);
   expect(src).toMatch(/image:\s*postgres:16/);
@@ -63,6 +64,9 @@ test('Product path is postgres, hub, and web (hub-b is an ha profile only)', () 
   expect(src).toMatch(/http:\/\/localhost:5174/);
   expect(src).not.toMatch(/^\s*octobase:/m);
   expect(src).toMatch(/profiles:\s*\["ha"\]/);
+  expect(src).toMatch(/profiles:\s*\["snapshot"\]/);
+  expect(src).toMatch(/deploy\/sidecar\/Dockerfile/);
+  expect(src).toMatch(/127\.0\.0\.1:3002:3002/);
 });
 
 test('docker compose config --services lists postgres hub web (hub-b is a profile)', () => {

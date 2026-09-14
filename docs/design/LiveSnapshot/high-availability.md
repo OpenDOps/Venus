@@ -58,7 +58,7 @@ Two **buffers** (bytes of pages). Everything else is clocks, jobs, or git — no
 | Thing | What it holds | Where it lives | Who writes it | Frozen? | Durable? |
 |---|---|---|---|---|---|
 | **Live generation** | Current CRDT of every page | Hub **memory** (apply/broadcast) + **Postgres** `crdt_*` / blobs after the ~1s persist batch | Browsers → WS → hub. Persist thread drains to SQL. Never Venus markdown. | **No.** Typing continues for the whole flush. | Postgres is the refresh truth. Hub RAM can trail SQL by ~1s. |
-| **Pin generation** | Copy of **dirty** pages only, at cut clock **T** | Flush **worker RAM**: `Map<docId, { bytes, clock }>` (spill to worker disk if huge) | Worker copies from persist at the cut (cloud: MVCC `SELECT` of dirty rows; M3: replica encode or idle `GET …/export`) | **Yes — this copy only.** Bytes and clocks in the Map do not change until drop. | **No**, except this flush is lease `T0` (keep until the lease ends). Crash → retry from `dirty`. |
+| **Pin generation** | Copy of **dirty** pages only, at cut clock **T** | Flush **worker RAM**: `Map<docId, { bytes, clock }>` (spill to worker disk if huge) | Worker copies from persist at the cut (`REPEATABLE READ` `SELECT` of dirty `crdt_*` / blobs). | **Yes — this copy only.** Bytes and clocks in the Map do not change until drop. | **No**, except this flush is lease `T0` (keep until the lease ends). Crash → retry from `dirty`. |
 | **Dirty / jobs / last_flushed** | Clocks and job rows, **not** Yjs bytes | **Venus tables** (same Postgres instance as `crdt_*` is the hosted default) | **Persist path in Postgres** upserts `dirty` / `dirty_wiki` when `crdt_update` rows land (trigger). Observer `INSERT…SELECT`s `jobs` (not a broker). Workers consume. Step 12 writes `last_flushed`. The hub does not write `jobs`. | Job row is the **wiki flush lock** (one inflight). CRDT rows are not locked. | **Yes.** This is HA state. |
 | **Git `wiki/`** | Markdown + sidecar + dirty blobs **after** convert | One repo **per wiki** (M3: one `wiki/`) | Convert worker: `fromDoc` on the **pin**, then `git add` / `git mv` / one commit | HEAD is last **successful** commit. Convert does not mutate live CRDT. | **Yes** (git remote). |
 | **Cut** | A consistent **read** of dirty set **S** at **T** | DB snapshot or generation **G** for the copy window only | Worker opens it, copies S into the pin Map, **drops it** before `fromDoc` | Brief. Not a writer freeze. Not held across convert or `git commit`. | No. |
@@ -91,7 +91,7 @@ Nothing in steps 10–11 talks to the hub. Clients do not freeze. Pages not in *
 
 ### Dataflow (two buffers)
 
-Scale shape. M3 may thin every box. Must not invert: live never waits on the pin; convert never reads the live `Store`. Dirty upsert must not stall persist. The hub does not write `jobs`.
+Scale shape. M3 uses the same boxes at one-wiki load. Must not invert: live never waits on the pin; convert never reads the live `Store`. Dirty upsert must not stall persist. The hub does not write `jobs`.
 
 ```mermaid
 flowchart TB
@@ -129,10 +129,8 @@ flowchart TB
   pgLive -->|"AFTER persist UPSERT dirty"| dirty
   dirty --> observer
   observer -->|"insert job if none"| queue
-  hubMem -.->|"M3 replica until needed"| observer
-  pgLive -.->|"M3 idle GET until needed"| observer
   queue -->|"CONSUMER: worker SKIP LOCKED"| cut
-  pgLive -->|"copy dirty bytes at T"| cut
+  pgLive -->|"MVCC SELECT of S at T"| cut
   cut -->|"release cut"| pinBuf
   pinBuf --> convert
   convert --> gitRepo
@@ -142,11 +140,11 @@ flowchart TB
 
 **Hub persist writes `crdt_*` only** (never paused). **Dirty** is a second table in the **same Postgres**: a tiny `AFTER INSERT` on `crdt_update` upserts `dirty(workspace_id, docId, clock)`. Compact has no trigger — it rewrites rows already marked at that clock. No hub hook unless that map is impossible. [M3.0 HA — dirty](../M3.0/high-availability.md#dirty-mark-postgres-not-a-hub-hook).
 
-**Observer** turns new `dirty` into a `jobs` row. The hub is neither jobs producer nor consumer. M3.0 already ships the trigger; M3 may still thin pin **source** to replica / idle GET.
+**Observer** turns new `dirty_wiki` into a `jobs` row. The hub is neither jobs producer nor consumer. M3.0 already ships the `dirty` trigger; M3 extends it to `dirty_wiki` and adds the observer.
 
 **“Writes after T stay live”:** typing after cut clock **T** still goes browsers → hub → persist → `crdt_update`. The trigger upserts a newer `dirty.clock`. Those bytes are not in this pin. After commit, `last_flushed = T`; if `dirty.clock > T`, the next job pins a new generation.
 
-**Queue** is the `jobs` table (M3: in-process idle timer + Flush). One pending job per wiki.
+**Queue** is the `jobs` table (`not_before` + TTL lease). One pending job per wiki.
 
 | | Who | What |
 |---|---|---|
@@ -201,7 +199,7 @@ hub persist  →  INSERT crdt_update
 
 Keep the trigger **fail-safe and tiny**. If it throws, persist rolls back and live collab loses the batch — worse than snapshot lag. Prefer: trigger cannot fail on Venus schema missing (`EXCEPTION` log) **or** install trigger only after `dirty` exists. Safer still: `AFTER` commit / deferred so `crdt_update` is already durable, then upsert dirty (lag on crash between, same as two-step hook).
 
-M3.0 ships the trigger. M3 idle GET is a **pin source**, not a dirty observer.
+M3.0 ships the `dirty` trigger. M3 adds `dirty_wiki` on that trigger and a sidecar observer. GET export is **not** the pin source.
 
 ## Observer cycle (Venus clocks + timer)
 
@@ -257,7 +255,7 @@ dirty_wiki[workspace_id]          = { firstDirtyAt }            # wiki — enque
 
 `clock` is the page’s **Yjs / CRDT clock** (how far that `docId` has moved), not a wall-clock and not one clock for the whole service.
 
-**Dirty observer** is Venus code that **produces `jobs` in Postgres** from `dirty_wiki` (M3 thin may `DISTINCT` page `dirty`). It is not the hub and not an Akka/Kafka producer. Product path: Postgres already upserted `dirty` / `dirty_wiki`; the observer `INSERT…SELECT`s the job row. M3 thin: observer may still compare replica/GET clocks and upsert `dirty` itself if the trigger is not wired in that process.
+**Dirty observer** is Venus code that **produces `jobs` in Postgres** from `dirty_wiki`. It is not the hub and not an Akka/Kafka producer. Product path: Postgres already upserted `dirty` / `dirty_wiki`; the observer `INSERT…SELECT`s the job row.
 
 It does **not** hold page bytes, convert markdown, or commit git.
 
@@ -265,8 +263,8 @@ How dirty is **written** (not the job):
 
 | Era | How | Not |
 |---|---|---|
-| **Product (after M3.0)** | SQL `AFTER` persist on `crdt_update` → upsert `dirty` (+ `dirty_wiki` at scale). Observer writes `jobs` in SQL | Poll every workspace. Hub writes `jobs`. Mark on apply. Fat trigger. Broker publish |
-| **M3 thin pin source** | Replica or idle `GET …/export` for **that** wiki (bytes for the cut) | A timer over every space as the dirty observer |
+| **Product (after M3.0)** | SQL `AFTER` persist on `crdt_update` → upsert `dirty` + `dirty_wiki`. Observer writes `jobs` in SQL | Poll every workspace. Hub writes `jobs`. Mark on apply. Fat trigger. Broker publish |
+| **M3 pin bytes** | After claim: MVCC `SELECT` of S | GET export / replica encode as the product cut; a timer over every space as the dirty observer |
 
 Polling every workspace is **forbidden**. Convert and git stay **out** of the hub.
 
@@ -310,12 +308,12 @@ last_flushed   ← flush worker after git commit
 
 | Name | Who writes | From where | Who reads | M3 store |
 |---|---|---|---|---|
-| **Live clock** | Hub persist → `crdt_*` | Persist row / guid. **M3 thin pin:** replica or GET. Not the user’s `Store`. | Trigger / observer | In `crdt_*` |
-| **`dirty[workspace_id, docId].clock`** | Postgres trigger (product); observer (M3 thin) | Persist clock if `> last_flushed` | Flush path (cut) | RAM in M3; Venus table at scale |
-| **`dirty_wiki[workspace_id]`** | Same trigger | First page dirty on that wiki | Observer enqueue | Same as `dirty`; M3 may DISTINCT |
-| **`last_flushed[workspace_id, docId]`** | Flush path after `git commit` | Pin Map `{ clock: T }` + commit SHA | Observer / next trigger compare | RAM in M3; Venus table at scale |
+| **Live clock** | Hub persist → `crdt_*` | Persist seq / snapshot. Not the user’s `Store`. | Trigger / cut | In `crdt_*` |
+| **`dirty[workspace_id, docId].clock`** | Postgres trigger | Persist clock if `> last_flushed` | Flush path (cut) | Venus table |
+| **`dirty_wiki[workspace_id]`** | Same trigger | First page dirty on that wiki | Observer enqueue | Venus table |
+| **`last_flushed[workspace_id, docId]`** | Flush path after `git commit` | Pin Map `{ clock: T }` + commit SHA | Observer / next compare | Venus table |
 
-First run: `last_flushed` is missing → page is dirty → first snapshot. Crash: RAM gone; retry from live clock vs git sidecar / empty `last_flushed`. Scale stores `dirty` + `dirty_wiki` + `last_flushed` in **Venus tables**, still not the Yjs blob columns.
+First run: `last_flushed` is missing → page is dirty → first snapshot. Crash: pin Map gone; retry from `dirty` vs `last_flushed` / git HEAD.
 
 **A re-mark is not a new edit** (M3.0 D3 / P1): the trigger fires on `crdt_update` only — compact merges rows it already marked, so a snapshot rewrite cannot resurrect a GCed `dirty` row. A **retried flush** still can. The hub never `DELETE`s `dirty`. **Observer and cut ignore `dirty` rows with `clock <= last_flushed`.**
 
@@ -330,7 +328,7 @@ Also dirty: catalog nodes whose `gitPath` changed; blob ids whose bytes changed.
 | Era | How dirty is observed |
 |---|---|
 | Product (hosted) | SQL trigger on `crdt_update` persist → upsert `dirty` / `dirty_wiki` |
-| M3 thin pin source | Replica or idle `GET …/export` for **bytes**, not as a fleet sweep |
+| M3 | Same trigger. Sidecar observer reads `dirty_wiki` (not GET export as the dirty sensor). Pin **bytes** come from the MVCC cut after claim. |
 
 Do not tail the hub SQL WAL. `crdt_*` stays Yjs bytes. Dirty is a Venus table.
 
@@ -539,7 +537,7 @@ Cut implementation by persist:
 |---|---|
 | **Postgres MVCC** (cloud / Venus `crdt_*`) | `REPEATABLE READ` (or a snapshot) `SELECT` of dirty doc/blob rows. Plain `SELECT`, not `FOR UPDATE`. Writers append new row versions. Copy bytes out. `COMMIT` ends the cut. |
 | **Copy-on-write persist** (preferred later) | Freeze generation **G** for ids in S. New writes allocate **G+1**. Live uses G+1. Worker copies G. Drop G after the pin is in RAM. |
-| **M3 thin** | No multi-space cut API required. Idle: wait ≥ persist batch, then `GET …/export` **per dirty space** (export is already a Postgres read) or encode a sidecar replica. That is a **best-effort** cut, not a multi-space transaction. Acceptable for one page; not the scale mechanism. |
+| **M3** | Same as Postgres MVCC. One wiki / one page **load**. Observer + N workers in Compose `sidecar`. Do not use GET-after-2s as the product pin. |
 
 Collect **every** pin in S **before** any `fromDoc` ([README — pin then convert](./README.md#pin-then-convert)). Convert is the slow part; it must run **after** the cut is released so a 200-page `fromDoc` cannot hold a DB snapshot (or generation G) for seconds.
 
@@ -605,24 +603,25 @@ Live collab HA is the **hub fleet** above. Snapshotters must not stall persist (
 
 ## M3 must keep this shape
 
-M3 may degenerate every box. It must not invert them.
+M3 **implements these boxes** at one-wiki load. It must not invert them. Do not ship GET / in-process-timer as a product queue to “save a rewrite.”
 
-| Box | M3 (allowed thin) | Must not |
+| Box | M3 | Must not |
 |---|---|---|
-| Dirty list | RAM, one `docId` | `fromDoc` every keystroke into git |
-| Queue | In-process idle timer + Flush | Commit inside the editor tab; Akka/Kafka as the queue |
-| Cut | Replica encode **or** idle GET export | `fromDoc` the live `Store`; pause persist for convert |
+| Dirty list | SQL `dirty` + `dirty_wiki` (trigger) | `fromDoc` every keystroke into git |
+| Queue | Venus `jobs`; observer `INSERT…SELECT`; N workers `SKIP LOCKED` | Commit inside the editor tab; Akka/Kafka; trigger writes `jobs` |
+| Cut | MVCC `REPEATABLE READ` plain `SELECT` of S after **claim** | `fromDoc` the live `Store`; `GET …/export` as product pin; pause persist; `FOR UPDATE` on `crdt_*` |
 | Pin buffer | Process `Map` | Write markdown to Postgres |
-| Workers | One process | Link into the hub |
-| Git | One `wiki/` | Per-block commits |
+| Workers | Compose `sidecar`, `SNAPSHOT_WORKERS` ≥ 2 | Link into the hub |
+| Git | One `wiki/` (this load) | Per-block commits |
+| `last_flushed` | Venus table | RAM-only clocks as the durable store |
 
-Exit of M3 stays: clone `wiki/` and read markdown; typing during flush still syncs ([M3/plan.md](../M3/plan.md), [implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). This file is the checklist when that process grows a queue.
+Exit of M3 stays: clone `wiki/` and read markdown; typing during flush still syncs ([M3/plan.md](../M3/plan.md), [implementation plan — M3](../venus-implementation-plan.md#m3--git-snapshotter-week)). k8s replicaCount / many working trees can grow without changing this mechanism.
 
 ## Acceptance (gate for M3)
 
-Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus hub (not keck); dirty on `crdt_update`; snapshotter beside the hub. **Revised 2026-09-01:** wiki-grain `dirty_wiki`, bulk `jobs` in Postgres, no broker; consumer TTL lease; pin at claim, persist never queued. **Accepted 2026-09-13** (M3 `step-recon-snapshot` / [M3.state.yaml](../M3/M3.state.yaml)): the 2026-09-01 table (items 1–9) is the lock. M3.0 is **closed**. M3 may implement the thin column. Revising this table still re-opens the gate.
+Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus hub (not keck); dirty on `crdt_update`; snapshotter beside the hub. **Revised 2026-09-01:** wiki-grain `dirty_wiki`, bulk `jobs` in Postgres, no broker; consumer TTL lease; pin at claim, persist never queued. **Accepted 2026-09-13** (M3 `step-recon-snapshot` / [M3.state.yaml](../M3/M3.state.yaml)): the 2026-09-01 table (items 1–9) is the lock. M3.0 is **closed**. **2026-09-14:** M3 implements this table at one-wiki load (`jobs` + MVCC). It does **not** take the GET/replica exception in item 6. Revising this table still re-opens the gate.
 
-[LiveSnapshot README](./README.md) is pin-then-convert for one wiki. This file is the fleet. M3 is the **thin column** of the table above, not a second architecture. Live CRDT owner/lease/drain: [M3.0 HA](../M3.0/high-availability.md).
+[LiveSnapshot README](./README.md) is pin-then-convert for one wiki. This file is the fleet. M3 is that fleet **mechanism** with one wiki in Compose, not a second architecture. Live CRDT owner/lease/drain: [M3.0 HA](../M3.0/high-availability.md).
 
 | # | Locked |
 |---|---|
@@ -636,7 +635,7 @@ Accepted 2026-08-30 for the fleet shape. **Revised 2026-08-31 (evening):** Venus
 | 8 | Durable HA state is `dirty` + `dirty_wiki` + `jobs` + `last_flushed` + git remotes. Pins stay non-durable except `T0`. Worker death retries from dirty; git HEAD is the last successful commit. Step 8 (`last_flushed`) is **idempotent**. |
 | 9 | Snapshotter sits **beside** the **hub**. Hosted hub fleet: one live owner per `workspace_id` (**wiki sticky**). Shared Postgres. **Dirty** = Postgres upsert when `crdt_update` persist lands (SQL trigger preferred; hub hook only if grain cannot map). Trigger/hook must not stall persist or write `jobs`. Do not poll every space, embed convert in the hub, or two hub owners for one wiki. keck is M1 legacy. Hub merge is **y-octo**. |
 
-**Left to the [M3 plan](../M3/plan.md)** (not this gate): idle debounce inside 30–120s (plan default **60s** — Actual `SNAPSHOT_IDLE_MS=60000`); how git2 inits the nested `wiki/` (step 2). **Filled in M3 recon (api-map):** pin source = idle GET after ≥2s; convert JS = Vite-hosted Node CLI `from-pinned-cli.js`; crash recovery = git sidecar clock + HEAD. Exact `crdt_*` columns for the dirty trigger: [M3.0](../M3.0/README.md). M3 one-wiki may `DISTINCT` page `dirty` instead of a `dirty_wiki` table.
+**Left to the [M3 plan](../M3/plan.md)** (not this gate): idle debounce inside 30–120s (plan default **60s** — Actual `SNAPSHOT_IDLE_MS=60000`); how git2 inits the nested `wiki/` (step 6 autoinit). **Filled in M3 recon (api-map):** convert JS = Vite-hosted Node CLI `from-pinned-cli.js`. **2026-09-14:** pin source = MVCC after `jobs` claim; crash recovery = `last_flushed` table + git HEAD; `dirty_wiki` + `jobs` in M3. Exact `crdt_*` columns for the dirty trigger: [M3.0](../M3.0/README.md).
 
 ## Do not
 

@@ -79,7 +79,8 @@ fn rust_from_doc_is_in_sidecar_not_a_live_store() {
 fn seed_rust_markdown_matches_m2_golden() {
     let rust = from_doc::from_pinned_bytes(SEED_PIN).expect("rust fromDoc");
     assert_eq!(
-        rust.markdown, SEED_GOLDEN,
+        rust.markdown,
+        SEED_GOLDEN,
         "markdown mismatch: {}",
         first_byte_diff(&rust.markdown, SEED_GOLDEN)
     );
@@ -93,10 +94,12 @@ fn seed_rust_markdown_matches_m2_golden() {
 fn m2_golden_pins_match_committed_markdown() {
     for (pin_name, golden, label) in M2_GOLDENS {
         let pin = load_fixture(pin_name);
-        let rust = from_doc::from_pinned_bytes(&pin)
-            .unwrap_or_else(|e| panic_convert(label, "rust fromDoc failed", e));
+        let rust = from_doc::from_pinned_bytes(&pin).unwrap_or_else(|e| {
+            panic!("{label}: rust fromDoc failed: {e}");
+        });
         assert_eq!(
-            rust.markdown, *golden,
+            rust.markdown,
+            *golden,
             "{label}: rust markdown vs M2 golden: {}",
             first_byte_diff(&rust.markdown, golden)
         );
@@ -115,7 +118,8 @@ fn opaque_image_without_blobs_matches_js_omission_form() {
     let paragraph_golden =
         include_str!("../../../apps/web/src/host/mdgate/goldens/rt-paragraph.md");
     assert_eq!(
-        rust.markdown, paragraph_golden,
+        rust.markdown,
+        paragraph_golden,
         "unresolved affine:image must not invent a nicer dump: {}",
         first_byte_diff(&rust.markdown, paragraph_golden)
     );
@@ -135,14 +139,16 @@ async fn seed_and_m2_goldens_identical_to_js_cli() {
 
     for (pin_name, golden, label) in M2_GOLDENS {
         let pin = load_fixture(pin_name);
-        let rust = from_doc::from_pinned_bytes(&pin)
-            .unwrap_or_else(|e| panic_convert(label, "rust fromDoc failed", e));
+        let rust = from_doc::from_pinned_bytes(&pin).unwrap_or_else(|e| {
+            panic!("{label}: rust fromDoc failed: {e}");
+        });
         let js = venus_sidecar::convert::from_pinned_bytes(&pin, &cfg)
             .await
-            .unwrap_or_else(|e| panic_convert(label, "JS CLI failed", e));
+            .unwrap_or_else(|e| panic!("{label}: JS CLI failed: {e}"));
         assert_identity(label, &rust, &js);
         assert_eq!(
-            rust.markdown, *golden,
+            rust.markdown,
+            *golden,
             "{label}: rust matched JS but not M2 golden: {}",
             first_byte_diff(&rust.markdown, golden)
         );
@@ -165,7 +171,8 @@ async fn large_file_identical_to_js_cli() {
         .filter(|b| b.id != rust.sidecar.blocks[0].id)
         .count();
     assert_eq!(
-        para_rows, LARGE_PARAGRAPH_COUNT,
+        para_rows,
+        LARGE_PARAGRAPH_COUNT,
         "sidecar note rows must equal 2000 paragraphs (+ title wrapper); blocks.len()={}",
         rust.sidecar.blocks.len()
     );

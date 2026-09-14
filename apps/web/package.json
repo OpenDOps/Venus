@@ -9,6 +9,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:m1": "PLAYWRIGHT_M1=1 playwright test",
+    "test:e2e:m3": "PLAYWRIGHT_M3=1 playwright test",
+    "test:e2e:m3:live": "PLAYWRIGHT_M3=1 PLAYWRIGHT_CONVERT_SLEEP_MS=3000 playwright test m3-live-during-flush.spec.ts",
     "from-pinned": "node src/host/mdgate/from-pinned-cli.js"
   },
   "dependencies": {

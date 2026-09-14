@@ -6,7 +6,8 @@
 -- store that string.
 -- Dirty grain is (workspace_id, doc_id): one row per page. M3 many pages
 -- keep that pair; lease grain stays workspace_id. The hub does not
--- write `jobs` — M3 observer reads `dirty`.
+-- write `jobs` — M3 observer reads `dirty` / `dirty_wiki`. These three
+-- Venus tables are created here so the persist trigger can see them.
 
 CREATE TABLE IF NOT EXISTS crdt_snapshot (
     workspace_id UUID NOT NULL,
@@ -51,6 +52,32 @@ CREATE TABLE IF NOT EXISTS dirty (
     doc_id UUID NOT NULL,
     clock BIGINT NOT NULL,
     first_dirty_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, doc_id)
+);
+
+-- Wiki grain for enqueue. Trigger inserts once; later page clocks must
+-- not reset first_dirty_at (ON CONFLICT DO NOTHING).
+CREATE TABLE IF NOT EXISTS dirty_wiki (
+    workspace_id UUID PRIMARY KEY,
+    first_dirty_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One pending job per wiki. Sidecar observer writes rows; the hub and
+-- this trigger must not. Unclaimed: owner and lease_until are null.
+CREATE TABLE IF NOT EXISTS jobs (
+    workspace_id UUID PRIMARY KEY,
+    reason TEXT NOT NULL CHECK (reason IN ('idle', 'flush', 'lease')),
+    not_before TIMESTAMPTZ NOT NULL,
+    owner TEXT,
+    lease_until TIMESTAMPTZ
+);
+
+-- Durable pin clocks after a git commit. Sidecar writes; hub does not.
+CREATE TABLE IF NOT EXISTS last_flushed (
+    workspace_id UUID NOT NULL,
+    doc_id UUID NOT NULL,
+    clock BIGINT NOT NULL,
+    git_sha TEXT NOT NULL,
     PRIMARY KEY (workspace_id, doc_id)
 );
 
@@ -148,7 +175,9 @@ END $$;
 -- A leftover crdt_snapshot trigger is a no-op until `migrate` drops it.
 -- D1: GREATEST so an out-of-order flush statement cannot rewind the clock.
 -- D2: RAISE WARNING (do not RAISE EXCEPTION).
--- D4: pin search_path; qualify public.dirty (do not follow "$user").
+-- D4: pin search_path; qualify public.dirty / public.dirty_wiki (do not
+-- follow "$user"). Separate EXCEPTION blocks so a missing dirty_wiki
+-- cannot undo a successful dirty upsert (and the reverse).
 CREATE OR REPLACE FUNCTION venus_mark_dirty() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public
@@ -175,6 +204,27 @@ BEGIN
             ON CONFLICT (workspace_id, doc_id) DO UPDATE
                 SET clock = GREATEST(dirty.clock, EXCLUDED.clock)
                 WHERE dirty.clock IS DISTINCT FROM GREATEST(dirty.clock, EXCLUDED.clock);
+        END IF;
+    EXCEPTION
+        WHEN undefined_table OR undefined_column THEN
+            IF TG_LEVEL = 'ROW' THEN
+                RAISE WARNING 'venus_mark_dirty: % (workspace_id=%, doc_id=%)',
+                    SQLERRM, NEW.workspace_id, NEW.doc_id;
+            ELSE
+                RAISE WARNING 'venus_mark_dirty: % (table=%)', SQLERRM, TG_TABLE_NAME;
+            END IF;
+    END;
+    BEGIN
+        IF TG_LEVEL = 'STATEMENT' THEN
+            INSERT INTO public.dirty_wiki (workspace_id, first_dirty_at)
+            SELECT workspace_id, now()
+            FROM ins
+            GROUP BY workspace_id
+            ON CONFLICT (workspace_id) DO NOTHING;
+        ELSE
+            INSERT INTO public.dirty_wiki (workspace_id, first_dirty_at)
+            VALUES (NEW.workspace_id, now())
+            ON CONFLICT (workspace_id) DO NOTHING;
         END IF;
     EXCEPTION
         WHEN undefined_table OR undefined_column THEN

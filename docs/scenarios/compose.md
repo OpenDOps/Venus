@@ -1,6 +1,6 @@
 # Compose stack
 
-**Feature:** one Compose file runs **postgres**, **hub**, and **web**. A new machine brings up the loop without memorizing Vite flags. [devops/compose](../devops/compose.md). Hub internals: [hub](../design/components/hub/).
+**Feature:** one Compose file runs **postgres**, **hub**, and **web**. A new machine brings up the loop without memorizing Vite flags. [devops/compose](../devops/compose.md). Hub internals: [hub](../design/components/backend/hub/).
 
 **Boxes:** Postgres, hub, nginx `web` ([architecture](../design/architecture.md#elements)).
 

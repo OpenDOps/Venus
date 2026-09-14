@@ -4,7 +4,7 @@ The `sidecar` Compose service (`--profile snapshot`) is `crates/venus-sidecar`.
 License of Venus hub/sidecar source: MIT OR Apache-2.0.
 It is not an OctoBase fork. Apply / hydrate engine: y-octo (MIT).
 
-See docs/legal/licensing.md and docs/design/components/hub/.
+See docs/legal/licensing.md and docs/design/components/backend/hub/.
 
 Postgres in the `postgres` service is the PostgreSQL license.
 The `web` image (`deploy/web`) is the Venus host + nginx.

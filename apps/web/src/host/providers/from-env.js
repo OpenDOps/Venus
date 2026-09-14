@@ -63,8 +63,19 @@ export function blobSourcesFromEnv(env = import.meta.env) {
   }
   return {
     main: new OctoBaseBlobSource({
-        workspaceId: WORKSPACE_ID,
+      workspaceId: WORKSPACE_ID,
       origin: blobOriginFromSyncUrl(raw),
     }),
   };
+}
+
+/**
+ * Sidecar Flush URL. Unset → no host Flush chrome (memory / default e2e).
+ *
+ * @param {{ VITE_SIDECAR_URL?: string }} [env]
+ */
+export function sidecarUrlFromEnv(env = import.meta.env) {
+  const raw =
+    typeof env.VITE_SIDECAR_URL === 'string' ? env.VITE_SIDECAR_URL.trim() : '';
+  return raw.replace(/\/$/, '');
 }

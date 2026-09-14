@@ -43,8 +43,8 @@ M1 + M2 together: same Y.Doc in two tabs **and** a markdown photograph of that t
 | Apply / hunks / `ap-*` fixtures | M6 — [apply.md](../MDGate/apply.md) |
 | CodeMirror, lease, freeze | M5. M2 pane uses **highlight.js**, not CM. |
 | After/Before hub spaces | [datamodel CRDT](../datamodel/crdt.md#commit-before-and-after); M5–M6 |
-| Catalog, folder tree, product header | M4 |
-| Second page / linked-doc **resolution** in the catalog | M4. M2 may **export** the linked-doc markdown form with a synthetic `pageId`. |
+| Catalog, folder tree, product header | [M4](../M4/README.md) |
+| Second page / linked-doc **resolution** in the catalog | [M4](../M4/README.md). M2 may **export** the linked-doc markdown form with a synthetic `pageId`. |
 | Telling agents “edit `.md` in git and it will apply” | After M6 apply fixtures |
 | Markdown as Y.Text | Forbidden ([datamodel](../datamodel/README.md)) |
 

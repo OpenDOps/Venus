@@ -42,4 +42,4 @@ browsers ──Yjs──► hub ──► Postgres     published, catalog, revie
 | [crdt.md](./crdt.md) | Spaces: published, catalog, review, Before/After, blobs, Postgres |
 | [git.md](./git.md) | `wiki/` tree, sidecar, two commit classes |
 
-M1 only implements **one** published space (`venus-m0` / `doc:home`). Catalog, review, and extra page spaces start at M3–M6. The layout below is the product model those milestones fill in.
+M1 only implements **one** published space (`venus-m0` / `doc:home`). Catalog and extra page spaces start at [M4](../M4/README.md). Review spaces start at M5–M6. The layout below is the product model those milestones fill in.

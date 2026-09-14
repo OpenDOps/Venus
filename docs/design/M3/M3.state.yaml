@@ -69,39 +69,135 @@ steps:
       - name: Still not in hub
         status: pass
         evidence: "2026-09-13 cargo test -p venus-sidecar --test not_in_hub — venus-hub has no venus-sidecar/git2/from-doc/MarkdownAdapter; cargo tree -p venus-hub -i venus-sidecar fails"
-  step-pin: # 4
+  step-pin: # 4 umbrella; done when 4.1–4.3 done
     n: 4
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: HA pin (schema + queue + cut)
+        status: pass
+        evidence: "2026-09-14 sub-steps 4.1–4.3 done. Schema in hub migrate; observer/claim in venus-sidecar; cut.rs REPEATABLE READ plain SELECT of S into PinMap; convert from Map (no git)."
+  step-pin-schema: # 4.1
+    n: 4.1
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Trigger marks dirty_wiki, not jobs
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-hub --test store trigger_marks_dirty_wiki_not_jobs — persist upserts one dirty + one dirty_wiki; second persist does not reset first_dirty_at; jobs empty. cargo test -p venus-hub --test ws persist_after_ws_upserts_dirty_clock_not_jobs — same after a WS persist tick. cargo test -p venus-hub --test recon hub_sources_do_not_insert_into_jobs — schema.sql and crates/venus-hub/src have no INSERT INTO jobs."
+      - name: Tables exist
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-hub --test store m3_pin_schema_tables_exist — information_schema has dirty_wiki, jobs, last_flushed after hub migrate; jobs PK is workspace_id; venus-sidecar has no CREATE TABLE for those names."
+  step-pin-queue: # 4.2
+    n: 4.2
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Observer enqueues one job
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test queue observer_enqueues_one_job — two observe_once ticks with SNAPSHOT_IDLE_MS=0 insert one idle jobs row (ON CONFLICT DO NOTHING). cargo test -p venus-sidecar --test queue observer_does_not_get_export and --test not_in_hub sidecar_queue_does_not_poll_export — queue.rs has no /export or reqwest."
+      - name: One wiki, two consumers, one claim
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test queue one_wiki_two_consumers_one_claim — concurrent claim_one: one owner, SKIP LOCKED; pin Map empty; third claim none while leased."
+      - name: Two wikis, two consumers
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test queue two_wikis_two_consumers — two due jobs, two workers both lease (no process-wide mutex)."
+  step-pin-cut: # 4.3
+    n: 4.3
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: MVCC pin, not live RAM
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test cut mvcc_pin_not_live_ram — persist affine pin text alpha (dirty.clock T), claim + cut S into Map; persist beta after cut COMMIT; fromDoc the Map has alpha not beta; dirty.clock > T. Pin bytes are CRDT (not markdown). Catalog gitPath spec/home.md in the same collect."
+      - name: Cut released
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test cut cut_released_before_from_doc — Map filled and RR committed; fromDoc sleeps 250ms while a concurrent push_update INSERTs crdt_update (seq > pin clock). Convert markdown still alpha not beta."
+      - name: Not GET
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test cut cut_is_not_get_export — cut.rs and pin.rs have no /export, reqwest, get_doc, FOR SHARE, or FOR UPDATE. cargo test -p venus-sidecar --test not_in_hub sidecar_cut_is_not_hub_export — cut.rs has no /export, reqwest, or :3000/api/block."
   step-dirty-idle: # 5
     n: 5
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Dirty clock not keystroke
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test idle dirty_clock_not_keystroke — persist one crdt_update then a second: one dirty row, clock moved, dirty_wiki.first_dirty_at unchanged. cargo test -p venus-sidecar --test idle sidecar_does_not_mark_dirty_by_editor_events — queue/http/main have no keystroke/keydown/editor event counting. Hub trigger_marks_dirty_wiki_not_jobs still owns jobs-empty."
+      - name: Idle coalesce
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test idle idle_coalesce — SNAPSHOT_IDLE_MS=500, observer inserts one job at first_dirty_at+500ms; persist at t+100ms does not stack jobs or slide not_before; one scoped claim when due."
+      - name: Flush now
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test idle flush_now_http — idle job with future not_before; POST /flush?workspace=… → 204, reason=flush, not_before<=now(), still one row, pin Map empty. cargo test -p venus-sidecar --test http flush_empty_body_is_m0_wiki and flush_without_pool_is_503."
+      - name: No pin at enqueue
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test idle no_pin_at_enqueue — after persist + observe (not due) + flush_now, PinMap empty (due unclaimed still empty). cargo test -p venus-sidecar --test idle flush_http_does_not_copy_yjs and --test not_in_hub sidecar_flush_does_not_poll_export — POST /flush is not GET export and does not cut/fromDoc."
   step-flush: # 6
     n: 6
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Autoinit on first snapshot
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test flush autoinit_commit_sidecar_and_word — empty temp WIKI_DIR (no pre-init); git2 init branch main; log subject snapshot: Venus; spec/home.md contains Why Venus; no origin; product .gitignore /wiki/; git ls-files wiki empty."
+      - name: Sidecar on disk
+        status: pass
+        evidence: "2026-09-14 same test — wiki/.venus/ids/doc:home.json has docId, pin clock (dirty.clock at cut), blocks[] id/start/end; markdown has no <!-- id:. last_flushed.clock + git_sha match; jobs row deleted."
+      - name: Typed word lands
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test flush unique_word_lands_in_markdown — persist unique string, flush_claimed, spec/home.md contains it (script path). Playwright e2e/m3-flush.spec.ts is opt-in (pnpm test:e2e:m3 / PLAYWRIGHT_M3=1); default pnpm test:e2e stays m0+m2 without Docker."
+      - name: Writes after T stay dirty
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test flush writes_after_t_stay_dirty — persist alpha, delayed convert 250ms, persist beta during sleep; commit markdown has alpha not beta; dirty.clock > pin T; last_flushed.clock is T."
+      - name: Idempotent
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test flush idempotent_second_flush_skips_commit — second flush with no new persist skips commit (rev-list count unchanged); same .git; jobs deleted."
+      - name: Drop pin after commit
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test flush drop_pin_after_commit — PinMap empty after flush_claimed; no doc:home / PAGE_DOC_UUID entry. cargo test -p venus-sidecar --test not_in_hub sidecar_git_is_not_hub_export. Host vitest flush-chrome.test.ts: data-testid=venus-flush in App; mount-editor ignorant; no store.readonly."
   step-live-during-flush: # 7
     n: 7
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: A→B during convert
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test live persist_not_paused_during_convert (SQL half of live tabs: persist returns during convert sleep). Playwright e2e/m3-live-during-flush.spec.ts is opt-in: sidecar SNAPSHOT_CONVERT_SLEEP_MS≥2000 + PLAYWRIGHT_CONVERT_SLEEP_MS to match (`pnpm test:e2e:m3:live`). A types during-flush after Flush; B’s note shows it before convert sleep ends; A can still type (not readonly). Default pnpm test:e2e stays m0+m2."
+      - name: Persist not paused
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test live persist_not_paused_during_convert — flush_claimed convert_sleep 400ms; persist during-flush returns in <250ms while the flush task is still sleeping; dirty.clock > pin T. cargo test -p venus-sidecar --test live convert_sleep_is_after_cut_not_in_hub — sleep is after cut COMMIT; hub src has no SNAPSHOT_CONVERT_SLEEP. Host flush-chrome.test.ts: Flush does not set store.readonly."
   step-git-log: # 8
     n: 8
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Log shows autocomment
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test git_log — log_shows_autocomment_newest_first + http_git_log_json_and_default_path (GET /git/log?path=spec/home.md → subject snapshot: Venus + sha). Playwright e2e/m3-git-log.spec.ts is opt-in (pnpm test:e2e:m3); host [data-testid=venus-git-log] contains snapshot: … after Flush; not Yjs undo. Default pnpm test:e2e stays m0+m2."
+      - name: Seam holds
+        status: pass
+        evidence: "2026-09-14 vitest flush-chrome.test.ts + sync-provider.test.ts Seam holds — mount-editor.js / editor-container.js / boot.js have no venus-git-log, /git/log, from-doc.js, pin-from-doc, venus-sidecar, git2. App.tsx has data-testid=venus-git-log and GET /git/log; no store.history / isomorphic-git. cargo test -p venus-sidecar --test not_in_hub sidecar_git_log_is_not_in_hub."
   step-verify: # 9
     n: 9
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Clone elsewhere
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test verify — clone_elsewhere_is_readable_markdown 1 passed (Flush seed-home.yjs + unique word, git clone second temp dir; spec/home.md has Why Venus + Empty host, starts with #, no NUL, not .yjs). After Playwright Flush: pnpm wiki:clone → /tmp/venus-wiki-clone/spec/home.md (349 B, Why Venus + Empty host). No hub required to read the clone."
+      - name: Smoke
+        status: pass
+        evidence: "2026-09-14 cargo test -p venus-sidecar --test flush (7) --test live (2) --test git_log (8) --test verify (1). pnpm --filter @venus/web test: 19 files / 92 tests (compose.test.ts now lists sidecar as snapshot profile). pnpm test:e2e: 16 passed (m0+m2 pane). pnpm test:e2e:m1: 10 passed (hub :3000 venus-hub). pnpm test:e2e:m3: 2 passed (m3-flush, m3-git-log); live skipped without sleep. SNAPSHOT_CONVERT_SLEEP_MS=3000 + pnpm test:e2e:m3:live: 1 passed. Sidecar restored to sleep 0."
+      - name: Manual path
+        status: pass
+        evidence: "2026-09-14 docs/runbook.md Manual testing (M3 close-out): type, Flush (no review why), pnpm wiki:clone, git log autocomment, two tabs during Flush. Playwright is not a substitute. No dated person Chrome/Firefox walk in this close-out — walk that checklist yourself."

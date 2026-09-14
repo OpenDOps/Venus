@@ -10,7 +10,7 @@ M0 contract: [design/M0](./design/M0/README.md). M1 contract: [design/M1](./desi
 |---|---|
 | Node | `>=22` (`engines` in root `package.json`) |
 | pnpm | `10.19.0` (`packageManager` field; Corepack: `corepack enable`) |
-| Docker | Compose v2. Needed for M1/M3.0 (`postgres` + `hub`; `web` for the three-service loop). Not needed for `pnpm dev`. |
+| Docker | Compose v2. Needed for M1/M3.0 (`postgres` + `hub`; `web` for the three-service loop) and M3 Flush (`--profile snapshot` sidecar). Not needed for `pnpm dev`. |
 
 Do not mix two BlockSuite or `yjs` majors. `yjs` is pinned to `13.6.32` via root `pnpm.overrides`.
 
@@ -30,13 +30,13 @@ pnpm dev
 
 Same as `pnpm --filter @venus/web dev` (Vite). Default URL is the Vite printout, usually `http://localhost:5173`.
 
-M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). **M3.0 hub is the product collab server** ([hub](./design/components/hub/)). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **hub** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **[M3 — Git snapshotter](./design/LiveSnapshot/README.md)**, gated on [LiveSnapshot HA](./design/LiveSnapshot/high-availability.md) **Acceptance** (snapshotter beside the hub). Do **not** code `wiki/` until that gate. Adapter: [MDGate](./design/MDGate/README.md).
+M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). **M3.0 hub** is the product collab server ([hub](./design/components/backend/hub/)). **M3 git snapshotter is done** (2026-09-14): Flush writes nested `wiki/`; clone it elsewhere and read markdown ([M3](./design/M3/README.md)). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **hub** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. Host Flush + git log need `VITE_SIDECAR_URL` and Compose **sidecar** (`--profile snapshot`). `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **[M4 — folder tree](./design/M4/README.md)** (gated on M3 closed). Adapter: [MDGate](./design/MDGate/README.md).
 
 Browser console noise from extensions (`contentscript.js`, MetaMask, ObjectMultiplex) is not Venus.
 
 ## Sync (hub)
 
-Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/hub/)). The browser talks to the hub on `127.0.0.1:3000`; Postgres is not published. Host ports bind localhost only. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
+Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/backend/hub/)). The browser talks to the hub on `127.0.0.1:3000`; Postgres is not published. Host ports bind localhost only. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
 
 ```bash
 docker compose up --build postgres hub
@@ -133,7 +133,7 @@ pnpm test:e2e
 
 Memory-only: `e2e/m0-*.spec.ts` and `e2e/m2-*.spec.ts`. Ignores `m1-*.spec.ts`. If a stale Vite is bound to 5173, kill it first — `reuseExistingServer` will reuse a broken process.
 
-M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out) and [Manual testing (M2)](#manual-testing-m2-close-out).
+M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out), [Manual testing (M2)](#manual-testing-m2-close-out), and [Manual testing (M3)](#manual-testing-m3-close-out).
 
 ## Manual testing (M0 close-out)
 
@@ -193,6 +193,23 @@ There is **no markdown mode switch**. Layout is three columns: markdown **source
 8. **Optional two tabs (M1).** Same URL in a second tab. Type a unique word in A; B’s **note** (not only the pane) should show it without reload. If B stays stale, check hub logs (`docker compose logs hub`) — y-octo apply must not panic. Do not `docker compose down -v` unless you want a clean seed.
 
 If any required step (1–6) fails, M2 is not done. Fix the exporter or the pane loop; do not hide jitter by stripping whitespace. Full contract: [M2 step 8](./design/M2/plan.md#8-step-verify). Specs: [scenarios/markdown-projection](./scenarios/markdown-projection.md).
+
+## Manual testing (M3 close-out)
+
+Keep this checklist for close-out and regression. Playwright (`pnpm test:e2e:m3`) does **not** replace it. Use Chrome or Firefox yourself (not a screenshot, not Playwright headed mode). Fail on uncaught exceptions from the host or BlockSuite. Ignore extension noise (`contentscript.js`, MetaMask, ObjectMultiplex). There is **no** review-comment prompt on Flush.
+
+Clone-elsewhere without the editor is `cargo test -p venus-sidecar --test verify` (CI). After a real Flush, `pnpm wiki:clone` copies `wiki/` to `/tmp/venus-wiki-clone`.
+
+1. From the repo root: `mkdir -p wiki && chmod a+rwx wiki`, then `docker compose --profile snapshot up --build postgres hub sidecar` (or `pnpm compose:up` plus `--profile snapshot` sidecar). Host Vite: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` and `VITE_SIDECAR_URL=http://127.0.0.1:3002` (see `apps/web/.env.example`). Open the Vite URL on **:5174** if you copy the M3 Playwright ports, or Compose **http://127.0.0.1:8080** if `web` bakes `VITE_SIDECAR_URL`.
+2. **Seed.** Title **Venus**. Body has H1 **Why Venus** and H2 **Empty host**. Flush and git-log chrome are visible (`data-testid="venus-flush"` / `venus-git-log`).
+3. **Type.** Click the empty paragraph at the top of the note. Type a unique word (e.g. `m3-hello`). Wait ~2s for persist.
+4. **Flush.** Click **Flush**. No review why. The editor stays editable (not `readonly`).
+5. **Clone.** `pnpm wiki:clone` (or `git clone wiki /tmp/venus-wiki-clone`). Open `/tmp/venus-wiki-clone/spec/home.md` in an editor. It is ordinary markdown: seed headings **and** the unique word. No Postgres and no hub are required to read it. Fail if the file is Yjs binary.
+6. **Git log.** `[data-testid="venus-git-log"]` shows `snapshot: …` (autocomment). Not Yjs undo labels.
+7. **Second tab during Flush (optional delay).** Sidecar `SNAPSHOT_CONVERT_SLEEP_MS=3000` for a visible window (do not bake into Compose defaults). Open the same URL in tab B. Click Flush in A, type `during-flush` in A; B’s **note** shows it without reload. A can still type.
+8. **No origin.** `git -C wiki remote` is empty. Product git still ignores `/wiki/`.
+
+If any required step fails, M3 is not done. Fix the sidecar or host chrome; do not treat the live editor as the way to “see” git. Full contract: [M3 step 9](./design/M3/plan.md#9-step-verify).
 
 ## Build
 

@@ -8,7 +8,7 @@ Markdown copy of the Cursor canvas **MDGate fromDoc / toDoc review** (re-review 
 | **RAM splice** | `splice.js` `incrementalFromDoc` |
 | **Pin convert** | `pin-from-doc.js` `pinThenFromDoc` — [pin-convert.md](../MDGate/pin-convert.md) |
 | **Test-only `toDoc`** | `roundTripFromDoc` on a **new** Store |
-| **Security detail** | [security.md](./security.md) (S1–S7). Revisit after [M4](../venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks). |
+| **Security detail** | [security.md](./security.md) (S1–S7). Revisit after [M4](../M4/README.md). |
 | **Adapter** | BlockSuite **0.22.4** |
 | **Pane loop** | Mounted: `md-pane-loop.js` + `incrementalFromDoc`; highlight.js re-paints the whole string |
 
@@ -104,7 +104,7 @@ Path A can tolerate a missed dirty id: the pane looks wrong until the next full 
 
 Detail: [security.md](./security.md). `toDoc` still runs only in Vitest (`roundTripFromDoc` on a new Store). M6 apply is hunk-slice parse, never whole-file replace. S4 export inject was tightened with the P5 rewrite.
 
-**Revisit after M4.** One-page M2 keeps S4 apply-resolution and S5 synced-doc inlining mostly latent. [M4](../venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks) adds catalog, two pages, and `embed-linked-doc` round-trip; [dogfood](../venus-implementation-plan.md#v1-dogfood--document-the-product) starts then. Re-read this note and [security.md](./security.md) before treating the wiki as the product store.
+**Revisit after M4.** One-page M2 keeps S4 apply-resolution and S5 synced-doc inlining mostly latent. [M4](../M4/README.md) adds catalog, two pages, and `embed-linked-doc` round-trip; [dogfood](../venus-implementation-plan.md#v1-dogfood--document-the-product) starts then. Re-read this note and [security.md](./security.md) before treating the wiki as the product store.
 
 | ID | Sev | M2 status | Finding |
 |---|---|---|---|
@@ -122,7 +122,7 @@ Detail: [security.md](./security.md). `toDoc` still runs only in Vitest (`roundT
 
 | Do | Layer | Why it is still open |
 |---|---|---|
-| Re-read S1–S7 after M4 | [implementation plan M4](../venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks) | Catalog + two pages make S4 comment resolution and S5 `'content'` inlining live. Do this before [dogfood](../venus-implementation-plan.md#minimum-useful-after-m4). |
+| Re-read S1–S7 after M4 | [M4/plan.md](../M4/plan.md) | Catalog + two pages make S4 comment resolution and S5 `'content'` inlining live. Do this before [dogfood](../venus-implementation-plan.md#minimum-useful-after-m4). |
 | M5 lease convert must call `pinThenFromDoc`, not the pane map | M5 + [pin-convert.md](../MDGate/pin-convert.md) | Helper shipped. Wiring is later. Path A typing does not use this. |
 | Allowlist image URLs on any `toDoc`; no default `fetch(http)` | M6 apply + adapter configs | S1. SSRF / `data:` DoS in `FetchUtils.fetchable`. |
 | Stop inlining embed-synced-doc bodies (or strip from subset) | `createMarkdownAdapter` | S5. `'content'` middleware still set. |

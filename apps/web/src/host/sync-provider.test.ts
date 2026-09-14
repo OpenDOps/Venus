@@ -71,6 +71,10 @@ test('Seam holds: editor host files do not import live sync clients', () => {
     expect(src, name).not.toMatch(/providers\//);
     expect(src, name).not.toMatch(/venus-hub/);
     expect(src, name).not.toMatch(/blob-source/);
+    expect(src, name).not.toMatch(/venus-sidecar/);
+    expect(src, name).not.toMatch(/\/git\/log|venus-git-log/);
+    expect(src, name).not.toMatch(/from-doc\.js|pin-from-doc/);
+    expect(src, name).not.toMatch(/git2|simple-git|isomorphic-git/);
   }
 });
 

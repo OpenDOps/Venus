@@ -180,6 +180,147 @@ async fn assert_no_jobs_row(pool: &PgPool) {
     }
 }
 
+async fn dirty_wiki_rows(pool: &PgPool, workspace_id: &str) -> i64 {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*)::bigint FROM dirty_wiki WHERE workspace_id = $1::uuid")
+            .bind(workspace_id)
+            .fetch_one(pool)
+            .await
+            .expect("dirty_wiki rows");
+    n
+}
+
+async fn dirty_wiki_first_at(pool: &PgPool, workspace_id: &str) -> String {
+    sqlx::query_scalar("SELECT first_dirty_at::text FROM dirty_wiki WHERE workspace_id = $1::uuid")
+        .bind(workspace_id)
+        .fetch_one(pool)
+        .await
+        .expect("dirty_wiki.first_dirty_at")
+}
+
+/// M3 step-pin-schema: hub migrate creates Venus tables (not the sidecar).
+#[tokio::test]
+async fn m3_pin_schema_tables_exist() {
+    let pool = connect_fresh().await;
+    let names: Vec<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_name IN ('dirty_wiki', 'jobs', 'last_flushed')
+         ORDER BY table_name",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("information_schema tables");
+    assert_eq!(
+        names,
+        ["dirty_wiki", "jobs", "last_flushed"],
+        "hub schema.sql must create dirty_wiki, jobs, last_flushed"
+    );
+
+    let pk: Vec<String> = sqlx::query_scalar(
+        "SELECT a.attname
+         FROM pg_index i
+         JOIN pg_attribute a
+           ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
+         WHERE i.indrelid = 'public.jobs'::regclass AND i.indisprimary
+         ORDER BY a.attnum",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("jobs primary key");
+    assert_eq!(
+        pk,
+        ["workspace_id"],
+        "jobs must have a unique workspace_id (PRIMARY KEY)"
+    );
+
+    let sidecar_sql = collect_sidecar_sql();
+    for needle in [
+        "CREATE TABLE dirty_wiki",
+        "CREATE TABLE jobs",
+        "CREATE TABLE last_flushed",
+        "CREATE TABLE IF NOT EXISTS dirty_wiki",
+        "CREATE TABLE IF NOT EXISTS jobs",
+        "CREATE TABLE IF NOT EXISTS last_flushed",
+    ] {
+        assert!(
+            !sidecar_sql
+                .to_ascii_uppercase()
+                .contains(&needle.to_ascii_uppercase()),
+            "sidecar must not create {needle}; hub migrate owns the tables"
+        );
+    }
+}
+
+/// M3 step-pin-schema: persist trigger upserts dirty_wiki; never jobs.
+#[tokio::test]
+async fn trigger_marks_dirty_wiki_not_jobs() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    db::push_update(&pool, &ws, PAGE_DOC_ID, &spike_bin())
+        .await
+        .expect("persist");
+
+    assert_eq!(
+        dirty_rows(&pool, &ws).await,
+        1,
+        "one dirty row for the workspace / PAGE_DOC_ID"
+    );
+    assert_eq!(
+        dirty_wiki_rows(&pool, &ws).await,
+        1,
+        "one dirty_wiki row for the workspace"
+    );
+    let first = dirty_wiki_first_at(&pool, &ws).await;
+    assert_no_jobs_row(&pool).await;
+
+    db::push_update(&pool, &ws, PAGE_DOC_ID, &spike_kv("k2", "v2"))
+        .await
+        .expect("second persist");
+    assert_eq!(
+        dirty_rows(&pool, &ws).await,
+        1,
+        "second persist upserts dirty, does not insert a second page row"
+    );
+    assert_eq!(
+        dirty_wiki_rows(&pool, &ws).await,
+        1,
+        "second persist must not insert a second dirty_wiki row"
+    );
+    assert_eq!(
+        dirty_wiki_first_at(&pool, &ws).await,
+        first,
+        "ON CONFLICT DO NOTHING must not reset first_dirty_at"
+    );
+    assert_no_jobs_row(&pool).await;
+}
+
+fn collect_sidecar_sql() -> String {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../venus-sidecar");
+    let mut out = String::new();
+    collect_files(&dir, &mut out);
+    out
+}
+
+fn collect_files(dir: &std::path::Path, out: &mut String) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries {
+        let entry = entry.expect("dirent");
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, out);
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("sql" | "rs")
+        ) {
+            out.push_str(&std::fs::read_to_string(&path).unwrap_or_default());
+            out.push('\n');
+        }
+    }
+}
+
 #[tokio::test]
 async fn connect_with_honors_pool_settings() {
     let url = PG.get_or_init(start_pg).await.database_url.clone();
@@ -883,10 +1024,7 @@ async fn measure_p1_shape(
             if random {
                 rng.bytes(bin_len)
             } else {
-                let fill = (i % 251) as u8;
-                let mut bin = Vec::with_capacity(bin_len);
-                bin.resize(bin_len, fill);
-                bin
+                vec![(i % 251) as u8; bin_len]
             }
         })
         .collect();

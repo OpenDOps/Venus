@@ -117,9 +117,9 @@ test('Map complete: Names — git snapshotter Actuals are concrete', () => {
   expect(section).toContain('60000');
   expect(section).toContain('POST http://127.0.0.1:3002/flush');
   expect(section).toContain('GET http://127.0.0.1:3002/git/log');
-  expect(section).toMatch(/one inflight/i);
-  expect(section).toMatch(/pin at \*\*run\*\*|pin at run/i);
-  expect(section).toContain('no `jobs`');
+  expect(section).toMatch(/inflight/i);
+  expect(section).toMatch(/pin at \*\*claim\*\*|pin at claim/i);
+  expect(section).toMatch(/`jobs`/);
   expect(section).toMatch(/crash recovery/i);
   expect(section).toContain('doc:home');
   expect(section).toContain('WIKI_DIR');

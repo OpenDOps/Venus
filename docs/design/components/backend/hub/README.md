@@ -2,7 +2,7 @@
 
 **M3.0 board:** steps 1–9 `done` (closed 2026-09-13).
 
-Venus-owned **collab front**. Compose service **`hub`**. Source: [`crates/venus-hub`](../../../../crates/venus-hub). Image: [`deploy/hub/Dockerfile`](../../../../deploy/hub/Dockerfile).
+Venus-owned **collab front**. Compose service **`hub`**. Source: [`crates/venus-hub`](../../../../../crates/venus-hub). Image: [`deploy/hub/Dockerfile`](../../../../../deploy/hub/Dockerfile).
 
 | Doc | Role |
 |---|---|
@@ -10,9 +10,9 @@ Venus-owned **collab front**. Compose service **`hub`**. Source: [`crates/venus-
 | [architecture.md](./architecture.md) | Software architecture of the process (apply / fan-out / persist, **memory caps**) |
 | [files.md](./files.md) | Crate tree and what each `.rs` does |
 
-Live CRDT HA: [M3.0/high-availability.md](../../M3.0/high-availability.md). Dirty logic/perf leftovers: [logicals-and-performance.md](../../M3.0/logicals-and-performance.md). Plan: [M3.0/plan.md](../../M3.0/plan.md). Dataflow of Venus: [architecture.md](../../architecture.md). Actuals: [api-map.md](../../api-map.md).
+Live CRDT HA: [M3.0/high-availability.md](../../../M3.0/high-availability.md). Dirty logic/perf leftovers: [logicals-and-performance.md](../../../M3.0/logicals-and-performance.md). Plan: [M3.0/plan.md](../../../M3.0/plan.md). Dataflow of Venus: [architecture.md](../../../architecture.md). Actuals: [api-map.md](../../../api-map.md).
 
-This folder is the **process** (run, Rust, SQL, HTTP). The **wire** (Yjs on `spaceDoc`, seam, tab share, export as a protocol) stays in [CRDT/README.md](../../CRDT/README.md). No Rust in the editor: [CRDT/wasm.md](../../CRDT/wasm.md).
+This folder is the **process** (run, Rust, SQL, HTTP). The **wire** (Yjs on `spaceDoc`, seam, tab share, export as a protocol) stays in [CRDT/README.md](../../../CRDT/README.md). No Rust in the editor: [CRDT/wasm.md](../../../CRDT/wasm.md).
 
 It is **not** BlockSuite, not JWST Block REST, not `fromDoc` / `toDoc`, not git, not `jobs`. The browser editor stays JS (`yjs@13.6.32` on `store.spaceDoc`). Rust is this process only.
 
@@ -125,7 +125,7 @@ dirty         (workspace_id, doc_id) → { clock, first_dirty_at }
 - **Hydrate:** snapshot bytes, then each `crdt_update` in `seq` order, `apply_update_from_binary_v1`.
 - **Flush:** append update binaries. `dirty.clock` is `max(seq)` for that statement.
 - **Compact:** background. New updates with `seq` greater than the compacted max are left in the trail. Compact does **not** mark dirty — it merges rows the flush already marked, at that same clock.
-- **Dirty:** one statement-level `AFTER INSERT` on `crdt_update` (`crdt_update_dirty`) upserts `dirty` with `max(seq)`, monotonic via `GREATEST`. Grain is `(workspace_id, doc_id)`. The function catches `undefined_table` (logs a `WARNING`) so a missing `dirty` table cannot roll back persist. The hub process does **not** `INSERT` into `jobs` (M3 observer).
+- **Dirty:** one statement-level `AFTER INSERT` on `crdt_update` (`crdt_update_dirty`) upserts `dirty` with `max(seq)`, monotonic via `GREATEST`, and `INSERT … ON CONFLICT DO NOTHING` into `dirty_wiki`. Grain is `(workspace_id, doc_id)` for `dirty`; wiki grain for `dirty_wiki`. The function catches `undefined_table` (logs a `WARNING`) so a missing `dirty` / `dirty_wiki` table cannot roll back persist. Hub migrate also creates empty `jobs` and `last_flushed`. The hub process does **not** `INSERT` into `jobs` (M3 observer).
 - **Blobs:** Postgres `BYTEA`, keyed by workspace + hash. Not S3 in M3.0.
 
 After a write, wait **≥2s** before `docker compose restart hub` if you are testing persist.
@@ -148,4 +148,4 @@ The host still uses `OctoBaseKeckProvider` (`kind: 'octobase'`) as a **wire alia
 
 ## License
 
-New hub files: **MIT OR Apache-2.0**. y-octo is MIT. This image is **not** AGPL keck. keck Dockerfile may remain under `deploy/octobase/` as history; product Compose does not build it. [licensing.md](../../../legal/licensing.md).
+New hub files: **MIT OR Apache-2.0**. y-octo is MIT. This image is **not** AGPL keck. keck Dockerfile may remain under `deploy/octobase/` as history; product Compose does not build it. [licensing.md](../../../../legal/licensing.md).

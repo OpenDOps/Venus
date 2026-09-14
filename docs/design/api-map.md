@@ -1,6 +1,6 @@
 # API map
 
-One contract for **installed** symbols. Milestone plans ([M0](./M0/plan.md), [M1](./M1/plan.md), [M2](./M2/plan.md), [M3.0](./M3.0/plan.md), [M3](./M3/plan.md), …) use **design names** from [venus-implementation-plan.md](./venus-implementation-plan.md). This file is the Actual column. Do not keep a second map per milestone.
+One contract for **installed** symbols. Milestone plans ([M0](./M0/plan.md), [M1](./M1/plan.md), [M2](./M2/plan.md), [M3.0](./M3.0/plan.md), [M3](./M3/plan.md), [M4](./M4/plan.md), …) use **design names** from [venus-implementation-plan.md](./venus-implementation-plan.md). This file is the Actual column. Do not keep a second map per milestone.
 
 Fill new rows when recon for that slice runs. Do not keep coding against names that are not in this table. If packages disagree with a plan’s hints, **this file wins**.
 
@@ -13,7 +13,7 @@ Fill new rows when recon for that slice runs. Do not keep coding against names t
 | `yjs` | `13.6.32` (root `pnpm.overrides`; one major, no duplicate) | M0 |
 | `@toeverything/theme` | `1.1.23` (`style.css` + `fonts.css`) | M0 |
 | AFFiNE git SHA used as the copy source (editor container) | AFFiNE tag `v0.22.4`, file `blocksuite/integration-test/src/editors/editor-container.ts`. Class renamed `TestAffineEditorContainer` → `VenusEditorContainer`; tag stays `affine-editor-container`. Copy lives at `apps/web/src/host/editor-container.js` (`.js` so `tsc` does not follow affine’s published `.ts`). | M0 |
-| Sync server | **Venus hub** (`crates/venus-hub`, y-octo `0.1.0`). Compose service **`hub`**. Listen `0.0.0.0:3000` (`HUB_LISTEN`). Product store: **Postgres** (`POSTGRES_HOST` / `POSTGRES_USER` / `POSTGRES_PASSWORD`, or `DATABASE_URL`). [hub](./components/hub/). M1 keck SHA is history (row below). | M3.0 |
+| Sync server | **Venus hub** (`crates/venus-hub`, y-octo `0.1.0`). Compose service **`hub`**. Listen `0.0.0.0:3000` (`HUB_LISTEN`). Product store: **Postgres** (`POSTGRES_HOST` / `POSTGRES_USER` / `POSTGRES_PASSWORD`, or `DATABASE_URL`). [hub](./components/backend/hub/). M1 keck SHA is history (row below). | M3.0 |
 | JS sync client | No npm OctoBase client. Venus class `OctoBaseKeckProvider` (`apps/web/src/host/providers/octobase-keck-provider.js`). **Kind `'octobase'` is a wire alias for the hub.** Wire: `yjs@13.6.32` + `y-protocols@1.0.7` + `lib0@0.2.117`, `new WebSocket(url, ['AFFiNE'])`. **Not** `y-websocket` `WebsocketProvider`. | M1 / M3.0 |
 | Blob HTTP | Hub: `POST /api/blobs/:workspace` (`application/octet-stream`) → `{ id, exists }`; `GET`/`HEAD`/`DELETE /api/blobs/:workspace/:hash`. Hash = SHA-256 base64url **with padding**. | M3.0 |
 | `y-octo` crate | crates.io **`0.1.0`**: `Doc::try_from_binary_v1`, `apply_update_from_binary_v1`, `encode_update_v1`. Product apply is the hub, not keck `jwst-codec`. | M1 / M3.0 |
@@ -105,11 +105,11 @@ Recon notes (2026-09-01, [M3.0 `step-recon-hub`](./M3.0/plan.md#1-step-recon-hub
 | Blob HTTP | OctoBase blob REST or `POST /blobs/:id` on a tiny Venus service | `POST /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00` body `application/octet-stream` → `{ id, exists }`; `GET`/`HEAD`/`DELETE /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00/:hash` | Nested under `/api` (default features). No list endpoint. CORS has POST, not PUT. |
 | Image in page | slash / paste → `affine:image` | flavour `affine:image` (`ImageBlockSchema`); props `sourceId`. Tag `affine-image`; page child `affine-page-image` in `.affine-image-container`. Playwright: `affine-image .affine-image-container img` | Slash Image → `blobSync.set(file)` → `sourceId`. Pixels after blob HTTP (step 6). |
 | Doc export | keck REST **or** `y-octo` `Doc::try_from_binary_v1` + `encode_update_v1` | `GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export` → Yjs update v1 (`application/octet-stream`). Optional decode: y-octo `0.1.0` `Doc::try_from_binary_v1`. | Current tree, not a pinned `T0` or git snapshot. [glossary](./glossary.md). |
-| Compose | `postgres` + `hub` + `web` | `docker-compose.yml` at repo root. Full stack: `docker compose up --build` (`pnpm compose:up`). Hub-only: `docker compose up --build postgres hub` (`pnpm sync:up`). Volume `pg-venus-data`. Database `venus`. Cluster superuser `venus`; hub role `venus_hub` (NOSUPERUSER). Hub env: `POSTGRES_HOST=postgres`, `POSTGRES_USER=venus_hub`, `POSTGRES_PASSWORD=venus`, `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable`. Host ports bind `127.0.0.1` (`:3000`, `:8080`). Persist across restart: `pnpm compose:dod`. | Three containers. Do not `down -v` if you need the doc. [devops/compose](../devops/compose.md). [hub](./components/hub/). |
+| Compose | `postgres` + `hub` + `web` | `docker-compose.yml` at repo root. Full stack: `docker compose up --build` (`pnpm compose:up`). Hub-only: `docker compose up --build postgres hub` (`pnpm sync:up`). Volume `pg-venus-data`. Database `venus`. Cluster superuser `venus`; hub role `venus_hub` (NOSUPERUSER). Hub env: `POSTGRES_HOST=postgres`, `POSTGRES_USER=venus_hub`, `POSTGRES_PASSWORD=venus`, `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable`. Host ports bind `127.0.0.1` (`:3000`, `:8080`). Persist across restart: `pnpm compose:dod`. | Three containers. Do not `down -v` if you need the doc. [devops/compose](../devops/compose.md). [hub](./components/backend/hub/). |
 
 ### Chosen backend (M3.0)
 
-Product Compose is **`postgres` + `hub` + `web`**. M1 keck rows above stay as history. How to run / Rust / persist: [hub](./components/hub/).
+Product Compose is **`postgres` + `hub` + `web`**. M1 keck rows above stay as history. How to run / Rust / persist: [hub](./components/backend/hub/).
 
 | | |
 |---|---|
@@ -166,27 +166,46 @@ Fill Actual in [M3 `step-recon-snapshot`](./M3/plan.md#1-step-recon-snapshot). D
 Recon notes (2026-09-13, [M3 `step-recon-snapshot`](./M3/plan.md#1-step-recon-snapshot), Darwin arm64, hub `GET /` = `venus-hub`):
 
 - **Gate:** M3.0 board steps 1–9 `done`. LiveSnapshot HA Acceptance **accepted 2026-09-13** (2026-09-01 table, items 1–9). M3 may start recon; still do **not** write `wiki/` commits or link convert into `crates/venus-hub`.
-- **Pin source is idle GET, not replica encode.** After persist batch (**≥2s**, env `SNAPSHOT_PERSIST_WAIT_MS` default `2000`), `GET` the Chosen-backend **Export command**. Replica encode is allowed later if a hidden AFFiNE client is needed for M5 `T0`; it is **not** required to close M3. Not the tab `Store`. Not `FOR UPDATE` on `crdt_*`.
+- **2026-09-14 replan:** product pin is **MVCC** after a `jobs` **claim**, not idle GET. Queue is Venus **`jobs`** + `dirty_wiki`. `last_flushed` is a Venus table. Convert engine, gitPath, CLI, wiki autoinit from 2026-09-13 still stand. The next bullet is recon history only.
+- **Pin source (2026-09-13, superseded):** idle GET after persist batch (**≥2s**). Do not implement as product collect. Not the tab `Store`. Not `FOR UPDATE` on `crdt_*`.
 - **Convert JS is a Node CLI that boots Vite**, not raw `node pin-from-doc.js` and not a V8 embed. BlockSuite 0.22.4 publishes `.ts`; Node 22 throws `ERR_UNKNOWN_FILE_EXTENSION`. Actual command (cwd `apps/web`): `VENUS_BLOB_ORIGIN=http://127.0.0.1:3000 node src/host/mdgate/from-pinned-cli.js /tmp/venus-page.yjs` (`pnpm --filter @venus/web from-pinned`). The CLI `ssrLoadModule`s `pin-from-doc.js` → `fromPinnedBytes` (same `from-doc.js` as the pane). Optional `VENUS_BLOB_ORIGIN` attaches `OctoBaseBlobSource` so `affine:image` `sourceId`s resolve. stdout is JSON `{ markdown, sidecar }` (fully drained; large pins must not use `stdout.write` + `process.exit`). **No git commit.** Module graph does **not** import `splice.js` / `mount-md-pane.js`.
 - **Convert engine is in-process Rust** ([step-rust-adapter](./M3/plan.md#3-step-rust-adapter), 2026-09-13): `venus_sidecar::from_doc::from_pinned_bytes` over y-octo. Markdown bytes + sidecar `blocks[]` (`id`,`start`,`end`) + `docId` match the JS CLI on seed, M2 goldens, and the 2 000-paragraph pin (≥512 KiB markdown). JS CLI stays the **dialect oracle**. Flush (step 6) uses this Actual. Bench: [M3 convert-bench](./M3/convert-bench.md). Unresolved `affine:image` (no blob map) is omitted, same as JS `fromDocSnapshot` without assets.
-- **Spike:** wait ≥2s, Export command (seeded `doc:home` on this machine), `fromPinnedBytes` + blob origin → markdown contains seed H1 `Why Venus`. Hub apply/broadcast/persist was not paused. Convert is not in `handle_socket`.
-- **Queue (M3 thin):** one inflight per wiki. `dirty` upsert **starts the idle timer only** (enqueue). Pin Map fills when idle/Flush **runs**, not at upsert. Collect page bytes ∪ dirty blobs **then** `fromDoc`. Drop the pin Map after commit. **no `jobs`** table, no `dirty_wiki` table in M3.
-- **Crash recovery:** RAM `last_flushed = { clock, gitSha }`. After process death, read git sidecar `clock` at `wiki/.venus/ids/doc:home.json` plus `git rev-parse HEAD`. No Venus `last_flushed` table in M3.
+- **Spike:** wait ≥2s, Export command `curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs` (seeded `doc:home` on this machine), `fromPinnedBytes` + blob origin → markdown contains seed H1 `Why Venus`. Hub apply/broadcast/persist was not paused. Convert is not in `handle_socket`. Spike ≠ product pin.
+- **Queue (2026-09-14):** observer `INSERT…SELECT` `jobs` from `dirty_wiki`. Workers `SKIP LOCKED` + TTL lease, then COMMIT. Pin Map fills in **step-pin-cut** after that claim (`REPEATABLE READ` plain `SELECT` of S). 4.2 claim leaves the Map empty. Trigger never writes `jobs`.
+- **Crash recovery (2026-09-14):** Venus `last_flushed` + git HEAD. Pin Map is RAM-only.
 - **Wiki:** product `.gitignore` `/wiki/`. Sidecar **autoinit on first Flush** (`git2` init if `wiki/.git` missing). Default branch `main`. Env `WIKI_DIR` default `wiki` (repo-relative). **No origin** in M3. Do not `git init` in recon.
 
 | Design name | Likely | Actual | Notes |
 |---|---|---|---|
-| Snapshotter process | `crates/venus-sidecar`, Compose `sidecar` | `crates/venus-sidecar`. Compose `sidecar` (`--profile snapshot` until Flush). Listen `0.0.0.0:3002` (`SIDECAR_LISTEN`, host `127.0.0.1:3002`). | Rust + y-octo hydrate + in-process `fromDoc` (JS CLI is the test oracle; git2 later). **Not** `crates/venus-hub`. Browser tab does not `git commit`. |
-| Pin source | Idle/Flush: `GET` Export command after ≥2s, or replica encode | Idle/Flush **run**: wait `SNAPSHOT_PERSIST_WAIT_MS` (default **2000**), then `curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs`. | Best-effort cut. Not replica encode in M3. Not the live tab `Store`. Not the pane splice. Pin at **run**, not dirty upsert. |
+| Snapshotter process | `crates/venus-sidecar`, Compose `sidecar` | `crates/venus-sidecar`. Compose `sidecar` (`--profile snapshot`). Listen `0.0.0.0:3002` (`SIDECAR_LISTEN`, host `127.0.0.1:3002`). | Rust + y-octo hydrate + in-process `fromDoc` (JS CLI is the test oracle) + **git2** autoinit/commit. **Not** `crates/venus-hub`. Browser tab does not `git commit`. |
+| Pin source | After claim: MVCC `SELECT` of S | Worker claim → `REPEATABLE READ` plain `SELECT` `crdt_snapshot` + `crdt_update` trail + dirty blobs. `clock` = `dirty.clock` (persist seq). | Not GET export. Not hub `get_doc` (`FOR SHARE`). Not replica encode. Not the live tab `Store`. Pin at **claim**, not dirty upsert. |
+| Queue | Venus `jobs` | `dirty_wiki` trigger + sidecar observer `INSERT…SELECT` `jobs`. Workers `SNAPSHOT_WORKERS` default **2**. Observer tick `SNAPSHOT_OBSERVE_MS` default **1000**. `FOR UPDATE SKIP LOCKED` then COMMIT. Optional `SNAPSHOT_CONVERT_SLEEP_MS` (default **0**) sleeps after cut COMMIT, before `fromDoc`. | Trigger never writes `jobs`. Hub never writes `jobs`. Idle `not_before` = `first_dirty_at + SNAPSHOT_IDLE_MS`. Flush: `POST /flush` sets `reason=flush`, `not_before=now`. |
+| Idle | 60s (`SNAPSHOT_IDLE_MS`) | `SNAPSHOT_IDLE_MS` default **60000** (30–120s window) on `jobs.not_before`. | Second persist does **not** reset `not_before` / `first_dirty_at`. No pin until claim. |
+| Flush | Host `data-testid="venus-flush"` → sidecar | Host chrome `data-testid="venus-flush"` → sidecar `POST http://127.0.0.1:3002/flush` (empty body = M0 wiki). Optional `?workspace=<uuid>`. Shown when `VITE_SIDECAR_URL` is set (Compose web bakes `http://127.0.0.1:3002`). Host `void fetch` (does not await convert). | Pulls `not_before` forward. Does not copy Yjs. Does not set `store.readonly`. Typing during convert still A→B ([step-live-during-flush](./M3/plan.md#7-step-live-during-flush)). `mount-editor` is ignorant. |
+| `last_flushed` | Venus table | `last_flushed(workspace_id, doc_id, clock, git_sha)`. Crash = that row + git HEAD. | Idempotent after commit. Observer ignores `dirty.clock <= last_flushed.clock`. |
 | Convert JS | Node CLI importing `fromPinnedBytes` from `pin-from-doc.js` | `VENUS_BLOB_ORIGIN=http://127.0.0.1:3000 node src/host/mdgate/from-pinned-cli.js /tmp/venus-page.yjs` (cwd `apps/web`; `pnpm --filter @venus/web from-pinned`). Sidecar spawn writes a temp `.yjs` (not stdin `-`; CLI still accepts `-`). | Vite `ssrLoadModule` → `fromPinnedBytes`. Same `from-doc.js`. **Dialect oracle**. Do not embed V8 in M3. |
 | Convert engine | JS CLI until Rust goldens match | **Rust** in-process: `venus_sidecar::from_doc::from_pinned_bytes` (y-octo). JS CLI remains the oracle. | Flush uses this Actual. Goldens + large pin byte-identical 2026-09-13. Bench: [M3 convert-bench](./M3/convert-bench.md). |
-| gitPath | `spec/home.md` for `doc:home` | `spec/home.md` | Catalog v0 constant. Mapped to `doc:home` only. No catalog CRDT. No second page path. |
-| Sidecar on disk | `wiki/.venus/ids/<docId>.json` | `wiki/.venus/ids/doc:home.json` | JSON `{ docId: "doc:home", clock, blocks }`. `clock` is the **pin** clock (`encodeSidecarClock` / lib0 state vector). Dirty SQL uses hub UUID `395cd07b-bdb1-5f54-ada8-e9a3fabb6a20`. |
-| Idle | 60s (`SNAPSHOT_IDLE_MS`) | `SNAPSHOT_IDLE_MS` default **60000** (30–120s window). | From `dirty.first_dirty_at`. Second edit upserts `dirty.clock`; does **not** restart `not_before`. No pin until the timer fires. |
-| Flush | Host `data-testid="venus-flush"` → sidecar | Host chrome `data-testid="venus-flush"` → sidecar `POST http://127.0.0.1:3002/flush` (empty body). Tests may set idle due-now. | Immediate **run** after persist wait. Not stdio as the product trigger. Flush does not set `store.readonly`. Not implemented in step 1. |
-| Git log | `data-testid="venus-git-log"`; sidecar `GET /git/log` | Host chrome `data-testid="venus-git-log"`; sidecar `GET http://127.0.0.1:3002/git/log?path=spec/home.md` → `{ subject, sha }[]`. | Subjects, not Yjs undo. Step 8. Memory mode: hidden/empty. |
-| `last_flushed` | RAM; crash recovery = sidecar `clock` | In-process `{ clock, gitSha }`. Crash recovery = `wiki/.venus/ids/doc:home.json` `clock` + git HEAD. | **no `jobs`** table in M3. Idempotent after commit. |
-| Wiki repo | Nested `wiki/`; sidecar git2 **init on first snapshot** if missing | Nested `wiki/` (`WIKI_DIR` default `wiki`). Product `.gitignore` `/wiki/`. Default branch `main`. Sidecar git2 **autoinit on first Flush** if `.git` is missing. | Separate history from the product remote. No origin in M3. One inflight flush per this wiki. Collect page+blobs then `fromDoc`; drop pin after commit. |
+| gitPath | `spec/home.md` for `doc:home` | `spec/home.md` | M3 catalog v0 constant. Mapped to `doc:home` only. Catalog CRDT + second page path: [M4](./M4/plan.md). |
+| Sidecar on disk | `wiki/.venus/ids/<docId>.json` | `wiki/.venus/ids/doc:home.json` | JSON `{ docId: "doc:home", clock, blocks }`. `clock` is the **pin** clock (`dirty.clock` at cut). Dirty SQL uses hub UUID `395cd07b-bdb1-5f54-ada8-e9a3fabb6a20`. |
+| Git log | `data-testid="venus-git-log"`; sidecar `GET /git/log` | Host chrome `data-testid="venus-git-log"`; sidecar `GET http://127.0.0.1:3002/git/log?path=spec/home.md` → `{ subject, sha }[]`. Host polls while sidecar env is on (hidden in memory mode with Flush). | Subjects, not Yjs undo. git2 walk of commits that touch `spec/home.md`. Other paths 400. Empty repo `[]`. |
+| Wiki repo | Nested `wiki/`; sidecar git2 **init on first snapshot** if missing | Nested `wiki/` (`WIKI_DIR` default `wiki`). Product `.gitignore` `/wiki/`. Default branch `main`. Sidecar git2 **autoinit on first Flush** if `.git` is missing. | Separate history from the product remote. No origin in M3. Inflight 1 = `jobs` lease. Collect S then `fromDoc`; drop pin after commit. |
+
+## Names — catalog / tree / header
+
+Fill Actual in [M4 `step-recon-catalog`](./M4/plan.md#1-step-recon-catalog). Do not code M4 against empty cells. If this section disagrees with [M4/plan.md](./M4/plan.md) **Chosen stack**, **this file wins** after recon.
+
+| Design name | Likely | Actual | Notes |
+|---|---|---|---|
+| Catalog space guid | `venus:catalog` | recon: | Plain Y.Doc, not `affine:page`. SQL `doc_id` = UUID v5 (DNS) of this string. |
+| Second seed page | `doc:protocol` → `spec/protocol.md` | recon: | Mint once. SQL v5 of the guid. |
+| Multi-doc wire | Bare `/collaboration/:workspace_id` = `doc:home`; second doc Actual (path suffix, query, or N sockets on one Room) | recon: | Owner grain stays `workspace_id`. Must not break M1. |
+| Per-doc export | `GET /api/block/:workspace/:doc/export` (UUID or guid Actual) | recon: | Bare `GET /api/block/:workspace/export` stays home. |
+| Catalog nodes | `Y.Map` `{ id, kind, name, parentId, order, docId?, gitPath }` | recon: | [datamodel](./datamodel/crdt.md#catalog). `gitPath` derived. |
+| Order | Fractional index among siblings | recon: | Recon locks helper / package. |
+| Tree host | `data-testid="venus-tree"` | recon: | `@headless-tree/react` (pin at M4 recon). View over catalog Y.Doc. `dataLoader` reads nodes; drop → catalog ops. Not AFFiNE explorer. [CRDT tree](./components/frontend/crdt-tree/). |
+| Header | `data-testid="venus-header"`; undo/redo; `venus-page-title` | recon: | `store.undo()` / `store.redo()`; `canUndo` / `canRedo` (or Actual observables). Not `@affine/core`. |
+| `git mv` | Sidecar git2 rename when catalog `gitPath` ≠ last commit path | recon: | On Flush, not on drop. Catalog-only dirty skips `fromDoc`. |
+| Linked-doc export | `[title](relative.md)` + `<!-- venus:doc:<id> -->` | recon: | Title + path from catalog. `pageId = docId`. `toDoc` restoring the card is M6. |
 
 ## Forbidden imports
 
@@ -196,6 +215,6 @@ Always forbidden in `apps/web`:
 - AFFiNE Cloud Socket.IO protocol
 - Docusaurus / VitePress / AFFiNE explorer as a TOC
 
-`mount-editor.js` / `editor-container.js` / `boot.js` must not import OctoBase, `y-websocket`, Hocuspocus, `y-indexeddb`, `y-protocols`, `lib0`, or blob HTTP clients. They must not import `MarkdownAdapter` or `src/host/mdgate/` ([M2](./M2/plan.md) — pane is host chrome). They must not import git, `venus-sidecar`, or snapshot Flush ([M3](./M3/plan.md)).
+`mount-editor.js` / `editor-container.js` / `boot.js` must not import OctoBase, `y-websocket`, Hocuspocus, `y-indexeddb`, `y-protocols`, `lib0`, or blob HTTP clients. They must not import `MarkdownAdapter` or `src/host/mdgate/` ([M2](./M2/plan.md) — pane is host chrome). They must not import git, `venus-sidecar`, or snapshot Flush ([M3](./M3/plan.md)). They must not import catalog, tree, or product header ([M4](./M4/plan.md) — chrome in App).
 
 `y-protocols` / `lib0` and `OctoBaseKeckProvider` live in `src/host/providers/` and `package.json`. OctoBase must not be an npm dependency of `@venus/web` (AGPL server process only). Do not add `y-websocket` unless the backend kind changes.

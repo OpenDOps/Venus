@@ -77,7 +77,7 @@ Compose today       = 2 × 32 × 16MB = 1 GB   (postgres mem_limit is 1g)
 
 It is a ceiling taken lazily per sort/hash node and released at statement end, not a reservation, so steady state is a fraction of that — but the worst case already equals the whole container, and **each added hub replica books another ~512 MB of it**. Size `HUB_DB_WORK_MEM` against `replicas × pool`, not per pod, and keep the fleet's total connections under the server `max_connections` (image default 100).
 
-The **larger** budget at thousands of wikis is the hub's own RAM, not Postgres: one live `Y.Doc` per room plus a persist buffer capped at `PERSIST_BYTES` (8 MiB) **per room**. A thousand backed-up rooms is 8 GB against `mem_limit: 1g`. Room eviction and that cap are the levers there; `work_mem` is a rounding error beside it. Do not tune `work_mem` to fix a hub OOM. Process-level caps vs working set: [hub architecture — Memory](../design/components/hub/architecture.md#memory-caps-not-working-set).
+The **larger** budget at thousands of wikis is the hub's own RAM, not Postgres: one live `Y.Doc` per room plus a persist buffer capped at `PERSIST_BYTES` (8 MiB) **per room**. A thousand backed-up rooms is 8 GB against `mem_limit: 1g`. Room eviction and that cap are the levers there; `work_mem` is a rounding error beside it. Do not tune `work_mem` to fix a hub OOM. Process-level caps vs working set: [hub architecture — Memory](../design/components/backend/hub/architecture.md#memory-caps-not-working-set).
 
 Two ways to make the allowance shared rather than multiplied, if the Postgres side ever binds. Neither is built — measure first:
 

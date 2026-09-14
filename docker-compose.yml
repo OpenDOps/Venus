@@ -2,10 +2,10 @@
 # Product Compose default services are postgres + hub + web. There is no octobase
 # on this path. keck remains under deploy/octobase/ as M1 history; do not build it here.
 # Hub image is MIT/Apache Venus code — see deploy/NOTICE.
-# M3 snapshotter is Compose `sidecar` (`--profile snapshot`) until Flush lands.
+# M3 snapshotter is Compose `sidecar` (`--profile snapshot`). Flush autoinits wiki/.
 # Never omit Postgres (no SQLite fallback). Do not publish 5432.
 # Host ports bind 127.0.0.1 only (hub :3000, web :8080, hub-b :3001, sidecar :3002).
-# Operators: docs/devops/compose.md  Component: docs/design/components/hub/
+# Operators: docs/devops/compose.md  Component: docs/design/components/backend/hub/
 
 # Pool: 32 covers 10 distinct cold exports + 10 blob GETs + 10 room flushes
 # overlapping, plus heartbeat. Compact shares the persist-task connection.
@@ -121,11 +121,30 @@ services:
       context: .
       dockerfile: deploy/sidecar/Dockerfile
     depends_on:
+      postgres:
+        condition: service_healthy
       hub:
         condition: service_healthy
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: venus_hub
+      POSTGRES_PASSWORD: venus
+      POSTGRES_DB: venus
+      DATABASE_URL: "postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable"
       SIDECAR_LISTEN: "0.0.0.0:3002"
       VENUS_BLOB_ORIGIN: "http://hub:3000"
+      SNAPSHOT_WORKERS: "2"
+      SNAPSHOT_IDLE_MS: "60000"
+      SNAPSHOT_OBSERVE_MS: "1000"
+      # Default 0. For `pnpm test:e2e:m3:live` pass SNAPSHOT_CONVERT_SLEEP_MS=3000 — do not bake a delay.
+      SNAPSHOT_CONVERT_SLEEP_MS: ${SNAPSHOT_CONVERT_SLEEP_MS:-0}
+      WIKI_DIR: /wiki
+      SIDECAR_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080"
+    volumes:
+      # Nested wiki git (product .gitignore /wiki/). `mkdir -p wiki && chmod a+rwx wiki`
+      # so USER venus can autoinit on the bind mount.
+      - ./wiki:/wiki
     ports:
       - "127.0.0.1:3002:3002"
     mem_limit: 1g

@@ -13,3 +13,5 @@ export function providerFromEnv(env?: {
 export function blobSourcesFromEnv(env?: { VITE_SYNC_URL?: string }):
   | { main: OctoBaseBlobSource }
   | undefined;
+
+export function sidecarUrlFromEnv(env?: { VITE_SIDECAR_URL?: string }): string;

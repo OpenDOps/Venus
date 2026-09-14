@@ -249,7 +249,7 @@ Why not “just git” as the live tree: two people moving folders need a merge;
 
 Identity: **path is not identity**. Links and leases key by `docId`. Renames do not break `affine:embed-linked-doc`.
 
-Do not use AFFiNE explorer, Docusaurus, or VitePress as the live tree. Product header (undo/redo, current page, who holds the lease) is host chrome with this tree ([M4](./venus-implementation-plan.md#m4--folder-tree--links--product-header-12-weeks)) — not `@affine/core`.
+Do not use AFFiNE explorer, Docusaurus, or VitePress as the live tree. Product header (undo/redo, current page, who holds the lease) is host chrome with this tree ([M4](./M4/README.md), [CRDT tree](./components/frontend/crdt-tree/)) — not `@affine/core`.
 
 ## Cross-document references
 

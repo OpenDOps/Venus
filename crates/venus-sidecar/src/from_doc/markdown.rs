@@ -165,11 +165,15 @@ fn para_own(block: &Block) -> String {
 
 fn list_own(block: &Block) -> String {
     let kind = block.list_kind.unwrap_or(ListKind::Bulleted);
-    let marker = list_marker(kind, 1, if kind == ListKind::Todo {
-        Some(block.checked)
-    } else {
-        None
-    });
+    let marker = list_marker(
+        kind,
+        1,
+        if kind == ListKind::Todo {
+            Some(block.checked)
+        } else {
+            None
+        },
+    );
     let text = inline_md(&block.deltas);
     let mut out = marker;
     out.push_str(&text);
@@ -444,9 +448,7 @@ fn url_mentions_page_id(url: &str, page_id: &str) -> bool {
 }
 
 fn is_safe_page_id(page_id: &str) -> bool {
-    !page_id.is_empty()
-        && page_id.len() <= 128
-        && regex_is_safe(page_id)
+    !page_id.is_empty() && page_id.len() <= 128 && regex_is_safe(page_id)
 }
 
 fn regex_is_safe(page_id: &str) -> bool {

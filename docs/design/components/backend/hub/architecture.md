@@ -1,10 +1,10 @@
 # Hub software architecture
 
-How **this process** is built. Venus-wide dataflow (tabs ↔ hub ↔ Postgres) stays in [architecture.md](../../architecture.md). Scale / owner / dirty contract: [M3.0 HA](../../M3.0/high-availability.md). Crate map: [files.md](./files.md). How to run: [README.md](./README.md). **Memory caps vs working set:** [Memory](#memory-caps-not-working-set).
+How **this process** is built. Venus-wide dataflow (tabs ↔ hub ↔ Postgres) stays in [architecture.md](../../../architecture.md). Scale / owner / dirty contract: [M3.0 HA](../../../M3.0/high-availability.md). Crate map: [files.md](./files.md). How to run: [README.md](./README.md). **Memory caps vs working set:** [Memory](#memory-caps-not-working-set).
 
 Crate `venus-hub`: one **library** (`src/lib.rs`) + one **binary** (`src/main.rs`). Runtime is **Tokio** (`rt-multi-thread`). HTTP and WebSocket are **Axum 0.8** (`ws` → tokio-tungstenite). Apply engine is **y-octo 0.1.0**. Not Socket.IO, not actix, not a Node `ws` server. Persist is opaque `BYTEA` — the hub does **not** walk CRDT items (that was keck’s `Format` panic class).
 
-[M3.0 `step-ws`](../../M3.0/plan.md#3-step-ws) is the merge buffer: two clients share one RAM doc over `AFFiNE`; persist drains ~1s into step-2 tables. Compose as the product path is the next step.
+[M3.0 `step-ws`](../../../M3.0/plan.md#3-step-ws) is the merge buffer: two clients share one RAM doc over `AFFiNE`; persist drains ~1s into step-2 tables. Compose as the product path is the next step.
 
 ## Layers
 
@@ -82,7 +82,7 @@ Live collab never waits on markdown, git, or pin convert. Persist is never pause
 
 ## Room as the unit of concurrency
 
-M3.0 is **one Y.Doc per room**. Path `/collaboration/:workspace_id` is a UUID (M0 wiki is UUID v5 of `venus-m0`). That room **is** the page `spaceDoc` (BlockSuite guid `doc:home`). SQL `doc_id` is UUID v5 of `doc:home`. Many pages per wiki is later; the **lease grain stays `workspace_id`**.
+M3.0 is **one Y.Doc per room**. Path `/collaboration/:workspace_id` is a UUID (M0 wiki is UUID v5 of `venus-m0`). That room **is** the page `spaceDoc` (BlockSuite guid `doc:home`). SQL `doc_id` is UUID v5 of `doc:home`. Many pages per wiki (including catalog `venus:catalog`) is [M4](../../../M4/README.md) / [CRDT tree](../../frontend/crdt-tree/); the **lease grain stays `workspace_id`**.
 
 ```text
 Hub
@@ -133,7 +133,7 @@ Then a select loop: socket binary → `Room::handle_binary`; outbound mpsc → s
 | AwarenessQuery | Empty awareness to that socket |
 | Awareness / Auth | Ignore |
 
-Two sockets on the same room: A’s Update is visible to B without reload (order of ~200ms is ok). After a write, the persist tick (~1s; tests wait **≥2s**) `INSERT`s `crdt_update`. Restarting **this process** (Postgres stays) hydrates a new client from SQL, not RAM. Compose `restart hub` without `-v` is proven in [step-compose-hub](../../M3.0/plan.md#4-step-compose-hub).
+Two sockets on the same room: A’s Update is visible to B without reload (order of ~200ms is ok). After a write, the persist tick (~1s; tests wait **≥2s**) `INSERT`s `crdt_update`. Restarting **this process** (Postgres stays) hydrates a new client from SQL, not RAM. Compose `restart hub` without `-v` is proven in [step-compose-hub](../../../M3.0/plan.md#4-step-compose-hub).
 
 ## RAM vs SQL
 
@@ -194,7 +194,7 @@ Postgres RAM attributable to one hub replica
   = 32 × 16 MiB = 512 MiB     # ceiling, taken lazily, released at statement end
 ```
 
-Idle pool connections do not hold 16 MiB. The spend is a cap-sized `unnest($3::bytea[])` flush (persist buffer at 8 MiB). Typing batches never spill. Wiki count does not appear in the product: ten thousand wikis still flush through the same 32 backends. A **second hub replica** adds another 32 × 16 MiB of worst-case Postgres — fleet math is `replicas × pool × work_mem` ([hub-fleet.md](../../../devops/hub-fleet.md#memory-budget-as-replicas-grow)). Do not set `work_mem` on the role or in `postgresql.conf` (snapshotters and exports would inherit it).
+Idle pool connections do not hold 16 MiB. The spend is a cap-sized `unnest($3::bytea[])` flush (persist buffer at 8 MiB). Typing batches never spill. Wiki count does not appear in the product: ten thousand wikis still flush through the same 32 backends. A **second hub replica** adds another 32 × 16 MiB of worst-case Postgres — fleet math is `replicas × pool × work_mem` ([hub-fleet.md](../../../../devops/hub-fleet.md#memory-budget-as-replicas-grow)). Do not set `work_mem` on the role or in `postgresql.conf` (snapshotters and exports would inherit it).
 
 `shared_buffers`, WAL, and table cache are server-wide. `dirty` rows are two UUIDs + a bigint + a timestamp on disk, not a hub buffer. The trigger’s `NEW TABLE` copy lives for one flush statement inside a backend.
 
@@ -217,7 +217,7 @@ Do not tune `work_mem` to fix a hub OOM — that is live docs and stuck persist 
 | Block REST children / flavour | Opaque Yjs binaries |
 | `jwst-rpc` / OctoBase clone | Not linked. [files.md](./files.md) |
 | `fromDoc` / `toDoc` / git / `jobs` | M3 worker beside the hub |
-| Rust in the editor | [CRDT/wasm.md](../../CRDT/wasm.md) |
+| Rust in the editor | [CRDT/wasm.md](../../../CRDT/wasm.md) |
 | SQLite product store | Startup error |
 | Per-socket persist tasks | One persist buffer per room |
 | Compact on every `INSERT` | Background, count threshold 32 |

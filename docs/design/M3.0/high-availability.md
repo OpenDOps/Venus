@@ -54,7 +54,7 @@ Live collaboration **never** waits on markdown, git, or pin convert. Persist is 
 | `workspace_id` | Wiki. Gateway shard / **lease**. One live owner. | UUID (`77e4a2b1-8b40-5979-a73c-fd4477216d00` for M0) |
 | `docId` | Page. One RAM `Y.Doc`. | BlockSuite `doc:home` on that room; SQL `doc_id` is UUID v5 of `doc:home` |
 
-M3.0 keeps **one Y.Doc per keck-shaped room** (`/collaboration/:workspace_id` = that page’s `spaceDoc`) so the existing client stays drop-in. Many pages per wiki is M4+ (then one owner still holds all docs for that `workspace_id`).
+M3.0 keeps **one Y.Doc per keck-shaped room** (`/collaboration/:workspace_id` = that page’s `spaceDoc`) so the existing client stays drop-in. Many pages per wiki is [M4](../M4/README.md) (then one owner still holds all docs for that `workspace_id`).
 
 **Owner / sticky grain is the wiki.** Apply, persist, and the RAM `Y.Doc` are **per `docId`**. Do not make an apply queue per socket.
 
@@ -213,6 +213,6 @@ Re-accept before treating M3.0 HA as done (the plan’s `step-ha-owner` + `step-
 | [README.md](./README.md) | M3.0 slice |
 | [plan.md](./plan.md) | Steps |
 | [high-availability.md](./high-availability.md) | This live CRDT HA |
-| [Hub](../components/hub/) | Process, [architecture](../components/hub/architecture.md), [files](../components/hub/files.md) |
+| [Hub](../components/backend/hub/) | Process, [architecture](../components/backend/hub/architecture.md), [files](../components/backend/hub/files.md) |
 | [LiveSnapshot HA](../LiveSnapshot/high-availability.md) | Pin/git/jobs scale |
 | [Hub fleet](../../devops/hub-fleet.md) | Later: gateway, HPA, session drain |

@@ -63,6 +63,76 @@ fn hub_dockerfile_entrypoint_is_not_sidecar() {
 }
 
 #[test]
+fn sidecar_queue_does_not_poll_export() {
+    let queue = fs::read_to_string(repo_root().join("crates/venus-sidecar/src/queue.rs"))
+        .expect("queue.rs");
+    for needle in ["/export", "reqwest"] {
+        assert!(
+            !queue.contains(needle),
+            "observer must not GET hub export to decide dirty ({needle})"
+        );
+    }
+}
+
+#[test]
+fn sidecar_cut_is_not_hub_export() {
+    let cut =
+        fs::read_to_string(repo_root().join("crates/venus-sidecar/src/cut.rs")).expect("cut.rs");
+    for needle in ["/export", "reqwest", ":3000/api/block"] {
+        assert!(
+            !cut.contains(needle),
+            "step-pin-cut must not GET hub export ({needle})"
+        );
+    }
+}
+
+#[test]
+fn sidecar_flush_does_not_poll_export() {
+    let http =
+        fs::read_to_string(repo_root().join("crates/venus-sidecar/src/http.rs")).expect("http.rs");
+    for needle in ["/export", "reqwest", ":3000/api/block"] {
+        assert!(
+            !http.contains(needle),
+            "POST /flush must not GET hub export ({needle})"
+        );
+    }
+}
+
+#[test]
+fn sidecar_git_is_not_hub_export() {
+    let git =
+        fs::read_to_string(repo_root().join("crates/venus-sidecar/src/git.rs")).expect("git.rs");
+    for needle in ["/export", "reqwest", "get_doc", ":3000/api/block"] {
+        assert!(
+            !git.contains(needle),
+            "git2 snapshot must not GET hub export ({needle})"
+        );
+    }
+}
+
+#[test]
+fn sidecar_git_log_is_not_in_hub() {
+    let mut hub = String::new();
+    collect_rs(&hub_dir().join("src"), &mut hub);
+    assert!(
+        !hub.contains("/git/log"),
+        "git log HTTP belongs on venus-sidecar, not the hub"
+    );
+    let http =
+        fs::read_to_string(repo_root().join("crates/venus-sidecar/src/http.rs")).expect("http.rs");
+    assert!(
+        http.contains("/git/log"),
+        "sidecar must expose GET /git/log"
+    );
+    for needle in ["/export", "reqwest", "get_doc"] {
+        assert!(
+            !http.contains(needle),
+            "GET /git/log must not GET hub export ({needle})"
+        );
+    }
+}
+
+#[test]
 fn cargo_tree_hub_does_not_include_sidecar_or_git2() {
     let root = repo_root();
     for pkg in ["venus-sidecar", "git2"] {

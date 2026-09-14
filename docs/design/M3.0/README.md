@@ -2,7 +2,7 @@
 
 A **standalone merge buffer**: apply Yjs, broadcast to the room, persist to **Postgres**. Same browser wire as M1 (`y-protocols/sync`, subprotocol `AFFiNE`). **No** OctoBase keck, JWST Block REST, markdown, or git.
 
-**Status: closed** (2026-09-13) — board steps 1–9 `done`. Product apply is **Rust + y-octo** (MIT). Store is **Postgres** `crdt_*` / `blob`. AFFiNE WS apply / broadcast / persist ~1s is in the crate. Compose product path is **`postgres` + `hub`**. App uses the hub via `OctoBaseKeckProvider` (`kind: 'octobase'` alias). M1 hydrate / two tabs / blobs / export are green on the hub. One live owner per `workspace_id` (`workspace_lease`; second process 503; SIGTERM drain). Persist upserts `dirty(workspace_id, doc_id, clock)` (statement-level trigger; no `jobs`). How the crate is meant to run: [hub](../components/hub/). Internals: [architecture](../components/hub/architecture.md), [files](../components/hub/files.md).
+**Status: closed** (2026-09-13) — board steps 1–9 `done`. Product apply is **Rust + y-octo** (MIT). Store is **Postgres** `crdt_*` / `blob`. AFFiNE WS apply / broadcast / persist ~1s is in the crate. Compose product path is **`postgres` + `hub`**. App uses the hub via `OctoBaseKeckProvider` (`kind: 'octobase'` alias). M1 hydrate / two tabs / blobs / export are green on the hub. One live owner per `workspace_id` (`workspace_lease`; second process 503; SIGTERM drain). Persist upserts `dirty(workspace_id, doc_id, clock)` (statement-level trigger; no `jobs`). How the crate is meant to run: [hub](../components/backend/hub/). Internals: [architecture](../components/backend/hub/architecture.md), [files](../components/backend/hub/files.md).
 
 This folder is the implementation contract for the M3.0 slice in [venus-implementation-plan.md](../venus-implementation-plan.md). Live CRDT HA: [high-availability.md](./high-availability.md). Dataflow: [architecture.md](../architecture.md). CRDT stack: [CRDT/README.md](../CRDT/README.md). M1 keck (legacy wire proof): [M1](../M1/README.md).
 
@@ -20,4 +20,4 @@ Shared: [api-map.md](../api-map.md) (Chosen backend = Venus hub). Words: [glossa
 
 **Exit (held):** Compose is **`postgres` + `hub` + `web`**. Hub is **Rust + y-octo**. Same `AFFiNE` wire. Export is Yjs update v1 from **Venus tables**. One live owner per wiki (`workspace_lease`). Dirty upsert on persist (no `jobs`). keck is **not** a product service.
 
-**Next:** [M3 — Git snapshotter](../M3/README.md) ([plan](../M3/plan.md)). This milestone is **closed**. LiveSnapshot HA Acceptance is **accepted 2026-09-13**. Convert helper: [pin-convert.md](../MDGate/pin-convert.md).
+**Next:** [M4 — Folder tree + links + product header](../M4/README.md) ([plan](../M4/plan.md)). [M3](../M3/README.md) is **closed** (2026-09-14). This milestone is **closed**. LiveSnapshot HA Acceptance is **accepted 2026-09-13**. Convert helper: [pin-convert.md](../MDGate/pin-convert.md).

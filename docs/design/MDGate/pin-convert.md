@@ -1,8 +1,8 @@
 # Pin then convert — git / lease `T0`
 
-**Status:** helper shipped in M2 (`apps/web/src/host/mdgate/pin-from-doc.js`). Convert CLI for the sidecar: `from-pinned-cli.js` (M3 recon). Git write of `wiki/` is [M3](../M3/README.md) ([plan](../M3/plan.md)). [M3.0](../M3.0/README.md) is **closed**; [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance** accepted 2026-09-13. Pin source is hub **GET export** after ≥2s (api-map). Lease acquire reuses the same convert ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Apply consumes the pair ([apply.md](./apply.md)). Exporter: [README.md](./README.md). Spectator: [live-pane.md](./live-pane.md).
+**Status:** helper shipped in M2 (`apps/web/src/host/mdgate/pin-from-doc.js`). Convert CLI for the sidecar: `from-pinned-cli.js` (M3 recon). Git write of `wiki/` is [M3](../M3/README.md) ([plan](../M3/plan.md)). [M3.0](../M3.0/README.md) is **closed**; [LiveSnapshot HA](../LiveSnapshot/high-availability.md) **Acceptance** accepted 2026-09-13. Product pin source is MVCC `SELECT` of `crdt_*` after a `jobs` claim ([M3 step-pin-cut](../M3/plan.md#43-step-pin-cut)). Lease acquire reuses the same convert ([M5](../venus-implementation-plan.md#m5--lease--freeze-week)). Apply consumes the pair ([apply.md](./apply.md)). Exporter: [README.md](./README.md). Spectator: [live-pane.md](./live-pane.md).
 
-This is **Path B**: a frozen CRDT clock → markdown + sidecar. It is not the live pane.
+This is **Path B**: a frozen CRDT clock → markdown + sidecar. It is not the live pane. Product pin bytes in M3 come from an MVCC `SELECT` of `crdt_*` after a `jobs` claim ([M3 step-pin-cut](../M3/plan.md#43-step-pin-cut)), not hub GET export.
 
 ## Two directions
 

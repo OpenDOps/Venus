@@ -60,6 +60,8 @@ Node
 
 Moves = reparent + order. They do not rewrite page bodies. Next git commit that includes the move does `git mv` ([git.md](./git.md)). Empty folders may exist only in the catalog until a placeholder exists in git.
 
+Host view + hub loop: [CRDT tree](../components/frontend/crdt-tree/).
+
 ## Review session
 
 Sibling of the published page. Holds:

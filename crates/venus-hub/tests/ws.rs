@@ -134,6 +134,24 @@ async fn dirty_clock(pool: &PgPool, workspace: &str) -> Option<(i64, i64)> {
     .expect("dirty")
 }
 
+async fn dirty_wiki_rows(pool: &PgPool, workspace: &str) -> i64 {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*)::bigint FROM dirty_wiki WHERE workspace_id = $1::uuid")
+            .bind(workspace)
+            .fetch_one(pool)
+            .await
+            .expect("dirty_wiki rows");
+    n
+}
+
+async fn dirty_wiki_first_at(pool: &PgPool, workspace: &str) -> String {
+    sqlx::query_scalar("SELECT first_dirty_at::text FROM dirty_wiki WHERE workspace_id = $1::uuid")
+        .bind(workspace)
+        .fetch_one(pool)
+        .await
+        .expect("dirty_wiki.first_dirty_at")
+}
+
 async fn assert_no_jobs_row(pool: &PgPool) {
     let reg: Option<String> = sqlx::query_scalar("SELECT to_regclass('public.jobs')::text")
         .fetch_one(pool)
@@ -792,6 +810,12 @@ async fn persist_after_ws_upserts_dirty_clock_not_jobs() {
         .expect("dirty row after first persist");
     assert_eq!(n1, 1, "one dirty row per (workspace_id, PAGE_DOC_ID)");
     assert!(clock1 >= 1, "clock must be the flushed seq, got {clock1}");
+    assert_eq!(
+        dirty_wiki_rows(&pool, &workspace).await,
+        1,
+        "persist must upsert one dirty_wiki row"
+    );
+    let first = dirty_wiki_first_at(&pool, &workspace).await;
     assert_no_jobs_row(&pool).await;
 
     send_update(&mut a, extra_spike_bin()).await;
@@ -803,6 +827,16 @@ async fn persist_after_ws_upserts_dirty_clock_not_jobs() {
     assert!(
         clock2 > clock1,
         "second persist must move dirty.clock ({clock1} → {clock2})"
+    );
+    assert_eq!(
+        dirty_wiki_rows(&pool, &workspace).await,
+        1,
+        "second persist must not insert a second dirty_wiki row"
+    );
+    assert_eq!(
+        dirty_wiki_first_at(&pool, &workspace).await,
+        first,
+        "ON CONFLICT DO NOTHING must not reset first_dirty_at"
     );
     assert_no_jobs_row(&pool).await;
 

@@ -40,7 +40,7 @@ M0 + M1 together are “simple BlockSuite + OctoBase deployment”: Compose with
 |---|---|
 | Markdown pane, adapter fixtures, sidecars of block ids | M2 — [M2/plan.md](../M2/plan.md). Design: [MDGate](../MDGate/README.md) |
 | `wiki/` git, flush, autocomment | M3 |
-| Folder tree, catalog CRDT, product header | M4 |
+| Folder tree, catalog CRDT, product header | [M4](../M4/README.md) |
 | Lease, freeze, CodeMirror | M5 |
 | Review After/Before/Diff | M6 |
 | Auth, display names, awareness UI | v1 can wait |

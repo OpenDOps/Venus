@@ -15,17 +15,12 @@ pub fn fixtures_dir() -> PathBuf {
 
 pub fn load_fixture(name: &str) -> Vec<u8> {
     let path = fixtures_dir().join(name);
-    match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            let mut msg = String::from("missing pin fixture ");
-            msg.push_str(&path.display().to_string());
-            msg.push_str(" (");
-            msg.push_str(&e.to_string());
-            msg.push_str("); run apps/web/scripts/write-sidecar-fromdoc-pins.js");
-            std::panic::panic_any(msg)
-        }
-    }
+    std::fs::read(&path).unwrap_or_else(|e| {
+        panic!(
+            "missing pin fixture {} ({e}); run apps/web/scripts/write-sidecar-fromdoc-pins.js",
+            path.display()
+        )
+    })
 }
 
 pub fn convert_cfg() -> ConvertConfig {
@@ -47,60 +42,35 @@ pub fn first_byte_diff(a: &str, b: &str) -> String {
         if ab[i] != bb[i] {
             let lo = i.saturating_sub(24);
             let hi = (i + 24).min(a.len()).min(b.len());
-            let mut msg = String::from("byte ");
-            msg.push_str(&i.to_string());
-            msg.push_str(": rust=");
-            msg.push(ab[i] as char);
-            msg.push_str(" other=");
-            msg.push(bb[i] as char);
-            msg.push_str(" rust_ctx=");
-            msg.push_str(&a[lo..hi.min(a.len())]);
-            msg.push_str(" other_ctx=");
-            msg.push_str(&b[lo..hi.min(b.len())]);
-            return msg;
+            return format!(
+                "byte {i}: rust={:?} other={:?} rust_ctx={:?} other_ctx={:?}",
+                ab[i] as char,
+                bb[i] as char,
+                &a[lo..hi.min(a.len())],
+                &b[lo..hi.min(b.len())]
+            );
         }
     }
-    let mut msg = String::from("prefix equal; rust_len=");
-    msg.push_str(&a.len().to_string());
-    msg.push_str(" other_len=");
-    msg.push_str(&b.len().to_string());
-    msg
+    format!("prefix equal; rust_len={} other_len={}", a.len(), b.len())
 }
 
 pub fn first_range_diff(a: &[SidecarBlock], b: &[SidecarBlock]) -> String {
     if a.len() != b.len() {
-        let mut msg = String::from("blocks.len rust=");
-        msg.push_str(&a.len().to_string());
-        msg.push_str(" other=");
-        msg.push_str(&b.len().to_string());
-        return msg;
+        return format!("blocks.len rust={} other={}", a.len(), b.len());
     }
     for (i, (ra, rb)) in a.iter().zip(b.iter()).enumerate() {
         if ra.id != rb.id || ra.start != rb.start || ra.end != rb.end {
-            let mut msg = String::from("block[");
-            msg.push_str(&i.to_string());
-            msg.push_str("]: rust=");
-            msg.push_str(&ra.id);
-            msg.push_str(" ");
-            msg.push_str(&ra.start.to_string());
-            msg.push_str("..");
-            msg.push_str(&ra.end.to_string());
-            msg.push_str(" other=");
-            msg.push_str(&rb.id);
-            msg.push_str(" ");
-            msg.push_str(&rb.start.to_string());
-            msg.push_str("..");
-            msg.push_str(&rb.end.to_string());
-            return msg;
+            return format!("block[{i}]: rust={ra:?} other={rb:?}");
         }
     }
-    String::from("ranges equal")
+    "ranges equal".into()
 }
 
 /// Markdown bytes, sidecar `docId`, and `blocks[]` (`id`,`start`,`end`). Clock is not compared.
 pub fn assert_identity(label: &str, rust: &Converted, js: &Converted) {
     assert_eq!(
-        rust.markdown, js.markdown,
+        rust.markdown,
+        js.markdown,
         "{label}: markdown mismatch: {}",
         first_byte_diff(&rust.markdown, &js.markdown)
     );
@@ -117,7 +87,8 @@ pub fn assert_identity(label: &str, rust: &Converted, js: &Converted) {
         "{label}: docId mismatch"
     );
     assert_eq!(
-        rust.sidecar.blocks, js.sidecar.blocks,
+        rust.sidecar.blocks,
+        js.sidecar.blocks,
         "{label}: sidecar ranges mismatch: {}",
         first_range_diff(&rust.sidecar.blocks, &js.sidecar.blocks)
     );

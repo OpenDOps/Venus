@@ -1,11 +1,14 @@
-# Venus snapshotter (Rust + y-octo hydrate + Node Path B CLI). MIT OR Apache-2.0.
+# Venus snapshotter (Rust + y-octo hydrate + git2 + Node Path B CLI). MIT OR Apache-2.0.
 # Not OctoBase. Do not COPY deploy/octobase into this image.
-# Health is GET / → venus-sidecar (process boots). No git init/commit in step-worker.
+# Health is GET / → venus-sidecar (process boots). First Flush autoinits WIKI_DIR.
 # Runtime is node:22-bookworm so the binary can spawn from-pinned-cli.js.
 # Hub image must not use this binary as its entrypoint.
 
 FROM rust:1.98.1-bookworm AS rust-build
 WORKDIR /src
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake pkg-config zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
 COPY crates/venus-hub crates/venus-hub
 COPY crates/venus-sidecar crates/venus-sidecar
@@ -29,11 +32,13 @@ RUN apt-get update \
 
 COPY --from=rust-build --chown=venus:venus /src/target/release/venus-sidecar /usr/local/bin/venus-sidecar
 COPY --from=node-deps --chown=venus:venus /src /opt/venus
+RUN mkdir -p /wiki && chown venus:venus /wiki
 
 ENV SIDECAR_LISTEN=0.0.0.0:3002
 ENV CONVERT_CWD=/opt/venus/apps/web
 ENV CONVERT_CLI=/opt/venus/apps/web/src/host/mdgate/from-pinned-cli.js
 ENV VENUS_BLOB_ORIGIN=http://hub:3000
+ENV WIKI_DIR=/wiki
 ENV HOME=/home/venus
 
 EXPOSE 3002

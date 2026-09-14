@@ -35,3 +35,27 @@ export async function assertHubOn3000(): Promise<void> {
     );
   }
 }
+
+/** Fail if the snapshotter is not listening (Flush / wiki write). */
+export async function assertSidecarOn3002(): Promise<void> {
+  let body = '';
+  try {
+    const res = await fetch('http://127.0.0.1:3002/', {
+      signal: AbortSignal.timeout(3000),
+    });
+    body = (await res.text()).trim();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
+      throw new Error(
+        `sidecar is not up on :3002 (${msg}). Start with docker compose --profile snapshot up sidecar (WIKI_DIR bind-mounted) or cargo run -p venus-sidecar with DATABASE_URL and WIKI_DIR=wiki.`,
+      );
+    }
+    throw err;
+  }
+  if (body !== 'venus-sidecar') {
+    throw new Error(
+      `:3002 is not venus-sidecar (GET / → ${JSON.stringify(body)}).`,
+    );
+  }
+}
