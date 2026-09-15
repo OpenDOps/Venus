@@ -16,6 +16,6 @@ Shared: [api-map.md](../api-map.md) (catalog / tree / header Actuals filled in `
 
 **Depends on:** [M3](../M3/README.md) closed. Host already syncs `doc:home` on the hub; Flush writes `wiki/spec/home.md`. `mount-editor` must stay unaware of catalog, tree, and header.
 
-**Exit:** home plus a page **created through the API** (not a pre-seeded `doc:protocol`), renamed in the tree, one link, move, git matches (`uuid.md` then `{filename}.md`), delete of a non-empty folder rejected and a leaf page `git rm`’d, [page identity](../datamodel/page-identity.md) YAML restored (`pages:` from DB, `folders:` from catalog pin). Header undo/redo matches keyboard undo on the open page. SharedWorker is an optimization; two pages must work without it.
+**Exit:** home plus a page **created through the API** (not a pre-seeded `doc:protocol`), renamed in the tree, one link, move, git matches (`uuid.md` then `{filename}.md`), delete of a non-empty folder rejected and a leaf page `git rm`’d, [page identity](../datamodel/page-identity.md) YAML restored from the catalog pin (`pages:` + `folders:`). Header undo/redo matches keyboard undo on the open page. SharedWorker is an optimization; two pages must work without it.
 
 **Next:** [M5 — Lease + freeze](../venus-implementation-plan.md#m5--lease--freeze-week). After this exit (not this board): record wiki remote + product remote@branch ([code-bind](../Agents/code-bind.md)).

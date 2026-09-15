@@ -60,7 +60,7 @@ Node
 
 Moves = reparent + order. They do not rewrite page bodies. Next git commit that includes the move does `git mv` ([git.md](./git.md)). Empty folders may have no git directory until a page is under them; they **are** listed in YAML `folders:`. **Delete:** reject if the node has children ([page-identity — Delete](./page-identity.md#delete)). **Create / first filename `{uuid}.md` / tree rename / YAML map:** [page-identity](./page-identity.md).
 
-Host view + hub loop: [CRDT tree](../components/frontend/crdt-tree/).
+Host view + hub loop: [CRDT tree](../components/frontend/crdt-tree/). There is **no** REST or gRPC that is the folder tree. Create / rename / reparent / delete run in the **host** (`apps/web/src/host/catalog/ops.js`) as Yjs transactions on `venus:catalog`. No `/api/pages`. `ListDocs` lists page SQL ids from the Flush cache, not live nodes.
 
 ## Review session
 

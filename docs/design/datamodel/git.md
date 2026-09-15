@@ -17,7 +17,7 @@ wiki/
     <uuid>.md                  ← first Flush after create; then git mv to protocol.md
   assets/
   .venus/
-    pages.yaml                 ← pages + folders naming map; restore on Flush (pages from DB, folders from catalog pin)
+    pages.yaml                 ← pages + folders naming map; restore on Flush from catalog pin
     ids/
       <docId>.json             ← block-id sidecar; clock = pin / accept clock
     snapshots/                 ← optional M8: <docId>/<gitSha>.bin (Yjs bytes)
@@ -27,8 +27,8 @@ wiki/
 
 | Path | What | Source |
 |---|---|---|
-| `<gitPath>.md` | Projection of one published page | `fromDoc` on a **pin** (snapshot) or on published after comment-commit **accept**. Create starts as `{uuid}.md`; rename `git mv`s; delete `git rm`s after `page_identity` is gone. |
-| `.venus/pages.yaml` | Full naming map: `pages:` + `folders:` | Flush: `pages:` from DB `page_identity`; `folders:` from catalog pin (Yjs id ↔ name ↔ folder `gitPath`). Not live identity. [page-identity](./page-identity.md) |
+| `<gitPath>.md` | Projection of one published page | `fromDoc` on a **pin** (snapshot) or on published after comment-commit **accept**. Create starts as `{uuid}.md`; rename `git mv`s; delete `git rm`s when the catalog pin lacks that doc. |
+| `.venus/pages.yaml` | Full naming map: `pages:` + `folders:` | Flush: **Rust** y-octo walk of catalog pin in `venus-sidecar` (id ↔ name ↔ `gitPath`). Same walk replaces `page_identity`. Not live identity. Not `fromDoc`. [page-identity](./page-identity.md) |
 | `.venus/ids/<docId>.json` | `{ docId, clock, blocks: [{ id, start, end }] }` | Same export. Ranges rebuilt every write; ids are CRDT ids |
 | `assets/` | Image (and other) bytes | Hub blob store → files on flush if dirty |
 | directories | Folder **nesting** | Catalog `gitPath`; `git mv` on publish when path changed |
@@ -75,7 +75,7 @@ Used when markdown must **come back** ([apply.md](../MDGate/apply.md)): diff vs 
 | Lease, threads, hunk **records** | [Review session](./crdt.md#review-session) |
 | Before/After proposal trees (while in flight) | [Commit spaces](./crdt.md#commit-before-and-after) |
 | Catalog sibling order | Catalog CRDT |
-| Page uuid ↔ path (identity) | Postgres `page_identity` ([page-identity](./page-identity.md)); git YAML is a copy |
+| Page uuid ↔ path (identity) | **Catalog CRDT** (live). Postgres `page_identity` + git YAML are Flush copies ([page-identity](./page-identity.md)) |
 | Agent private markdown buffer | Holder RAM until submit |
 | LifeIndexing gists / logical edges | Side index at git SHA ([LifeIndexing](../Agents/LifeIndexing.md)); not the spec |
 

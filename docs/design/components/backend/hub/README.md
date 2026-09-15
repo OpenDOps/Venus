@@ -9,7 +9,7 @@ Venus-owned **collab front**. Compose service **`hub`**. Source: [`crates/venus-
 | This file | Process: run, env, persist, HTTP |
 | [architecture.md](./architecture.md) | Software architecture of the process (apply / fan-out / persist, **memory caps**) |
 | [files.md](./files.md) | Crate tree and what each `.rs` does |
-| [page-identity.md](./page-identity.md) | M4: `page_identity` table + upsert API (not git, not catalog parse) |
+| [page-identity.md](./page-identity.md) | M4: `page_identity` Flush cache (sidecar from catalog pin; not HTTP, not merge parse) |
 
 Live CRDT HA: [M3.0/high-availability.md](../../../M3.0/high-availability.md). Dirty logic/perf leftovers: [logicals-and-performance.md](../../../M3.0/logicals-and-performance.md). Plan: [M3.0/plan.md](../../../M3.0/plan.md). Dataflow of Venus: [architecture.md](../../../architecture.md). Actuals: [api-map.md](../../../api-map.md).
 
@@ -23,7 +23,8 @@ Tab  -- y-protocols/sync + AFFiNE WS -->  hub (one owner per workspace_id)
                                             │ broadcast (other sockets)
                                             │ persist ~1s
                                             ▼
-                                         Postgres  crdt_* + blob + workspace_lease + dirty + page_identity
+                                         Postgres  crdt_* + blob + workspace_lease + dirty
+                                         (page_identity: sidecar Flush cache, not persist)
 ```
 
 ## How to run
@@ -122,7 +123,7 @@ crdt_update   (workspace_id, doc_id, seq) → { bin, created_at }
 blob          (workspace_id, hash) → { bytes }
 workspace_lease (workspace_id) → { owner, lease_until }
 dirty         (workspace_id, doc_id) → { clock, first_dirty_at }
-page_identity (workspace_id, uuid) → { doc_id, name, git_path }   ← M4; [page-identity.md](./page-identity.md)
+page_identity (workspace_id, uuid) → { doc_id, name, git_path }   ← M4 Flush cache; sidecar writes; [page-identity.md](./page-identity.md)
 ```
 
 - **Hydrate:** snapshot bytes, then each `crdt_update` in `seq` order, `apply_update_from_binary_v1`.
@@ -142,10 +143,8 @@ After a write, wait **≥2s** before `docker compose restart hub` if you are tes
 | `GET` | `/api/block/:workspace_id/export` | Advertisement JSON. Bare GET **200** `{ "advertisement": { … } }` (no `error`). `?doc=` **400** `export_http_disabled`. Yjs is gRPC `Hub.ExportDoc` (`HUB_GRPC_LISTEN`, default `:3100`). [rpc.md](../../../rpc.md) |
 | `POST` | `/api/blobs/:workspace_id` | `application/octet-stream` → `{ id, exists }` |
 | `GET`/`HEAD`/`DELETE` | `/api/blobs/:workspace_id/:hash` | bytes / `Content-Length` from `octet_length` (no body) / 404 / 204 |
-| `POST` | `/api/pages/:workspace_id` | M4 JSON upsert `page_identity`. `{ "data": { uuid, doc_id, name, git_path } }`. [page-identity](./page-identity.md) |
-| `DELETE` | `/api/pages/:workspace_id/:uuid` | M4 drop a page row. `{ "data": { "uuid" } }`. 409 `home_protected` / `node_not_empty`. |
 
-No `/api/block/:id/:block` CRUD. CORS: `GET`/`HEAD`/`POST`/`DELETE` and `Content-Type` / `If-None-Match`, origins from `HUB_CORS_ORIGINS` (default Vite `:5173`/`:5174` and Compose `:8080`). Empty list → no CORS layer. Page identity uses POST/DELETE (no PUT) so CORS stays as-is.
+No `/api/pages`. No `/api/block/:id/:block` CRUD. CORS: `GET`/`HEAD`/`POST`/`DELETE` and `Content-Type` / `If-None-Match`, origins from `HUB_CORS_ORIGINS` (default Vite `:5173`/`:5174` and Compose `:8080`). Empty list → no CORS layer. `DELETE` is for blobs. Page identity is catalog Yjs + sidecar SQL ([page-identity](./page-identity.md)).
 
 ## Client
 

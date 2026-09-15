@@ -436,7 +436,7 @@ Venus/
   apps/web/                 # BlockSuite host + tree + review UI
   crates/venus-hub/         # M3.0 product hub: y-octo apply + WS + persist
   crates/venus-sidecar/     # convert worker: y-octo hydrate + M2 adapter + git2
-  packages/catalog/         # catalog schema + ops
+  packages/catalog/         # not M4; catalog ops are apps/web/src/host/catalog/
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)

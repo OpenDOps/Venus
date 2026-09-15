@@ -7,6 +7,7 @@ import "venus/rpc/v1/error.proto";
 // Internal hub RPC. Browser collab stays AFFiNE WebSocket; blobs stay HTTP
 // for the tab. Sidecar and other Venus processes use this service.
 service Hub {
+  // Inventory: home + catalog + page_identity rows. Not a folder tree.
   rpc ListDocs(ListDocsRequest) returns (ListDocsResponse);
   rpc ExportDoc(ExportDocRequest) returns (ExportDocResponse);
 }

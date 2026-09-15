@@ -9,7 +9,8 @@ This is **Path B**: a frozen CRDT clock → markdown + sidecar. It is not the li
 | Path | Source | Markdown for | `T0`? |
 |---|---|---|---|
 | **A — spectator** | Live synced Store | Read-only pane | No. Subscribe / single-flight; `fromDoc` or RAM splice. |
-| **B — convert** | **Pinned Yjs bytes** | Git flush, lease `T0`, review `old` | Yes. Full `fromDoc` on an **offline clone** of those bytes. |
+| **B — convert** | **Pinned Yjs bytes** of a page | Git flush, lease `T0`, review `old` | Yes. Full `fromDoc` on an **offline clone**. Product = Rust in `venus-sidecar`. |
+| **B — catalog** | **Pinned Yjs bytes** of `venus:catalog` | **Not markdown.** YAML + `page_identity` + `gitPath` | Same Flush job. **Rust y-octo walk** of `nodes` in `venus-sidecar`. Do not `fromDoc` the catalog. |
 
 Typing in WYSIWYG is Path A. The hub sees Yjs updates. The pane photographs the live tree. There is no `Tn`.
 
