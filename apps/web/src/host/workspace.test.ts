@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
-import { PAGE_DOC_ID, WORKSPACE_ID } from './ids.js';
+import { PAGE_DOC_ID, WORKSPACE_ID, CATALOG_GUID } from './ids.js';
 import { createM0Workspace, openWorkspaceDoc } from './workspace.js';
 import { SEED_H1, SEED_TITLE } from './seed.js';
 import pkg from '../../package.json' with { type: 'json' };
@@ -60,7 +60,11 @@ test('App boot does not mint a second page', () => {
   const hostDir = dirname(fileURLToPath(import.meta.url));
   const app = readFileSync(join(hostDir, '../App.tsx'), 'utf8');
   expect(app).toMatch(/createM0Workspace/);
+  expect(app).toMatch(/openCatalog/);
+  expect(app).toMatch(/connectDocs/);
+  expect(app).toMatch(/disposeCatalog/);
   expect(app).not.toMatch(/openWorkspaceDoc/);
+  expect(app).not.toMatch(/CatalogTree/);
 });
 
 test('no sync socket on create', async () => {
@@ -168,6 +172,31 @@ test('abort during wait disconnects without throwing a sync timeout', async () =
     createM0Workspace(provider, { signal: ac.signal }),
   ).rejects.toMatchObject({ name: 'AbortError' });
   expect(disconnected).toBe(1);
+});
+
+test('abort during wait disconnects connectDocs extras', async () => {
+  const ac = new AbortController();
+  const disconnected: string[] = [];
+  const provider: SyncProvider = {
+    kind: 'memory',
+    synced: false,
+    connect() {},
+    disconnect(id: string) {
+      disconnected.push(id);
+    },
+    whenReady() {
+      ac.abort();
+      return new Promise(() => {});
+    },
+  };
+
+  await expect(
+    createM0Workspace(provider, {
+      signal: ac.signal,
+      connectDocs: [{ docId: CATALOG_GUID, ydoc: new Y.Doc() }],
+    }),
+  ).rejects.toMatchObject({ name: 'AbortError' });
+  expect(disconnected.sort()).toEqual([CATALOG_GUID, PAGE_DOC_ID].sort());
 });
 
 test('blobSources.main is wired as blobSync main', async () => {

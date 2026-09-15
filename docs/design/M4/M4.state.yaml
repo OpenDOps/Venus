@@ -50,10 +50,28 @@ steps:
         evidence: "2026-09-15 cargo test -p venus-hub --test store export_doc — export_doc_per_sql_uuid + grpc_export_doc_and_list_docs: ExportDoc omit = home; minted uuid is a different tree; guid invalid_doc; ListDocs home+catalog+page_identity; advertisement GET stays home+catalog. Compose 127.0.0.1:3100 Hub.ExportDoc."
   step-catalog-crdt: # 3
     n: 3
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Seed catalog
+        status: pass
+        evidence: "2026-09-15 pnpm --filter @venus/web test src/host/catalog — seed writes folder:spec + doc:home (spec/home.md); second seedOnce does not duplicate; no doc:protocol; workspace.docs.size stays 1"
+      - name: Create then rename
+        status: pass
+        evidence: "2026-09-15 ops.test.ts — createDoc under spec is spec/<uuid>.md; rename protocol → spec/protocol.md; uuid/docId unchanged; foo/bar → spec/foo_bar.md; sibling clash protocol_1.md; fractional-indexing@3.4.0 pinned"
+      - name: Reparent
+        status: pass
+        evidence: "2026-09-15 ops.test.ts — createFolder design at root; reparent protocol → design/protocol.md; home gitPath unchanged; Y.encodeStateAsUpdate of the page equal before/after (no applyUpdate of the body)"
+      - name: gitPath derived
+        status: pass
+        evidence: "2026-09-15 ops.test.ts — nested spec/crdt/{filename}.md; rename spec → SPEC updates descendants; home parentId stays folder:spec; reparent home → home_protected"
+      - name: Delete rejects non-empty; leaf ok
+        status: pass
+        evidence: "2026-09-15 ops.test.ts — deleteNode(spec) → node_not_empty; delete created page removes catalog row, home remains, workspace doc not GC'd; deleteNode(home) → home_protected"
+      - name: A→B catalog
+        status: pass
+        evidence: "2026-09-15 pnpm test:e2e:m4 — m4-tree.spec.ts 1 passed (A createDoc + reparent on B without reload; catalog WS ?doc=4fe5c16e-…); catalog-sync.test.ts hub skip-or-run on :3000. pnpm --filter @venus/web test — 108 passed. tsc --noEmit clean."
   step-chrome: # 4
     n: 4
     state: pending

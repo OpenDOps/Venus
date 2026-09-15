@@ -3,6 +3,11 @@ import type { SyncProvider } from './sync-provider.js';
 
 export const SYNC_TIMEOUT_MS: number;
 
+export function waitUntilSynced(
+  provider: SyncProvider,
+  signal?: AbortSignal,
+): Promise<void>;
+
 type BlockNode = {
   id: string;
   flavour: string;
@@ -17,8 +22,13 @@ type BlockNode = {
 type M0Workspace = {
   id: string;
   docs: { size: number };
-  meta: { docMetas: unknown[] };
+  meta: {
+    docMetas: unknown[];
+    getDocMeta?: (id: string) => { title?: string } | undefined;
+    setDocMeta?: (id: string, props: Record<string, unknown>) => void;
+  };
   createDoc: (id: string) => { getStore: () => M0Store };
+  getDoc?: (id: string) => { spaceDoc: Doc } | null;
 };
 
 type M0Store = {
@@ -64,6 +74,8 @@ export function createM0Workspace(
   provider?: SyncProvider,
   options?: BlobSourcesOption & {
     signal?: AbortSignal;
+    /** Extra docs to connect before the single whenReady wait (catalog). */
+    connectDocs?: Array<{ docId: string; ydoc: Doc }>;
   },
 ): Promise<{
   workspace: M0Workspace;

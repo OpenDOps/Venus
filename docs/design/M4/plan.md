@@ -191,7 +191,7 @@ What each step **adds** to the product (not how to test it — that is under eac
 |---|---|---|
 | [1](#1-step-recon-catalog) | [`step-recon-catalog`](#1-step-recon-catalog) | ✅ **done.** Gate + map: wire **A** (`?doc=`), catalog schema, tree/header symbols, `git mv`, linked-doc Actuals; spike two docs. |
 | [2](#2-step-spaces) | [`step-spaces`](#2-step-spaces) | ✅ **done.** Hub + host: many pages per wiki; bare path still home; `?doc=` bind; gRPC `ExportDoc` per doc. Per-tab sockets. |
-| [3](#3-step-catalog-crdt) | [`step-catalog-crdt`](#3-step-catalog-crdt) | Catalog Y.Doc ops: seed, reparent, `gitPath`, `deleteNode` (reject if children). Two tabs see moves. No tree chrome yet. |
+| [3](#3-step-catalog-crdt) | [`step-catalog-crdt`](#3-step-catalog-crdt) | ✅ **done.** Catalog Y.Doc ops: seed, reparent, `gitPath`, `deleteNode` (reject if children). Two tabs see moves. No tree chrome yet. |
 | [4](#4-step-chrome) | [`step-chrome`](#4-step-chrome) | Layout slots + product header (undo/redo, current page) on the open Store. |
 | [5](#5-step-tree) | [`step-tree`](#5-step-tree) | Tree UI; click opens; drop reparents. Outline stays headings. |
 | [6](#6-step-git-mv) | [`step-git-mv`](#6-step-git-mv) | Sidecar: catalog in the cut; two files; `git mv` on Flush when path changed. |
@@ -336,7 +336,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | **title** | Catalog Y.Doc: seed, reparent, gitPath, delete |
 | **dependsOn** | `step-spaces` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
 
 **Adds:** the collaborative tree as data. No folder UI. Host (or tests) can reparent, delete (reject if children), and see `gitPath` change.
 

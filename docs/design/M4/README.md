@@ -2,7 +2,7 @@
 
 A **catalog CRDT** on the hub (folders, reorder, rename, `gitPath`), a **tree UI** that reparents live, a **thin product header** (undo / redo / current page), **`git mv` on publish**, **`affine:embed-linked-doc`** that survives a move, and a last-step **SharedWorker** in front of wire A when the browser has it. **No** lease, comment-commit, or product/wiki remotes as this exit.
 
-**Status: [step-spaces](./plan.md#2-step-spaces) done** — next [step-catalog-crdt](./plan.md#3-step-catalog-crdt). **Gate:** [M3](../M3/README.md) **closed** (board steps 1–9 `done`). **Wire:** N sockets, one Room, `?doc=<sql uuid>` on `/collaboration/:workspace_id` (omit = home). SharedWorker is [step 8](./plan.md#8-step-shared-worker), after links; per-tab sockets must already work. This folder existing is not permission to mint a second space or ship a wiki TOC.
+**Status: [step-catalog-crdt](./plan.md#3-step-catalog-crdt) done** — next [step-chrome](./plan.md#4-step-chrome). **Gate:** [M3](../M3/README.md) **closed** (board steps 1–9 `done`). **Wire:** N sockets, one Room, `?doc=<sql uuid>` on `/collaboration/:workspace_id` (omit = home). SharedWorker is [step 8](./plan.md#8-step-shared-worker), after links; per-tab sockets must already work. This folder existing is not permission to mint a second space or ship a wiki TOC.
 
 This folder is the implementation contract for the M4 slice in [venus-implementation-plan.md](../venus-implementation-plan.md). Catalog shape: [datamodel catalog](../datamodel/crdt.md#catalog). Tree component (CRDT + React DnD): [CRDT tree](../components/frontend/crdt-tree/). Git folders + `git mv`: [datamodel git](../datamodel/git.md). Create / uuid.md / rename / map: [page-identity](../datamodel/page-identity.md) ([hub](../components/backend/hub/page-identity.md)). Pin then convert (catalog in the same cut): [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export form: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Header is host chrome, not `@affine/core`: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree).
 
@@ -11,6 +11,7 @@ This folder is the implementation contract for the M4 slice in [venus-implementa
 | [plan.md](./plan.md) | Story, [steps summary](./plan.md#steps-summary), work, exact test scenarios |
 | [M4.state.yaml](./M4.state.yaml) | Board: step status only |
 | [create-rename-map.md](./create-rename-map.md) | Pointer. Canonical: [page-identity](../datamodel/page-identity.md). Hub SQL: [hub page-identity](../components/backend/hub/page-identity.md). |
+| [step-3-findings.md](./step-3-findings.md) | Catalog CRDT revalidation (logic data-flows + fix proposals; security; perf already fixed) |
 
 Shared: [api-map.md](../api-map.md) (catalog / tree / header Actuals filled in `step-recon-catalog`). Words: [glossary.md](../glossary.md). Hub (live CRDT, still wiki sticky): [M3.0](../M3.0/README.md). Snapshotter: [M3](../M3/README.md).
 

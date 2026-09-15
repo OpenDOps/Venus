@@ -10,6 +10,7 @@
     "test:e2e": "playwright test",
     "test:e2e:m1": "PLAYWRIGHT_M1=1 playwright test",
     "test:e2e:m3": "PLAYWRIGHT_M3=1 playwright test",
+    "test:e2e:m4": "PLAYWRIGHT_M4=1 playwright test",
     "test:e2e:m3:live": "PLAYWRIGHT_M3=1 PLAYWRIGHT_CONVERT_SLEEP_MS=3000 playwright test m3-live-during-flush.spec.ts",
     "from-pinned": "node src/host/mdgate/from-pinned-cli.js"
   },
@@ -22,6 +23,7 @@
     "bind-event-listener": "3.0.0",
     "debug": "^4.4.3",
     "extend": "3.0.2",
+    "fractional-indexing": "3.4.0",
     "highlight.js": "11.11.1",
     "lib0": "0.2.117",
     "lit": "3.3.3",

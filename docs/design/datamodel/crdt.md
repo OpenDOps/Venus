@@ -55,7 +55,8 @@ Node
   parentId        // null = wiki root (no stored root node)
   order           // fractional index among siblings
   docId?          // kind=doc only: uuid for created pages; doc:home for home
-  gitPath         // derived from POSIX filenames: {dir}/{filename}.md
+  gitName         // POSIX leaf (folder stem, or `{stem}.md` for docs)
+  gitPath         // not stored: join(ancestor gitNames) at read / Flush YAML
 ```
 
 Moves = reparent + order. They do not rewrite page bodies. Next git commit that includes the move does `git mv` ([git.md](./git.md)). Empty folders may have no git directory until a page is under them; they **are** listed in YAML `folders:`. **Delete:** reject if the node has children ([page-identity — Delete](./page-identity.md#delete)). **Create / first filename `{uuid}.md` / tree rename / YAML map:** [page-identity](./page-identity.md).

@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const isM1 = process.env.PLAYWRIGHT_M1 === '1';
 const isM3 = process.env.PLAYWRIGHT_M3 === '1';
+const isM4 = process.env.PLAYWRIGHT_M4 === '1';
 const composeWeb = process.env.PLAYWRIGHT_BASE_URL;
 const syncUrl =
   process.env.VITE_SYNC_URL ??
@@ -10,17 +11,23 @@ const syncUrl =
 const sidecarUrl =
   process.env.VITE_SIDECAR_URL ?? 'http://127.0.0.1:3002';
 
-if (composeWeb && !isM1 && !isM3) {
+if (composeWeb && !isM1 && !isM3 && !isM4) {
   throw new Error(
-    'PLAYWRIGHT_BASE_URL is Compose web (sync). Use PLAYWRIGHT_M1=1 or PLAYWRIGHT_M3=1.',
+    'PLAYWRIGHT_BASE_URL is Compose web (sync). Use PLAYWRIGHT_M1=1, PLAYWRIGHT_M3=1, or PLAYWRIGHT_M4=1.',
   );
 }
 
-const gated = isM3 ? 'm3' : isM1 ? 'm1' : null;
+const gated = isM4 ? 'm4' : isM3 ? 'm3' : isM1 ? 'm1' : null;
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: isM3 ? 'm3-*.spec.ts' : isM1 ? 'm1-*.spec.ts' : '{m0,m2}-*.spec.ts',
+  testMatch: isM4
+    ? 'm4-*.spec.ts'
+    : isM3
+      ? 'm3-*.spec.ts'
+      : isM1
+        ? 'm1-*.spec.ts'
+        : '{m0,m2}-*.spec.ts',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -29,7 +36,7 @@ export default defineConfig({
   use: {
     baseURL:
       composeWeb ??
-      (isM3 || isM1
+      (isM3 || isM1 || isM4
         ? 'http://127.0.0.1:5174'
         : 'http://127.0.0.1:5173'),
     trace: 'on-first-retry',
@@ -48,7 +55,7 @@ export default defineConfig({
             VITE_SIDECAR_URL: sidecarUrl,
           },
         }
-      : isM1
+      : isM1 || isM4
         ? {
             command: 'vite --host 127.0.0.1 --port 5174 --strictPort',
             url: 'http://127.0.0.1:5174',

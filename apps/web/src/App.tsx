@@ -7,10 +7,20 @@ import {
   blobSourcesFromEnv,
   sidecarUrlFromEnv,
 } from './host/providers/from-env.js';
+import {
+  attachCatalogTestHooks,
+  createCatalogDoc,
+  detachCatalogTestHooks,
+  disposeCatalog,
+  openCatalog,
+} from './host/catalog/open.js';
+import { CATALOG_GUID, PAGE_DOC_ID } from './host/ids.js';
 import { seedMarkdownDemo } from './host/seed.js';
 import { createM0Workspace } from './host/workspace.js';
 
-type Session = Awaited<ReturnType<typeof createM0Workspace>>;
+type Session = Awaited<ReturnType<typeof createM0Workspace>> & {
+  catalog: import('yjs').Doc;
+};
 type GitLogEntry = { subject: string; sha: string };
 
 const SIDECAR_URL = sidecarUrlFromEnv();
@@ -40,28 +50,48 @@ export function App() {
 
   useEffect(() => {
     const ac = new AbortController();
-    void createM0Workspace(providerFromEnv(), {
+    const catalog = createCatalogDoc();
+    const provider = providerFromEnv();
+    void createM0Workspace(provider, {
       signal: ac.signal,
       blobSources: blobSourcesFromEnv(),
+      connectDocs: [{ docId: CATALOG_GUID, ydoc: catalog }],
     })
       .then(async (created) => {
         if (ac.signal.aborted) {
-          created.provider.disconnect(created.docId);
+          disposeCatalog(created.provider, catalog, created.docId);
+          return;
+        }
+        try {
+          await openCatalog(created.provider, created.workspace, {
+            catalog,
+            alreadyConnected: true,
+            signal: ac.signal,
+          });
+        } catch (err) {
+          disposeCatalog(created.provider, catalog, created.docId);
+          throw err;
+        }
+        if (ac.signal.aborted) {
+          disposeCatalog(created.provider, catalog, created.docId);
           return;
         }
         if (new URLSearchParams(window.location.search).has('md-demo')) {
           await seedMarkdownDemo(created.store);
         }
         if (ac.signal.aborted) {
-          created.provider.disconnect(created.docId);
+          disposeCatalog(created.provider, catalog, created.docId);
           return;
         }
         window.__VENUS_PROVIDER_KIND__ = created.provider.kind;
         window.__VENUS_PAGE_FLAVOUR__ = created.store.root?.flavour;
-        sessionRef.current = created;
-        setSession(created);
+        attachCatalogTestHooks(catalog, created.workspace);
+        const next = { ...created, catalog };
+        sessionRef.current = next;
+        setSession(next);
       })
       .catch((err) => {
+        disposeCatalog(provider, catalog, PAGE_DOC_ID);
         if (
           ac.signal.aborted ||
           (err instanceof Error && err.name === 'AbortError')
@@ -73,9 +103,10 @@ export function App() {
       });
     return () => {
       ac.abort();
+      detachCatalogTestHooks();
       const current = sessionRef.current;
       if (current) {
-        current.provider.disconnect(current.docId);
+        disposeCatalog(current.provider, current.catalog, current.docId);
         sessionRef.current = null;
       }
     };

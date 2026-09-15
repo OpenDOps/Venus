@@ -2,7 +2,7 @@
 
 **Status:** product rule for [M4](../M4/README.md) (2026-09-15). **Not a new Compose service.**
 
-**Live source of truth is CRDT.** The catalog Y.Doc is the wiki tree (folders, docs, names, `gitPath`, order). Each page’s Y.Doc is the body. `page_identity` is a **Postgres cache written at the git job** from the catalog pin — not a second editor, **not** an HTTP API.
+**Live source of truth is CRDT.** The catalog Y.Doc is the wiki tree (folders, docs, names, `gitName`, order). Each page’s Y.Doc is the body. `page_identity` is a **Postgres cache written at the git job** from the catalog pin — not a second editor, **not** an HTTP API.
 
 | Owner | What it does | Must not do |
 |---|---|---|
@@ -24,8 +24,8 @@ Do **not** mint a second seed page (`doc:protocol` / `spec/protocol.md`). Home s
 | **docId** | BlockSuite `createDoc` id / linked-doc `pageId` / `<!-- venus:doc:… -->`. For M4-created pages **= the same uuid string**. Home stays `doc:home` (M3). | Yes |
 | **folder id** | Catalog-only. Seed `spec` is **`folder:spec`**. User folders: `folder:` + uuid v4. Not SQL, not `?doc=`, not `page_identity`. | Yes |
 | **name** (docname) | Catalog / tree label. UTF. What humans type. Linked-doc `[title]`. | No |
-| **filename** | POSIX-safe file stem under the parent folder. Derived from `name` (filter + sibling `_1`, `_2`). | No — follows rename; uuid does not change |
-| **gitPath** | POSIX path of the `.md` (or folder) under `wiki/` (no `wiki/` prefix). Docs always end in `.md`. Built from **filename**s, not from raw `name`. | No |
+| **filename** | POSIX-safe file stem under the parent folder. Derived from `name` (filter + sibling `_1`, `_2`). Stored as catalog **`gitName`** (docs append `.md`). | No — follows rename; uuid does not change |
+| **gitPath** | POSIX path of the `.md` (or folder) under `wiki/` (no `wiki/` prefix). Docs always end in `.md`. **Not stored** on the node: `join` of ancestor **`gitName`s**. | No |
 
 Path is not identity. YAML is not identity. **Catalog CRDT** is live truth for the tree (including page uuid = node `id` / `docId`). Postgres `page_identity` lags until the next Flush/idle job. Folder identity stays catalog-only. YAML is the clone naming map from the **same catalog pin**.
 
@@ -33,7 +33,7 @@ There is **no `name` vs `gitPath` product fork.** They are two projections of th
 
 - Tree and markdown link **text** use `name`.
 - Git file and markdown **href** use `gitPath` (filenames).
-- When the typed name is already a POSIX stem and unique among siblings, they look the same (`protocol` → `spec/protocol.md`). When `/` `\` controls or a sibling clash appear, **filename diverges**; the map stores both. Uuid never changes.
+- When the typed name is already a POSIX stem and unique among siblings, they look the same (`protocol` → `spec/protocol.md`). When `/` `\` controls or a sibling clash appear, **filename / `gitName` diverges**; the map stores `name` and `gitName`. Uuid never changes.
 
 Home is the only pre-existing page. Put it in the same map (`uuid` = `PAGE_SQL_ID`, `docId` = `doc:home`, seed `name` = `home`, seed `gitPath` = `spec/home.md`). Identity never becomes `{uuid}.md`. **Rename** of the docname is allowed; **reparent** is not.
 
@@ -81,14 +81,14 @@ Identity is always `doc:home` / `PAGE_SQL_ID`. Seed: under `folder:spec`, file `
 
 User edits the **docname** in the tree (`venus-tree` rename, or equivalent).
 
-1. **Normalize `name`.** Strip unprintable characters. Do not mint a new uuid.
+1. **Normalize `name`.** Strip unprintable characters. Do not mint a new uuid. If the result is empty, **do not commit** — keep the previous `name` (tree restores the string from before this edit). A live typing draft may be `''` and render blank until Enter / blur.
 2. **Derive `filename`** from that `name` (rules below). If a sibling already uses that filename, append `_1`, `_2`, … until unique in that folder.
-3. Catalog: set `name`; set `gitPath` = `{parentDir}/{filename}.md` (folders: `{parentDir}/{filename}`).
+3. Catalog: set `name`; set `gitName` (POSIX leaf). `gitPath` is `join(ancestor gitNames)` at read / Flush YAML, not a stored key.
 4. Do not change `uuid` / `docId`. SQL `page_identity` is not updated in this op.
 5. **`docMetas`:** set `workspace.meta.docMetas[docId].title` = new catalog `name` (home: `doc:home`).
 6. **Git on next Flush:** sidecar `git mv` `{old}` → `{new}`; rewrite `pages.yaml` and `page_identity` from the catalog pin. Body clock unchanged → no `fromDoc`.
 
-Reparent (drop) is the same uuid; recompute filename uniqueness in the **new** folder (may add `_1`); update `gitPath`. SQL / git wait for Flush. **Not home:** `reparent` of `doc:home` is `home_protected`. `parentId` stays `folder:spec`. Sibling `setOrder` inside `spec` is allowed. Renaming/moving folder `spec` may change home’s `gitPath` because the ancestor filename changed; that is not reparenting home.
+Reparent (drop) is the same uuid; recompute filename uniqueness in the **new** folder (may add `_1`); write this node’s `gitName` only. SQL / git wait for Flush. **Not home:** `reparent` of `doc:home` is `home_protected`. `parentId` stays `folder:spec`. Sibling `setOrder` inside `spec` is allowed. Renaming/moving folder `spec` may change home’s **derived** `gitPath` because the ancestor `gitName` changed; that is not reparenting home.
 
 ### Docname vs filename (not a conflict)
 

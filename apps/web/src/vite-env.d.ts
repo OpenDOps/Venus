@@ -23,5 +23,38 @@ declare global {
     /** Playwright e2e only (`addInitScript`). */
     __VENUS_E2E__?: boolean;
     __VENUS_FROM_DOC__?: () => Promise<{ markdown: string }>;
+    /** Set after catalog seed (M4 step 3; tree UI is later). */
+    __VENUS_CATALOG_READY__?: boolean;
+    __VENUS_CATALOG_OPS__?: {
+      snapshot: () => Array<{
+        id: string;
+        kind: string;
+        name: string;
+        parentId: string | null;
+        gitPath: string;
+        docId?: string;
+      }>;
+      getNode: (id: string) => {
+        id: string;
+        gitPath: string;
+        parentId: string | null;
+        docId?: string;
+      } | null;
+      createDoc: (createAt: string | null) => {
+        id: string;
+        docId?: string;
+        gitPath: string;
+      };
+      createFolder: (
+        createAt: string | null,
+        name: string,
+      ) => { id: string; gitPath: string };
+      rename: (id: string, name: string) => { gitPath: string; name: string };
+      reparent: (
+        id: string,
+        parentId: string | null,
+      ) => { gitPath: string; parentId: string | null };
+      deleteNode: (id: string) => void;
+    };
   }
 }

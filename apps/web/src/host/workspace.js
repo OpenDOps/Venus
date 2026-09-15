@@ -15,7 +15,7 @@ function abortError() {
   return err;
 }
 
-async function waitUntilSynced(provider, signal) {
+export async function waitUntilSynced(provider, signal) {
   if (provider.synced) return;
   if (signal?.aborted) throw abortError();
 
@@ -119,19 +119,28 @@ export function hydrateM0FromUpdate(bytes, options = {}) {
 export async function createM0Workspace(provider, options = {}) {
   const sync = provider ?? new MemoryNoopProvider();
   const signal = options.signal;
+  const extras = options.connectDocs ?? [];
   const { workspace, store, docId } = openBareM0Workspace(options);
 
+  const disconnectAll = () => {
+    for (const extra of extras) sync.disconnect(extra.docId);
+    sync.disconnect(docId);
+  };
+
   sync.connect(docId, store.spaceDoc);
+  for (const extra of extras) {
+    sync.connect(extra.docId, extra.ydoc);
+  }
   try {
     await waitUntilSynced(sync, signal);
     await Promise.resolve();
   } catch (err) {
-    sync.disconnect(docId);
+    disconnectAll();
     throw err;
   }
 
   if (signal?.aborted) {
-    sync.disconnect(docId);
+    disconnectAll();
     throw abortError();
   }
 
@@ -143,7 +152,7 @@ export async function createM0Workspace(provider, options = {}) {
   }
 
   if (signal?.aborted) {
-    sync.disconnect(docId);
+    disconnectAll();
     throw abortError();
   }
 

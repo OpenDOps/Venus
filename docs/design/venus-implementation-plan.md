@@ -329,7 +329,7 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 ### M4 — Folder tree + links + product header (1–2 weeks)
 
-**Status:** in progress — [step-spaces](./M4/plan.md#2-step-spaces) done 2026-09-15. Next [step-catalog-crdt](./M4/plan.md#3-step-catalog-crdt). Step-by-step: [M4/plan.md](./M4/plan.md). Board: [M4/M4.state.yaml](./M4/M4.state.yaml). **Gate:** [M3](./M3/README.md) **closed**.
+**Status:** in progress — [step-catalog-crdt](./M4/plan.md#3-step-catalog-crdt) done 2026-09-15. Next [step-chrome](./M4/plan.md#4-step-chrome). Step-by-step: [M4/plan.md](./M4/plan.md). Board: [M4/M4.state.yaml](./M4/M4.state.yaml). **Gate:** [M3](./M3/README.md) **closed**.
 
 - Catalog CRDT: folders, reorder, rename, `gitPath`.
 - Tree UI; drop to reparent (live CRDT).
