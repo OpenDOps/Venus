@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@blocksuite/affine": "0.22.4",
+    "@headless-tree/core": "1.7.0",
+    "@headless-tree/react": "1.7.0",
     "@preact/signals-core": "1.14.4",
     "@toeverything/theme": "1.1.23",
     "bind-event-listener": "3.0.0",

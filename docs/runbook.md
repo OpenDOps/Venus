@@ -54,13 +54,13 @@ curl -sSSf http://127.0.0.1:3000/
 
 Persist across `restart hub` and `down` without `-v`: `pnpm compose:dod`. Second owner / drain: `pnpm compose:ha`.
 
-**Doc export** (current Y.Doc as Yjs update v1; no browser; not `T0`):
+**Doc export** (advertisement JSON; Yjs is gRPC `Hub.ExportDoc`):
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs
+curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
 ```
 
-Same command: api-map **Export command**. After the page has been hydrated at least once, the file should be more than a trivial empty update. Vitest: `apps/web/src/host/snapshot.test.ts` (Reachable / Decodes). [Doc export scenarios](./scenarios/doc-export.md). [M1 step 7](./design/M1/plan.md#7-step-snapshot).
+JSON `{ "advertisement": { … } }` with **no** root `error`. Lists home + catalog and how to call gRPC. `?doc=` on this GET is **400** `export_http_disabled`. Contract: [rpc.md](./design/rpc.md). api-map **Export advertisement**. After the page has been hydrated at least once, `ExportDoc` (when the server is up) returns more than a trivial empty update. Vitest: `apps/web/src/host/snapshot.test.ts` (advertisement GET). [Doc export scenarios](./scenarios/doc-export.md).
 
 Stop (keeps the named volume `pg-venus-data` — the doc survives):
 
@@ -165,13 +165,13 @@ First-paragraph `hello` / `from-a-…` / `from-b-…` mash on an old volume is l
 5. **Second tab.** Open the same URL in a second tab. It shows `hello` without typing. Type `tab-b` in B; A shows `tab-b` without reload.
 6. **Image.** In A, insert an image (slash **Image** or paste). It renders. B shows the same image. Reload A; the image remains.
 7. **WS.** DevTools → Network → **WS**: a sync socket is open to `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` (same origin `:8080`, or `:3000` if you used host Vite). Not “no WS” like M0.
-8. **Export.** From a terminal (no tab required):
+8. **Export advertisement.** From a terminal (no tab required):
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs
+curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
 ```
 
-Exit 0. File length **> 2** bytes.
+Exit 0. JSON with `advertisement.kind = doc_export` and **no** root `error`. Yjs bytes are gRPC, not this GET.
 9. **No AFFiNE shell.** `apps/web/package.json` still has no `@affine/core`. `mount-editor.js` still has no sync imports.
 10. **Memory mode (optional sanity).** Unset sync env, `pnpm dev`: refresh **drops** text (M0 still works for people without Docker).
 

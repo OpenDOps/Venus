@@ -17,7 +17,6 @@ const repoRoot = join(webRoot, '../..');
 const EXPORT_COMMAND = `curl -sSSf http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export -o /tmp/venus-page.yjs`;
 const EXPORT_URL = `http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
 const CONVERT_CLI = join(here, 'from-pinned-cli.js');
-const BLOB_ORIGIN = 'http://127.0.0.1:3000';
 
 function snapshotterSection(map: string): string {
   const start = map.indexOf('## Names — git snapshotter');
@@ -166,31 +165,13 @@ test('Spike convert: fromPinnedBytes of a seed pin contains Why Venus (offline, 
   expect(converted.sidecar.clock).toBe(pin.clock);
 });
 
-describe.skipIf(!hubUp)('Spike convert: hub GET export → fromPinnedBytes (no git)', () => {
-  test('export command then Path B markdown contains Why Venus', async () => {
-    await new Promise((r) => setTimeout(r, 2000));
-    execFileSync('curl', ['-sSSf', EXPORT_URL, '-o', '/tmp/venus-page.yjs'], {
-      stdio: 'pipe',
-    });
-    const bytes = new Uint8Array(readFileSync('/tmp/venus-page.yjs'));
-    expect(bytes.byteLength).toBeGreaterThan(2);
-
-    const { OctoBaseBlobSource } = await import('../providers/blob-source.js');
-    const converted = await fromPinnedBytes(bytes, {
-      blobSources: { main: new OctoBaseBlobSource({ origin: BLOB_ORIGIN }) },
-    });
-    expect(converted.markdown).toContain(SEED_H1);
-    expect(converted.sidecar.docId).toBe(PAGE_DOC_ID);
-
-    const cliOut = execFileSync(process.execPath, [CONVERT_CLI, '/tmp/venus-page.yjs'], {
-      cwd: webRoot,
-      encoding: 'utf8',
-      env: { ...process.env, VENUS_BLOB_ORIGIN: BLOB_ORIGIN },
-      timeout: 60_000,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const parsed = JSON.parse(cliOut);
-    expect(parsed.markdown).toContain(SEED_H1);
-    expect(parsed.sidecar.docId).toBe(PAGE_DOC_ID);
-  }, 90_000);
+describe.skipIf(!hubUp)('Spike: hub GET export is advertisement (Yjs is gRPC)', () => {
+  test('bare GET has no root error', async () => {
+    const res = await fetch(EXPORT_URL, { signal: AbortSignal.timeout(5000) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.error).toBeUndefined();
+    expect(body.advertisement.http_export).toBe(false);
+    expect(body.advertisement.grpc.service).toBe('venus.hub.v1.Hub');
+  });
 });

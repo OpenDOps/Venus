@@ -1,21 +1,16 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
+import { describe, expect, test } from 'vitest';
 
-import { WORKSPACE_ID } from './ids.js';
+import { CATALOG_SQL_ID, PAGE_SQL_ID, WORKSPACE_ID } from './ids.js';
 
 const hostDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(hostDir, '../../../..');
 
-/** Exact api-map Export command. Do not invent a second store or URL. */
-const EXPORT_COMMAND =
-  `curl -sSSf http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export -o /tmp/venus-page.yjs`;
+/** Exact api-map advertisement GET. Product Yjs export is gRPC ExportDoc. */
+const EXPORT_AD_COMMAND = `curl -sSSf http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
 const EXPORT_URL = `http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
-const EXPORT_FILE = '/tmp/venus-page.yjs';
-const CURL_ARGV = ['-sSSf', EXPORT_URL, '-o', EXPORT_FILE];
 
 async function hubRootBody(): Promise<string | null> {
   try {
@@ -39,22 +34,23 @@ if (hubBody && hubBody !== 'venus-hub') {
 
 if (!hubUp) {
   console.warn(
-    'snapshot.test.ts: skipping Reachable/Decodes — nothing on 127.0.0.1:3000. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
+    'snapshot.test.ts: skipping advertisement GET — nothing on 127.0.0.1:3000. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
   );
 }
 
-test('api-map Export command is the hub GET (not an empty template)', () => {
+test('api-map Export advertisement GET is not an empty template', () => {
   const map = readFileSync(join(repoRoot, 'docs/design/api-map.md'), 'utf8');
-  expect(map).toContain(EXPORT_COMMAND);
-  expect(`curl ${CURL_ARGV.join(' ')}`).toBe(EXPORT_COMMAND);
+  expect(map).toContain(EXPORT_AD_COMMAND);
+  expect(map).toContain('venus.hub.v1.Hub/ExportDoc');
 });
 
-test('export is hub live_export, not keck Block REST', () => {
+test('GET export does not call live_export (Yjs is gRPC)', () => {
   const http = readFileSync(
     join(repoRoot, 'crates/venus-hub/src/http.rs'),
     'utf8',
   );
-  expect(http).toMatch(/st\.hub\.live_export/);
+  expect(http).toMatch(/advertisement_response/);
+  expect(http).not.toMatch(/st\.hub\.live_export/);
   expect(http).not.toMatch(/jwst/i);
   const cargo = readFileSync(join(repoRoot, 'crates/venus-hub/Cargo.toml'), 'utf8');
   expect(cargo).not.toMatch(/jwst|octobase|keck/);
@@ -71,19 +67,33 @@ test('export is not wired into the editor UI', () => {
 });
 
 describe.skipIf(!hubUp)(`hub GET /api/block/${WORKSPACE_ID}/export`, () => {
-  beforeAll(() => {
-    execFileSync('curl', CURL_ARGV, { stdio: 'pipe' });
+  test('Reachable: 200 JSON advertisement, no root error', async () => {
+    const res = await fetch(EXPORT_URL, { signal: AbortSignal.timeout(5000) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type') ?? '').toMatch(/json/);
+    const body = await res.json();
+    expect(body.error).toBeUndefined();
+    expect(body.advertisement.kind).toBe('doc_export');
+    expect(body.advertisement.http_export).toBe(false);
+    expect(body.advertisement.grpc.service).toBe('venus.hub.v1.Hub');
+    const roles = body.advertisement.docs.map((d: { role: string }) => d.role);
+    expect(roles).toContain('home');
+    expect(roles).toContain('catalog');
+    const home = body.advertisement.docs.find((d: { role: string }) => d.role === 'home');
+    expect(home.sql_id).toBe(PAGE_SQL_ID);
+    const catalog = body.advertisement.docs.find(
+      (d: { role: string }) => d.role === 'catalog',
+    );
+    expect(catalog.sql_id).toBe(CATALOG_SQL_ID);
   });
 
-  test('Reachable: Export command exit 0 and file length > 2', () => {
-    const bytes = readFileSync(EXPORT_FILE);
-    expect(bytes.byteLength).toBeGreaterThan(2);
-  });
-
-  test('Decodes: Y.applyUpdate does not throw and re-encode is > 2 bytes', () => {
-    const bytes = new Uint8Array(readFileSync(EXPORT_FILE));
-    const d = new Y.Doc();
-    expect(() => Y.applyUpdate(d, bytes)).not.toThrow();
-    expect(Y.encodeStateAsUpdate(d).byteLength).toBeGreaterThan(2);
+  test('?doc= is 400 export_http_disabled with advertisement', async () => {
+    const res = await fetch(`${EXPORT_URL}?doc=${PAGE_SQL_ID}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('export_http_disabled');
+    expect(body.advertisement.kind).toBe('doc_export');
   });
 });

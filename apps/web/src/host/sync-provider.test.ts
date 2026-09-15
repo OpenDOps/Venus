@@ -8,7 +8,7 @@ import { MemoryNoopProvider } from './sync-provider.js';
 import { providerFromEnv } from './providers/from-env.js';
 import { OctoBaseKeckProvider } from './providers/octobase-keck-provider.js';
 import { createM0Workspace } from './workspace.js';
-import { COLLABORATION_PATH, PAGE_DOC_ID } from './ids.js';
+import { COLLABORATION_PATH, PAGE_DOC_ID, PAGE_SQL_ID, CATALOG_GUID, CATALOG_SQL_ID, sqlIdForDoc, collaborationSocketUrl } from './ids.js';
 
 const hostDir = dirname(fileURLToPath(import.meta.url));
 
@@ -132,7 +132,13 @@ test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until 
 
     fromEnv.connect(PAGE_DOC_ID, (await createM0Workspace()).store.spaceDoc);
     expect(constructed).toEqual([[url, ['AFFiNE']]]);
+    fromEnv.connect(CATALOG_GUID, new (await import('yjs')).Doc());
+    expect(constructed).toEqual([
+      [url, ['AFFiNE']],
+      [`${url}?doc=${CATALOG_SQL_ID}`, ['AFFiNE']],
+    ]);
     fromEnv.disconnect(PAGE_DOC_ID);
+    fromEnv.disconnect(CATALOG_GUID);
   } finally {
     globalThis.WebSocket = Ws;
   }
@@ -159,4 +165,17 @@ test('Env switch: same-origin needs location.host and does not open a socket yet
     if (desc) Object.defineProperty(globalThis, 'location', desc);
     else Reflect.deleteProperty(globalThis, 'location');
   }
+});
+
+test('wire A: ?doc= is SQL uuid; home omits the query', () => {
+  const base = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  expect(sqlIdForDoc(PAGE_DOC_ID)).toBe(PAGE_SQL_ID);
+  expect(sqlIdForDoc(PAGE_SQL_ID.toUpperCase())).toBe(PAGE_SQL_ID);
+  expect(sqlIdForDoc(CATALOG_GUID)).toBe(CATALOG_SQL_ID);
+  expect(collaborationSocketUrl(base, PAGE_DOC_ID)).toBe(base);
+  expect(collaborationSocketUrl(`${base}?doc=stale`, PAGE_DOC_ID)).toBe(base);
+  expect(collaborationSocketUrl(base, CATALOG_GUID)).toBe(
+    `${base}?doc=${CATALOG_SQL_ID}`,
+  );
+  expect(() => sqlIdForDoc('doc:protocol')).toThrow(/SQL uuid/);
 });

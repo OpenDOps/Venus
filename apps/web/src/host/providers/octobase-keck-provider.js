@@ -6,6 +6,7 @@
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
 import * as syncProtocol from 'y-protocols/sync';
+import { collaborationSocketUrl } from '../ids.js';
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -32,7 +33,6 @@ export class OctoBaseKeckProvider {
     this._sessions = new Map();
     /** @type {Set<() => void>} */
     this._syncListeners = new Set();
-    this._gen = 0;
     this._ready = Promise.resolve();
     this._resolveReady = () => {};
     this._rejectReady = () => {};
@@ -56,13 +56,13 @@ export class OctoBaseKeckProvider {
   connect(docId, ydoc) {
     this.disconnect(docId);
     this.synced = false;
-    const gen = ++this._gen;
     this._ready = new Promise((resolve, reject) => {
       this._resolveReady = resolve;
       this._rejectReady = reject;
     });
 
-    const ws = new WebSocket(this.url, ['AFFiNE']);
+    const url = collaborationSocketUrl(this.url, docId);
+    const ws = new WebSocket(url, ['AFFiNE']);
     ws.binaryType = 'arraybuffer';
 
     const onUpdate = (update, origin) => {
@@ -73,10 +73,11 @@ export class OctoBaseKeckProvider {
       ws.send(encoding.toUint8Array(encoder));
     };
     ydoc.on('update', onUpdate);
-    this._sessions.set(docId, { ws, ydoc, onUpdate });
+    const session = { ws, ydoc, onUpdate };
+    this._sessions.set(docId, session);
 
     ws.addEventListener('open', () => {
-      if (gen !== this._gen) return;
+      if (this._sessions.get(docId) !== session) return;
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MSG_SYNC);
       syncProtocol.writeSyncStep1(encoder, ydoc);
@@ -84,7 +85,7 @@ export class OctoBaseKeckProvider {
     });
 
     ws.addEventListener('message', (ev) => {
-      if (gen !== this._gen) return;
+      if (this._sessions.get(docId) !== session) return;
       if (typeof ev.data === 'string') return;
       const bytes = asBytes(ev.data);
       if (!bytes) return;
@@ -92,12 +93,12 @@ export class OctoBaseKeckProvider {
     });
 
     ws.addEventListener('error', () => {
-      if (gen !== this._gen || this.synced) return;
+      if (this._sessions.get(docId) !== session || this.synced) return;
       this._rejectReady(new Error('keck websocket error'));
     });
 
     ws.addEventListener('close', () => {
-      if (gen !== this._gen || this.synced) return;
+      if (this._sessions.get(docId) !== session || this.synced) return;
       this._rejectReady(new Error('keck websocket closed before sync'));
     });
   }
@@ -105,16 +106,15 @@ export class OctoBaseKeckProvider {
   disconnect(docId) {
     const session = this._sessions.get(docId);
     if (!session) return;
-    this._gen += 1;
     session.ydoc.off('update', session.onUpdate);
     const { ws } = session;
+    this._sessions.delete(docId);
     if (
       ws.readyState === WebSocket.CONNECTING ||
       ws.readyState === WebSocket.OPEN
     ) {
       ws.close();
     }
-    this._sessions.delete(docId);
     this.synced = false;
   }
 

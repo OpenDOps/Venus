@@ -167,22 +167,24 @@ function leaseLiveOwners() {
   );
 }
 
-async function exportHasDrain(port, drainId, label) {
-  const url = `${hubUrl(port)}/api/block/${WORKSPACE_ID}/export`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  if (!res.ok) {
-    throw new Error(`${label} export HTTP ${res.status}`);
-  }
-  const bytes = new Uint8Array(await res.arrayBuffer());
+async function wsHasDrain(port, drainId, label) {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, bytes);
-  const got = doc.getMap('spike').get('drain');
-  if (got !== drainId) {
-    throw new Error(
-      `${label} export ${bytes.byteLength} bytes missing spike.drain=${drainId} (got ${String(got)})`,
-    );
+  const provider = new OctoBaseKeckProvider(
+    `ws://127.0.0.1:${port}/collaboration/${WORKSPACE_ID}`,
+  );
+  try {
+    provider.connect('spike', doc);
+    await withReady(provider, 10_000);
+    const got = doc.getMap('spike').get('drain');
+    if (got !== drainId) {
+      throw new Error(
+        `${label} missing spike.drain=${drainId} (got ${String(got)})`,
+      );
+    }
+    console.log(`${label} WS spike.drain=${drainId}`);
+  } finally {
+    provider.disconnect('spike');
   }
-  console.log(`${label} export ${bytes.byteLength} bytes spike.drain=${drainId}`);
 }
 
 try {
@@ -246,7 +248,7 @@ const deadline = Date.now() + 20_000;
 let last = '';
 while (Date.now() < deadline) {
   try {
-    await exportHasDrain(3001, drainId, 'hub-b after A drain');
+    await wsHasDrain(3001, drainId, 'hub-b after A drain');
     last = '';
     break;
   } catch (err) {

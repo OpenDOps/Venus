@@ -118,19 +118,20 @@ function mapHasV(doc) {
   return doc.getMap('spike').get('k') === 'v';
 }
 
-async function checkExport(workspace, label) {
+async function checkExportAd(workspace, label) {
   const url = `${HUB}/api/block/${workspace}/export`;
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) {
-    throw new Error(`${label} export HTTP ${res.status}`);
+    throw new Error(`${label} export advertisement HTTP ${res.status}`);
   }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, bytes);
-  if (!mapHasV(doc)) {
-    throw new Error(`${label} export ${bytes.byteLength} bytes missing spike.k=v`);
+  const body = await res.json();
+  if (body.error) {
+    throw new Error(`${label} export advertisement has error: ${JSON.stringify(body.error)}`);
   }
-  console.log(`${label} export ${bytes.byteLength} bytes spike.k=v`);
+  if (body.advertisement?.kind !== 'doc_export' || body.advertisement.http_export !== false) {
+    throw new Error(`${label} expected advertisement, got ${JSON.stringify(body)}`);
+  }
+  console.log(`${label} GET /export advertisement (Yjs is gRPC)`);
 }
 
 async function checkWs(workspace, label) {
@@ -151,7 +152,7 @@ async function checkWs(workspace, label) {
 }
 
 async function checkSpike(workspace, label) {
-  await checkExport(workspace, label);
+  await checkExportAd(workspace, label);
   const deadline = Date.now() + 30_000;
   let last = '';
   while (Date.now() < deadline) {
@@ -163,7 +164,7 @@ async function checkSpike(workspace, label) {
       await sleep(1000);
     }
   }
-  throw new Error(`${label} WS still missing spike after export passed: ${last}`);
+  throw new Error(`${label} WS still missing spike after advertisement GET: ${last}`);
 }
 
 const workspace = randomUUID();
