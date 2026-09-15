@@ -1,7 +1,7 @@
 -- Venus hub tables. Not keck `jwst` docs. M3.0: one Y.Doc per room.
 -- `workspace_id` / `doc_id` are UUID. The M0 wiki is UUID v5 (DNS) of
--- `venus-m0`; SQL `doc_id` is UUID v5 (DNS) of `doc:home`. Must match
--- `venus_hub::DEFAULT_WORKSPACE_ID` / `PAGE_DOC_ID`.
+-- `venus-m0`; SQL home `doc_id` is UUID v5 (DNS) of `doc:home` (`PAGE_DOC_ID`).
+-- Catalog SQL `doc_id` is UUID v5 of `venus:catalog` (`CATALOG_DOC_ID`).
 -- BlockSuite `createDoc` stays `doc:home` (Yjs guid); the hub does not
 -- store that string.
 -- Dirty grain is (workspace_id, doc_id): one row per page. M3 many pages

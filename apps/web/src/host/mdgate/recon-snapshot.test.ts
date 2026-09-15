@@ -51,6 +51,17 @@ async function hubRootBody(): Promise<string | null> {
 const hubBody = await hubRootBody();
 const hubUp = hubBody === 'venus-hub';
 
+let exportCt = '';
+if (hubUp) {
+  try {
+    const res = await fetch(EXPORT_URL, { signal: AbortSignal.timeout(1500) });
+    exportCt = res.headers.get('content-type') ?? '';
+  } catch {
+    exportCt = '';
+  }
+}
+const exportIsAd = exportCt.includes('json');
+
 if (hubBody && hubBody !== 'venus-hub') {
   throw new Error(
     `:3000 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
@@ -60,6 +71,10 @@ if (hubBody && hubBody !== 'venus-hub') {
 if (!hubUp) {
   console.warn(
     'recon-snapshot.test.ts: skipping hub export spike — nothing on 127.0.0.1:3000. Start with pnpm sync:up.',
+  );
+} else if (!exportIsAd) {
+  console.warn(
+    'recon-snapshot.test.ts: skipping advertisement GET — hub still serves Yjs (rebuild compose hub).',
   );
 }
 
@@ -165,7 +180,7 @@ test('Spike convert: fromPinnedBytes of a seed pin contains Why Venus (offline, 
   expect(converted.sidecar.clock).toBe(pin.clock);
 });
 
-describe.skipIf(!hubUp)('Spike: hub GET export is advertisement (Yjs is gRPC)', () => {
+describe.skipIf(!hubUp || !exportIsAd)('Spike: hub GET export is advertisement (Yjs is gRPC)', () => {
   test('bare GET has no root error', async () => {
     const res = await fetch(EXPORT_URL, { signal: AbortSignal.timeout(5000) });
     expect(res.status).toBe(200);

@@ -1,4 +1,5 @@
-//! HTTP + AFFiNE WebSocket. Same paths as M1 keck (export/blob aliases).
+//! HTTP + AFFiNE WebSocket. Blobs stay HTTP for the tab. Doc export is gRPC;
+//! GET `/api/block/:workspace/export` is advertisement JSON (see `rpc`).
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::future::pending;
@@ -8,7 +9,7 @@ use std::time::Duration;
 use axum::body::Bytes;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, State};
+use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -22,7 +23,8 @@ use crate::blobs::{blob_hash, sniff_content_type};
 use crate::config::default_cors_origins;
 use crate::db;
 use crate::room::{GetRoomError, Hub, Room, OUTBOUND_BYTES, PERSIST_BYTES};
-use crate::SUBPROTOCOL;
+use crate::rpc;
+use crate::{PAGE_DOC_ID, SUBPROTOCOL};
 
 /// One inbound Yjs/CRDT WS frame. `DefaultBodyLimit` does not apply to WS.
 /// A paste larger than this closes the socket. Outbound budget is two of
@@ -76,11 +78,33 @@ pub fn workspace_id_ok(id: &str) -> bool {
 fn take_workspace_id(id: String) -> Result<String, Response> {
     if !workspace_id_ok(&id) {
         tracing::warn!(bytes = id.len(), "invalid workspace_id");
-        return Err((
+        return Err(rpc::error_response(
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "invalid workspace_id" })),
-        )
-            .into_response());
+            rpc::CODE_INVALID_WORKSPACE,
+            "invalid workspace_id",
+        ));
+    }
+    Ok(id.to_ascii_lowercase())
+}
+
+/// M4 wire A: `?doc=` is the SQL `doc_id` uuid (A1). Omit = home (B).
+/// Empty, guid (`doc:home`), or any non-uuid → 400, never home (C1).
+#[derive(serde::Deserialize, Default)]
+struct CollabQuery {
+    doc: Option<String>,
+}
+
+fn take_doc_id(raw: Option<String>) -> Result<String, Response> {
+    let Some(id) = raw else {
+        return Ok(PAGE_DOC_ID.to_string());
+    };
+    if id.is_empty() || !workspace_id_ok(&id) {
+        tracing::warn!(bytes = id.len(), "invalid doc query");
+        return Err(rpc::error_response(
+            StatusCode::BAD_REQUEST,
+            rpc::CODE_INVALID_DOC,
+            "invalid doc",
+        ));
     }
     Ok(id.to_ascii_lowercase())
 }
@@ -257,10 +281,15 @@ where
 
 async fn collaboration_get(
     Path(workspace_id): Path<String>,
+    Query(q): Query<CollabQuery>,
     State(st): State<AppState>,
     OptionalWs(ws): OptionalWs,
 ) -> Response {
     let workspace_id = match take_workspace_id(workspace_id) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    let doc_id = match take_doc_id(q.doc) {
         Ok(id) => id,
         Err(r) => return r,
     };
@@ -273,13 +302,22 @@ async fn collaboration_get(
 
     match st.hub.get_room(&workspace_id).await {
         Ok(room) => {
+            if let Err(e) = room.ensure_doc(&st.hub.pool, &doc_id).await {
+                tracing::error!(
+                    workspace_id = %workspace_id,
+                    doc_id = %doc_id,
+                    error = %e,
+                    "ensure_doc"
+                );
+                return rpc::error_store_failed(&workspace_id);
+            }
             let max = st.ws_max_message.max(1);
             let ping = st.ws_ping;
             let pong = st.ws_pong;
             ws.max_message_size(max)
                 .max_frame_size(max)
                 .protocols([SUBPROTOCOL])
-                .on_upgrade(move |socket| handle_socket(socket, room, ping, pong))
+                .on_upgrade(move |socket| handle_socket(socket, room, doc_id, ping, pong))
         }
         Err(GetRoomError::Held {
             workspace_id: id,
@@ -290,25 +328,11 @@ async fn collaboration_get(
                 owner = ?owner,
                 "refuse second owner"
             );
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({
-                    "error": "workspace owned by another hub",
-                    "workspace_id": workspace_id,
-                })),
-            )
-                .into_response()
+            rpc::error_lease_held(&workspace_id)
         }
         Err(GetRoomError::Store(e)) => {
             tracing::error!(workspace_id = %workspace_id, error = %e, "get_room store");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "hub store failed",
-                    "workspace_id": workspace_id,
-                })),
-            )
-                .into_response()
+            rpc::error_store_failed(&workspace_id)
         }
     }
 }
@@ -321,9 +345,15 @@ fn wants_websocket(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
-async fn handle_socket(mut socket: WebSocket, room: Arc<Room>, ping: Duration, pong: Duration) {
+async fn handle_socket(
+    mut socket: WebSocket,
+    room: Arc<Room>,
+    doc_id: String,
+    ping: Duration,
+    pong: Duration,
+) {
     let (id, tx, mut rx) = room.connect_client();
-    let hello = match room.attach(id, tx).await {
+    let hello = match room.attach_doc(id, tx, &doc_id).await {
         Ok(frames) => frames,
         Err(e) => {
             tracing::error!(error = %e, "ws attach");
@@ -424,21 +454,30 @@ fn ws_ping_interval(ping: Duration) -> Option<tokio::time::Interval> {
     Some(tick)
 }
 
-async fn export_doc(Path(workspace_id): Path<String>, State(st): State<AppState>) -> Response {
+/// Advertisement only. Yjs bytes are gRPC `Hub.ExportDoc` (see `rpc`).
+async fn export_doc(Path(workspace_id): Path<String>, Query(q): Query<CollabQuery>) -> Response {
     let workspace_id = match take_workspace_id(workspace_id) {
         Ok(id) => id,
         Err(r) => return r,
     };
-    match st.hub.live_export(&workspace_id).await {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/octet-stream")],
-            bytes,
-        )
-            .into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, "export");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    let advertisement = rpc::export_advertisement(&workspace_id);
+    match q.doc {
+        None => rpc::advertisement_response(advertisement),
+        Some(raw) => {
+            if take_doc_id(Some(raw)).is_err() {
+                return rpc::error_with_advertisement(
+                    StatusCode::BAD_REQUEST,
+                    rpc::CODE_INVALID_DOC,
+                    "invalid doc",
+                    advertisement,
+                );
+            }
+            rpc::error_with_advertisement(
+                StatusCode::BAD_REQUEST,
+                rpc::CODE_EXPORT_HTTP_DISABLED,
+                "Yjs export is gRPC venus.hub.v1.Hub/ExportDoc; GET is advertisement only",
+                advertisement,
+            )
         }
     }
 }
@@ -584,6 +623,23 @@ mod s2 {
         assert!(!workspace_id_ok("has space"));
         assert!(!workspace_id_ok("a/b"));
         assert!(!workspace_id_ok("Å"));
+    }
+
+    #[test]
+    fn doc_query_a1_b_c1() {
+        assert_eq!(take_doc_id(None).unwrap(), crate::PAGE_DOC_ID);
+        assert_eq!(
+            take_doc_id(Some(crate::PAGE_DOC_ID.to_ascii_uppercase())).unwrap(),
+            crate::PAGE_DOC_ID
+        );
+        assert_eq!(
+            take_doc_id(Some(crate::CATALOG_DOC_ID.into())).unwrap(),
+            crate::CATALOG_DOC_ID
+        );
+        assert!(take_doc_id(Some(String::new())).is_err());
+        assert!(take_doc_id(Some("doc:home".into())).is_err());
+        assert!(take_doc_id(Some("venus:catalog".into())).is_err());
+        assert!(take_doc_id(Some("not-a-uuid".into())).is_err());
     }
 }
 
