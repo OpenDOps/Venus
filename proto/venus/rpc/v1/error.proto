@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package venus.rpc.v1;
+
+// JSON HTTP and gRPC Status.details share this object.
+// Clients: if `error` is present at the JSON root (or this message is in
+// details), the call failed. Do not read sibling payload.
+message Error {
+  string code = 1;
+  string message = 2;
+  string workspace_id = 3;
+}
+
+message GrpcBind {
+  string service = 1;
+  repeated string methods = 2;
+  string listen_env = 3;
+  string listen_default = 4;
+}
+
+message DocRef {
+  string sql_id = 1;
+  string guid = 2;
+  string role = 3;
+}
+
+message DocParam {
+  string param = 1;
+  string format = 2;
+  string omit = 3;
+  string ws_query = 4;
+  string grpc = 5;
+}
+
+// Discovery. HTTP GET /api/block/:workspace/export returns this under
+// `advertisement` (no `error`). Not the Yjs bytes.
+message Advertisement {
+  string kind = 1;
+  string workspace_id = 2;
+  bool http_export = 3;
+  GrpcBind grpc = 4;
+  repeated DocRef docs = 5;
+  DocParam doc = 6;
+}

@@ -12,6 +12,7 @@
 | [Agents](./Agents/README.md) | **Main product feature:** multidimensional spec graph (spatial binds + temporal why). Plan: [agentic-binding.md](./Agents/agentic-binding.md). Contract: [LifeIndexing](./Agents/LifeIndexing.md). Two gits + analyzer (select CodeGraph CLI / Aider / both): [code-bind](./Agents/code-bind.md). |
 | [MDGate](./MDGate/README.md) | Adapter gate. `fromDoc`, [live pane](./MDGate/live-pane.md), [apply](./MDGate/apply.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md). |
 | [api-map.md](./api-map.md) | Installed symbols (Actual column) |
+| [rpc.md](./rpc.md) | Project-wide JSON/gRPC envelope (`error` / advertisement / data). Internal RPC is gRPC. |
 | [scenarios](../scenarios/README.md) | Implemented tests, grouped by feature |
 | [venus-implementation-plan.md](./venus-implementation-plan.md) | Tools, bindings, milestone order |
 | [lease-freeze-rationale.md](./lease-freeze-rationale.md) | Why freeze on lease |

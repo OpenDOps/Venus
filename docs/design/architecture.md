@@ -44,8 +44,8 @@ flowchart TB
   ws --> hub
   hub -->|"POSTGRES_HOST/USER/PASSWORD"| pg
 
-  exportClient["curl / sidecar / later Venus<br/>not a browser tab"]
-  exportClient -->|"GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export<br/>current Y.Doc as update v1<br/>doc export · not T0, not git"| hub
+  exportClient["sidecar / later Venus<br/>internal · gRPC"]
+  exportClient -->|"Hub.ExportDoc / ListDocs<br/>Yjs update v1 · not T0, not git<br/>GET /export is advertisement JSON"| hub
 
   tabA -->|"POST/GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00"| hub
   tabB -->|"POST/GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00"| hub
@@ -71,10 +71,10 @@ Each row is a box that later markdown (or git) can hang off. Do not put review h
 | **BlockSuite Store** | Live published page. `affine:*` tree. | Adapter input. Sidecar ids on export. | [Editor host](../scenarios/editor-host.md), [hydrate](../scenarios/hydrate-persist.md) |
 | **Y.Doc** | `store.spaceDoc`. Client CRDT. | Never a second Y.Text of the `.md`. | [Hydrate](../scenarios/hydrate-persist.md), [collaboration](../scenarios/collaboration.md) |
 | **SyncProvider** | Seam in the host. | Unchanged. Md pane reads the **synced** store. | [Sync seam](../scenarios/sync-seam.md) |
-| **Hub** | Venus **Rust + y-octo**: apply, broadcast, persist ~1s. Compose `hub`. Wiki sticky on `workspace_id`. [hub](./components/backend/hub/). | Lease/git sidecar calls **export**, then adapter in the convert worker. | [Collaboration](../scenarios/collaboration.md), [blobs](../scenarios/blobs.md), [doc export](../scenarios/doc-export.md) |
+| **Hub** | Venus **Rust + y-octo**: apply, broadcast, persist ~1s. Compose `hub`. Wiki sticky on `workspace_id`. [hub](./components/backend/hub/). | Lease/git sidecar calls **ExportDoc** (gRPC), then adapter in the convert worker. Pin collect is SQL, not export. | [Collaboration](../scenarios/collaboration.md), [blobs](../scenarios/blobs.md), [doc export](../scenarios/doc-export.md) |
 | **Postgres** | Source of truth for refresh. `crdt_*` + `blob` + `workspace_lease` + `dirty`. Volume `pg-venus-data`. | Not a markdown store. | [Hydrate](../scenarios/hydrate-persist.md), [blobs](../scenarios/blobs.md) |
 | **Compose web** | nginx + static host. Proxies `/api` and `/collaboration` to the collab front. | Layout only. | [Compose stack](../scenarios/compose.md) |
-| **Doc export** | `GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export`. Current tree, no tab. | Same GET becomes `T0` bytes (M5) and optional `.venus/snapshots/*.bin`. | [Doc export](../scenarios/doc-export.md) |
+| **Doc export** | gRPC `Hub.ExportDoc`. GET `/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export` is advertisement JSON (available docs + `?doc=` / gRPC). Current tree, no tab. | Same RPC becomes `T0` bytes (M5) and optional `.venus/snapshots/*.bin`. Envelope: [rpc.md](./rpc.md). | [Doc export](../scenarios/doc-export.md) |
 | **Markdown projection** | Adapter output + RAM id sidecar. | **M2 done.** [plan](./M2/plan.md). | [Markdown projection](../scenarios/markdown-projection.md) |
 | **Git** | Folders + `.md` + commits. | Snapshot vs comment-commit. Layout: [datamodel git](./datamodel/git.md). Pin then convert: [LiveSnapshot](./LiveSnapshot/README.md). M3+. | None yet. |
 | **Review session** | Lease, threads, hunks. Per commit Before/After **hub CRDTs**. | Comment-commits vs `T0`. After editable; edits are the next commit. M5–M6. | None yet. |
@@ -106,6 +106,7 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | Why freeze | [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
 | Yjs wire, hub (M1: keck), Postgres, export | [CRDT/README.md](./CRDT/README.md) |
 | Pins and curl | [api-map.md](./api-map.md) |
+| JSON / gRPC envelope | [rpc.md](./rpc.md) |
 | M1 steps | [M1/plan.md](./M1/plan.md) |
 | M2 steps | [M2/plan.md](./M2/plan.md) |
 | M3.0 hub | [hub](./components/backend/hub/); [M3.0/plan.md](./M3.0/plan.md); live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md) |

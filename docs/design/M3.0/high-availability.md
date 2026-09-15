@@ -100,7 +100,7 @@ Hub RAM and in-process broadcast are **not** shared across pods. Two hubs applyi
 
 **Design:** many hub pods, **at most one live owner per `workspace_id`**, shared Postgres.
 
-Cookie / IP sticky is **wrong**. **`doc_id` sticky is wrong** (one wiki, one socket, one git repo). Route on **`workspace_id`** (WS path `/collaboration/:workspace_id`, blob/export prefix).
+Cookie / IP sticky is **wrong**. **`doc_id` sticky is wrong** (one wiki, N A sockets, one git repo). Route on **`workspace_id`** (WS path `/collaboration/:workspace_id`, optional `?doc=` for M4; blob/export prefix).
 
 ### Wiki sticky is the live-collab scale-out
 
@@ -113,7 +113,7 @@ Wrong (cookie / IP / session sticky)
   Alice → pod 2, Bob → pod 5     same wiki, two owners → split-brain
 
 Wrong (doc_id sticky)
-  doc:home → pod 3, catalog → pod 7     one wiki split; one WS cannot follow
+  doc:home → pod 3, catalog → pod 7     one wiki split; home and catalog sockets must share one owner
 
 Right (wiki sticky / lease)
   workspace_id → exactly one hub pod

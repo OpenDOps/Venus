@@ -8,7 +8,7 @@
 | **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
 | **Board** | [M4.state.yaml](./M4.state.yaml) |
 
-Parent design: [venus-design.md](../venus-design.md) ([folder tree](../venus-design.md#folder-tree-table-of-contents), [cross-document references](../venus-design.md#cross-document-references)). Catalog: [datamodel catalog](../datamodel/crdt.md#catalog). Tree: [CRDT tree](../components/frontend/crdt-tree/). Git: [datamodel git](../datamodel/git.md). Pin + `git mv`: [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Header: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree). Hub: [M3.0](../M3.0/README.md), [M3.0 HA](../M3.0/high-availability.md), [backend hub](../components/backend/hub/). Snapshotter: [M3](../M3/README.md). Dataflow: [architecture.md](../architecture.md). Words: [glossary.md](../glossary.md). Installed symbols: [api-map.md](../api-map.md).
+Parent design: [venus-design.md](../venus-design.md) ([folder tree](../venus-design.md#folder-tree-table-of-contents), [cross-document references](../venus-design.md#cross-document-references)). Catalog: [datamodel catalog](../datamodel/crdt.md#catalog). Tree: [CRDT tree](../components/frontend/crdt-tree/). Git: [datamodel git](../datamodel/git.md). Pin + `git mv`: [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Header: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree). Hub: [M3.0](../M3.0/README.md), [M3.0 HA](../M3.0/high-availability.md), [backend hub](../components/backend/hub/). Snapshotter: [M3](../M3/README.md). Dataflow: [architecture.md](../architecture.md). Envelope: [rpc.md](../rpc.md). Words: [glossary.md](../glossary.md). Installed symbols: [api-map.md](../api-map.md).
 
 This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
 
@@ -34,6 +34,7 @@ All of these must be true at once:
 8. Header undo/redo matches keyboard undo (⌘Z / Ctrl+Z) on the open page.
 9. [api-map.md](../api-map.md) Actual column is filled for every catalog / tree / header / `git mv` / linked-doc name the code uses.
 10. Existing **M1 Playwright**, M2 export / pane, and M3 Flush / live-during-flush stay green. `mount-editor` still imports neither catalog nor git.
+11. **Wire A** holds without a SharedWorker. Where `SharedWorker` exists, two pages in one browsing profile share the worker’s A sockets; where it does not, per-tab sockets still pass 1–10.
 
 ## Non-goals (do not start)
 
@@ -51,6 +52,8 @@ All of these must be true at once:
 | Empty catalog folders as git placeholders | Git has no empty dirs; catalog may lead |
 | Convert / catalog ops inside the hub | Hub stays apply + broadcast + persist + export/blob |
 | Auth / ACL | Leftover ([Identity](../venus-implementation-plan.md#identity-v1)) |
+| Frame multiplex (C) / path suffix (B) | Wire is **A** (`?doc=`). Do not wrap y-protocols. |
+| Service Worker as the collab socket | Different API. Detect **`SharedWorker`**. SW is not the fallback and not the optimization. |
 
 Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystroke (only on publish / Flush). Do not rewrite page Yjs on reparent.
 
@@ -63,7 +66,7 @@ Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystrok
 5. **SQL `doc_id` is UUID v5** of the BlockSuite guid (same DNS namespace as `PAGE_DOC_ID` / `doc:home`). Catalog space guid `venus:catalog` gets its own v5. Recon records both. Hub must persist **any** of those ids, not only `PAGE_DOC_ID`.
 6. **Catalog is not an `affine:page`.** It is a small Y.Doc (`Y.Map` of nodes). Do not hang folders on the published block schema.
 7. **One apply queue per `docId`**, one persist buffer per `docId`, inside the **one** room for the wiki. Not per socket.
-8. **M1 default path stays.** `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with no extra doc still hydrates `doc:home`. Bare `GET …/export` still returns that page (M1 tests).
+8. **M1 default collab path stays.** `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with no `?doc=` still hydrates `doc:home`. Second docs (catalog, protocol) use `?doc=<sql uuid>` on **that same path**. **Doc export is gRPC** (`Hub.ExportDoc`, omit `doc_id` = home). GET `/api/block/:workspace/export` is advertisement JSON (no Yjs). Envelope: [rpc.md](../rpc.md).
 9. **Pin then convert.** Catalog bytes ride in the **same MVCC cut** as dirty pages so `gitPath` matches the files you write ([LiveSnapshot](../LiveSnapshot/README.md)). Convert page bodies with the M3 Rust `fromDoc` (JS CLI oracle). Catalog-only dirty → `git mv` / write paths, **no** `fromDoc` of an unchanged body. Cut still released before `fromDoc`.
 10. **Dirty clocks.** Catalog persist upserts `dirty(workspace_id, catalog_sql_uuid, clock)` via the existing trigger. One `jobs` row per wiki still. Sidecar `commit_pins` must stop skipping every `doc_id` that is not home.
 11. **Tree data = catalog only.** Drop = catalog reparent. Do not scan `wiki/` for the live tree. Do not use AFFiNE explorer.
@@ -72,6 +75,7 @@ Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystrok
 14. **Memory default.** Vitest and `pnpm test:e2e` stay green without Docker. Tree / header e2e may use memory (like M0/M2). Hub multi-doc and `git mv` need Compose. Unset sync env: no second space on the hub, no git write.
 15. **No `@affine/core`.** No nbstore. No convert in the hub. No lease UI.
 16. If this plan disagrees with [api-map.md](../api-map.md) after recon, **the map wins**. If it disagrees with [M3.0 HA](../M3.0/high-availability.md) on owner grain, **HA wins**.
+17. **SharedWorker is step 8 only.** Steps 2–7 ship per-tab A sockets. The worker holds those same URLs; it does not become a mux. `Y.Doc` stays in the tab. Memory mode has no worker.
 
 ## Target tree
 
@@ -79,7 +83,8 @@ Only create what M4 needs. Do **not** add `packages/review`, lease types, or app
 
 ```text
 Venus/
-  crates/venus-hub/                 # Room: Map<doc_id, Doc>; export per doc; default still home
+  proto/venus/                      # envelope + Hub.ExportDoc / ListDocs (internal gRPC)
+  crates/venus-hub/                 # Room: Map<doc_id, Doc>; ExportDoc per doc; GET /export = advertisement
   crates/venus-sidecar/             # cut pins catalog; gitPath from catalog; git2 mv
   apps/web/
     src/host/
@@ -91,12 +96,16 @@ Venus/
       chrome/                       # header undo/redo + current page
         mount-header.js
       mdgate/from-doc.js            # linked-doc post-process uses catalog title/path
+      providers/
+        octobase-keck-provider.js   # N sessions; ?doc=; _gen per session
+        keck-shared-worker.js       # SharedWorker script (step 8); holds A sockets
     src/App.tsx                     # header / tree / editor / outline
     e2e/
       m4-tree.spec.ts
       m4-header.spec.ts
       m4-move.spec.ts
       m4-link.spec.ts
+      m4-shared-worker.spec.ts      # step 8; skip if no SharedWorker
   docs/design/api-map.md            # catalog Actuals in step 1
   docs/design/M4/
     …
@@ -113,7 +122,9 @@ Tab A / Tab B
         │  page Y.Doc     doc:protocol      (mint once)
         ▼
 SyncProvider  (kind octobase alias)
-        │  AFFiNE WS  /collaboration/<workspace>   (+ doc Actual from recon)
+        │  AFFiNE WS  /collaboration/<workspace>              → home
+        │  AFFiNE WS  /collaboration/<workspace>?doc=<uuid>   → catalog / protocol
+        │  (step 8: SharedWorker may own those sockets; tabs still hold Y.Doc)
         ▼
 Venus hub  one owner per workspace_id
         │  apply / broadcast / persist per docId
@@ -129,12 +140,12 @@ wiki/  spec/home.md
        .venus/ids/<docId>.json
 ```
 
-Ids (Intent; Actual in recon):
+Ids (Intent; catalog Actual locked):
 
 ```text
 TestWorkspace.id     =  77e4a2b1-8b40-5979-a73c-fd4477216d00
-doc:home             =  existing page; SQL PAGE_DOC_ID
-venus:catalog        =  catalog Y.Doc guid; SQL v5 of that string
+doc:home             =  existing page; SQL PAGE_DOC_ID 395cd07b-bdb1-5f54-ada8-e9a3fabb6a20
+venus:catalog        =  catalog Y.Doc guid; SQL CATALOG_DOC_ID 4fe5c16e-4be3-5700-a456-ecc8e86cdf1a
 doc:protocol         =  second seed page (or Actual mint); SQL v5
 gitPath home         =  spec/home.md
 gitPath protocol     =  spec/protocol.md   (until a move)
@@ -146,21 +157,23 @@ Locked in [step-recon-catalog](#1-step-recon-catalog). If this section disagrees
 
 | Piece | Intent |
 |---|---|
-| Live CRDT | Unchanged hub + `OctoBaseKeckProvider` (`kind: 'octobase'` alias). **Many `doc_id`s per room.** |
+| Live CRDT | Unchanged hub + `OctoBaseKeckProvider` (`kind: 'octobase'` alias). **Many `doc_id`s per room.** **Wire A:** N sockets, one Room, same `/collaboration/:workspace_id`. Socket names `doc_id` with query `?doc=<sql uuid>`. Omit `doc` = home (M1). Not path suffix (B). Not frame multiplex (C). |
 | Catalog | Plain Y.Doc, `Y.Map` nodes. Fields: `id`, `kind` (`folder` \| `doc`), `name`, `parentId`, `order`, `docId?`, `gitPath`. |
 | Order | Fractional index among siblings (recon locks the helper). |
-| Tree UI | **`@headless-tree/react`** view over the catalog Y.Doc. Data loader reads `Y.Map`; drop calls catalog `reparent` / `setOrder`. Not AFFiNE explorer. Design: [CRDT tree](../components/frontend/crdt-tree/). |
+| Tree UI | **`@headless-tree/react@1.7.0`** view over the catalog Y.Doc. Data loader reads `Y.Map`; drop calls catalog `reparent` / `setOrder`. Not AFFiNE explorer. Design: [CRDT tree](../components/frontend/crdt-tree/). |
 | Header | Host chrome: `store.undo()` / `store.redo()`; `canUndo` / `canRedo` (or `store.history.canUndo$` / `canRedo$`). Title = catalog name / `gitPath`. |
 | Linked-doc | `affine:embed-linked-doc` `pageId = docId`. Export: `[title](relative.md)` + `<!-- venus:doc:<id> -->`. |
 | Git | Same sidecar. `git2` `git mv` when catalog `gitPath` ≠ last committed path. Autocomment still `snapshot: <title>`. |
-| Out of scope | Lease UI, remotes, `@affine/core`, convert in hub, `toDoc` restoring the card |
+| Tab sockets | Default: one TCP per **connected** Y.Doc in that tab (catalog + current page). `OctoBaseKeckProvider` `_gen` is **per session**, not global. |
+| SharedWorker | Last product step ([`step-shared-worker`](#8-step-shared-worker)): if `typeof SharedWorker === 'function'`, one worker per origin+workspace holds those **same A sockets**; tabs `postMessage` updates. `Y.Doc` + BlockSuite stay in the tab. Missing API → per-tab A (required fallback). **Not** a Service Worker. |
+| Out of scope | Lease UI, remotes, `@affine/core`, convert in hub, `toDoc` restoring the card, y-protocols envelope (C) |
 
 ### Spaces and git
 
 | | |
 |---|---|
-| **Wire** | Recon Actual: how a socket names `doc_id` (query, path suffix, first frame, or N sockets on the same Room). Bare `/collaboration/:workspace_id` = `doc:home`. Do not invent a second handshake that breaks M1. |
-| **Export** | Bare `GET /api/block/:workspace/export` = home (M1). Per-doc export Actual in api-map (path or query). |
+| **Wire** | **A1+B+C1, locked.** N sockets on one Room. `WS /collaboration/:workspace_id` = home. `WS /collaboration/:workspace_id?doc=<sql uuid>` = that `doc_id`. Guid in `?doc=` is **400**. Vanilla `y-protocols` / `AFFiNE` frames. SharedWorker (step 8) does not change this URL. |
+| **Export** | **gRPC `Hub.ExportDoc`**. `doc_id` = SQL uuid; omit = home. GET `/api/block/:workspace/export` = advertisement (available docs + `?doc=` / gRPC). GET `?doc=` = 400 `export_http_disabled`. No HTTP Yjs. [rpc.md](../rpc.md). |
 | **Seed catalog** | If empty after sync: folder `spec`, doc `home` → `doc:home`, doc `protocol` → second page. Same seed-once rule as pages. |
 | **Move** | Catalog reparent live; git catches up on Flush. |
 | **Empty folders** | Catalog only until a page lives under them. |
@@ -171,24 +184,25 @@ What each step **adds** to the product (not how to test it — that is under eac
 
 | # | id | Adds |
 |---|---|---|
-| 1 | [`step-recon-catalog`](#1-step-recon-catalog) | Gate + map: multi-doc wire, catalog schema, tree/header symbols, `git mv`, linked-doc Actuals; spike two docs. |
-| 2 | [`step-spaces`](#2-step-spaces) | Hub + host: many pages per wiki; default path still home; export per doc. |
+| 1 | [`step-recon-catalog`](#1-step-recon-catalog) | Gate + map: wire **A** (`?doc=`), catalog schema, tree/header symbols, `git mv`, linked-doc Actuals; spike two docs. |
+| 2 | [`step-spaces`](#2-step-spaces) | Hub + host: many pages per wiki; bare path still home; `?doc=` bind; gRPC `ExportDoc` per doc. Per-tab sockets. |
 | 3 | [`step-catalog-crdt`](#3-step-catalog-crdt) | Catalog Y.Doc ops: seed, reparent, `gitPath`. Two tabs see moves. No tree chrome yet. |
 | 4 | [`step-chrome`](#4-step-chrome) | Layout slots + product header (undo/redo, current page) on the open Store. |
 | 5 | [`step-tree`](#5-step-tree) | Tree UI; click opens; drop reparents. Outline stays headings. |
 | 6 | [`step-git-mv`](#6-step-git-mv) | Sidecar: catalog in the cut; two files; `git mv` on Flush when path changed. |
 | 7 | [`step-links`](#7-step-links) | `embed-linked-doc` + export title/path/`venus:doc`; still resolves after a move. |
-| 8 | [`step-verify`](#8-step-verify) | Close-out: person + Playwright; board `done`. |
+| 8 | [`step-shared-worker`](#8-step-shared-worker) | Optional **SharedWorker** in front of A. Feature-detect; fallback per-tab. Not Service Worker. Not mux. |
+| 9 | [`step-verify`](#9-step-verify) | Close-out: person + Playwright; board `done`. |
 
 ---
 
 ## Steps
 
-Do them in order (1–8). A step is not started until its `dependsOn` steps are done. Test scenarios under each step are the accept rules (Given / When / Then). Encode them as tests where the How column names a command; do not invent extra scenarios.
+Do them in order (1–9). A step is not started until its `dependsOn` steps are done. Steps 2–7 must work **without** a SharedWorker (per-tab A sockets). Test scenarios under each step are the accept rules (Given / When / Then). Encode them as tests where the How column names a command; do not invent extra scenarios.
 
 ### 1. step-recon-catalog
 
-[Back to overall summary](#steps-summary). Steps: **1** · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: **1** · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -199,21 +213,22 @@ Do them in order (1–8). A step is not started until its `dependsOn` steps are 
 | **kind** | implement |
 | **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** a decision and a map, not product UI. You know how a second `doc_id` rides on the wiki owner, the catalog guid + SQL uuid, node fields, tree/header imports, and that sidecar `commit_pins` will read `gitPath` from a catalog pin.
+**Adds:** a decision and a map, not product UI. **Wire A is locked:** N sockets, `?doc=<sql uuid>` on the existing workspace path. You still fill catalog guid + SQL uuid, node fields, tree/header imports, and that sidecar `commit_pins` will read `gitPath` from a catalog pin.
 
 M4 dies if each page is a second hub owner, or if the tree scans git, or if undo is copied from `@affine/core`.
 
 #### Work
 
 1. Confirm [M3.state.yaml](../M3/M3.state.yaml) steps 1–9 `done`.
-2. Spike (throwaway ok): two Y.Docs on the M0 `workspace_id` **without** keck. Prove home still hydrates; second doc round-trips; lease row count stays 1. Log the Actual framing (path / query / N sockets on one Room).
-3. Fill [api-map.md](../api-map.md) **Names — catalog / tree / header**: catalog guid, SQL uuids, export URL per doc, node schema, order helper, tree mount, header undo APIs, `git mv` behavior, linked-doc title/path post-process.
-4. Record: Room is `Map<doc_id, Doc>`; apply/persist per `docId`; owner still `workspace_id`. Bare collaboration + export URLs remain home.
+2. Spike (throwaway ok): two Y.Docs on the M0 `workspace_id` **without** keck, **wire A**. Bare `/collaboration/:workspace_id` = home; second socket `?doc=<sql uuid>`. Prove home still hydrates; second doc round-trips; lease row count stays 1. Do not spike B (path suffix) or C (mux).
+3. Fill [api-map.md](../api-map.md) **Names — catalog / tree / header**: catalog guid, SQL uuids, **gRPC ExportDoc**, node schema, order helper, tree mount, header undo APIs, `git mv` behavior, linked-doc title/path post-process, SharedWorker feature-detect. Multi-doc wire Actual is A (already chosen). Envelope: [rpc.md](../rpc.md).
+4. Record: Room is `Map<doc_id, Doc>`; apply/persist per `docId`; owner still `workspace_id`. Bare collaboration still home. GET `/export` is advertisement, not home Yjs.
 5. Note M2 [fromDoc-review](../M2/fromDoc-review.md) S4/S5: two pages make linked-doc resolution and synced-doc inlining live — do not “fix” apply here; export must keep `venus:doc:` first.
 
 #### Do not
 
-- Ship the tree or header.
+- Reopen B/C or a first-frame handshake.
+- Ship the tree, header, or SharedWorker (step 8).
 - Import `@affine/core`.
 - Change M3 convert dialect.
 - Write `wiki/` paths by hand as the live tree.
@@ -229,11 +244,11 @@ M4 dies if each page is a second hub owner, or if the tree scans git, or if undo
 2. **Map complete**
    - **Given** this repo after this step.
    - **When** you read [api-map.md](../api-map.md) **Names — catalog / tree / header**.
-   - **Then** Actuals are concrete: multi-doc wire, catalog guid + SQL uuid, second seed `docId` + `gitPath`, tree testid, header undo methods, per-doc export curl, `git mv` on Flush.
+   - **Then** Actuals are concrete: multi-doc wire **A** (`?doc=`), catalog guid + SQL uuid, second seed `docId` + `gitPath`, tree testid + `@headless-tree/react@1.7.0`, header undo methods, **gRPC ExportDoc**, GET export advertisement, `git mv` on Flush, SharedWorker detect (`SharedWorker`, not `serviceWorker`).
    - **How:** grep / review. Fail if cells are still empty or `recon:`.
 3. **Spike two docs**
    - **Given** hub + Postgres (testcontainers or Compose).
-   - **When** client A writes a map key on a second `doc_id`; client B is on that same doc; home is also connected.
+   - **When** client A writes a map key on a second `doc_id` over `?doc=<uuid>`; client B is on that same query; home is on the **bare** path.
    - **Then** B sees the value; home still has seed / prior bytes; `workspace_lease` has one owner for the M0 wiki.
    - **How:** `cargo test -p venus-hub --test recon` (or Actual recorded in api-map). Fail if the spike needs a second hub process per page.
 
@@ -241,7 +256,7 @@ M4 dies if each page is a second hub owner, or if the tree scans git, or if undo
 
 ### 2. step-spaces
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · **2** · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · **2** · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -259,8 +274,8 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Work
 
 1. Room: `Map<doc_id, Doc>` (or equivalent). Hydrate/apply/persist/broadcast **per `docId`**. One persist task per doc or one task that drains every buffer — Actual. Do not pause persist.
-2. Wire: implement api-map Actual so `SyncProvider.connect(docId, ydoc)` does not smash into home (`OctoBaseKeckProvider` `_gen` must not invalidate other sessions).
-3. Export: keep `GET /api/block/:workspace/export` as home. Add per-doc export Actual. `live_export` must not always encode `PAGE_DOC_ID` only.
+2. Wire **A:** `connect(docId, ydoc)` opens another WS to the **same** `/collaboration/:workspace_id` with `?doc=<sql uuid>` (omit for home). Hub binds that socket to that `doc_id` at upgrade. `OctoBaseKeckProvider` `_gen` is **per session** so catalog + page stay live together. Do not wrap frames. Do not add `/collaboration/:ws/:doc`. No SharedWorker in this step.
+3. Export: **gRPC `ExportDoc`** per `doc_id` (`Hub::live_export` generalized). GET `/api/block/:workspace/export` stays advertisement JSON (no Yjs). Do not add `GET …/:doc/export`. `live_export` must not always encode `PAGE_DOC_ID` only.
 4. Host: mint the second seed doc **once** after sync (same seed-if-empty rule as home). Memory provider: both docs exist in one `TestWorkspace` without WS.
 5. Dirty trigger already keys `doc_id` — a persist on the second page upserts a second `dirty` row; still one `dirty_wiki` / `jobs` grain.
 
@@ -270,6 +285,8 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 - Change M1 two-tab / hydrate asserts except to stay green.
 - Catalog ops or tree UI.
 - `git mv`.
+- SharedWorker / Service Worker.
+- Path suffix or multiplexed frames.
 
 #### Test scenarios
 
@@ -281,7 +298,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 2. **Home still hydrates**
    - **Given** Compose hub with both docs.
    - **When** you run M1 hydrate / two-tabs.
-   - **Then** they still pass (`pnpm test:e2e:m1`). Bare export still decodes `doc:home`.
+   - **Then** they still pass (`pnpm test:e2e:m1`). Bare collab still hydrates `doc:home`. GET `/export` is advertisement (no Yjs).
    - **How:** existing M1 suite. Fail if multi-doc broke the default path.
 3. **One wiki owner**
    - **Given** hub A holds the M0 workspace; a client opens the second page.
@@ -290,15 +307,15 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
    - **How:** extend `compose:ha` or crate lease test. Fail if `doc_id` sticky appeared.
 4. **Export per doc**
    - **Given** both pages have distinct bytes.
-   - **When** you curl bare export and the per-doc Actual URL.
-   - **Then** bare = home; the other URL decodes the second guid, not home.
-   - **How:** Vitest `snapshot.test.ts` (or sibling) + curl. Fail if both URLs are the same tree.
+   - **When** you `ExportDoc` omit `doc_id` and `ExportDoc` with the second SQL uuid.
+   - **Then** omit = home; the other call decodes the second guid, not home. GET `/export` is still advertisement (root has no `error`).
+   - **How:** hub gRPC test + Vitest advertisement GET. Fail if both RPCs are the same tree, or if GET returns `application/octet-stream`.
 
 ---
 
 ### 3. step-catalog-crdt
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · **3** · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · **3** · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -353,7 +370,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 ### 4. step-chrome
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · **4** · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · **4** · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -406,7 +423,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 ### 5. step-tree
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · **5** · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · **5** · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -461,7 +478,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 ### 6. step-git-mv
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · **6** · [7](#7-step-links) · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · **6** · [7](#7-step-links) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -517,7 +534,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 ### 7. step-links
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · **7** · [8](#8-step-verify)
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · **7** · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
@@ -564,27 +581,80 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 ---
 
-### 8. step-verify
+### 8. step-shared-worker
 
-[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · **8**
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · **8** · [9](#9-step-verify)
 
 | | |
 |---|---|
 | **n** | 8 |
-| **id** | `step-verify` |
-| **title** | Close-out: two pages, link, move, header undo |
+| **id** | `step-shared-worker` |
+| **title** | SharedWorker in front of wire A (feature-detect) |
 | **dependsOn** | `step-links` |
 | **kind** | implement |
 | **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** board `done`. Person + clone + smoke.
+**Adds:** fewer hub sockets when two tabs share a browsing profile. Hub protocol **unchanged** (still A: one TCP per `doc_id`, `?doc=`). Tree / header / Flush already work from steps 2–7 on per-tab sockets.
+
+`navigator.serviceWorker` is **not** this feature. Detect `typeof SharedWorker === 'function'`. A Service Worker is a fetch interceptor and can be killed; it does not hold the collab sockets.
 
 #### Work
 
-1. Runbook: M4 close-out — two pages in the tree, link, drop to a folder, Flush, clone `wiki/`, header undo/redo vs keyboard.
-2. Person in Chrome or Firefox.
-3. `pnpm test:e2e:m1`, M2 pane, M3 flush/live, new `m4-*.spec.ts`.
-4. Mark [M4.state.yaml](./M4.state.yaml) steps 1–8 `done` with evidence.
+1. `apps/web/src/host/providers/keck-shared-worker.js` (or Actual path): worker opens the **same** A WebSockets (`/collaboration/:workspace` and `?doc=`). Tabs send/receive `Uint8Array` updates over `MessagePort`. `Y.Doc`, BlockSuite `Store`, and React stay in the tab.
+2. Host: if SharedWorker exists, `OctoBaseKeckProvider` (or a thin wrapper) talks to the worker instead of `new WebSocket` in the tab. Same `connect(docId, ydoc)` / `disconnect` / `whenReady` seam. Memory provider unchanged.
+3. Subscribe/unsubscribe per `doc_id` in the worker (catalog stays while the tree is mounted; page socket replaced on switch). Last tab close → worker closes those sockets.
+4. No SharedWorker (or worker construct throws): **identical** per-tab A path from step 2. Product must not require the worker.
+5. Playwright: two **pages in one BrowserContext** share one worker (assert fewer sockets or a host hook). Two **contexts** each get their own worker — that is not a fail; it is how the API isolates. Chromium has SharedWorker; if a browser in CI does not, skip the share assert and still run the fallback.
+
+#### Do not
+
+- Wrap y-protocols (C). The hub still sees vanilla AFFiNE frames, one `doc_id` per socket.
+- Put `Y.Doc` or BlockSuite in the worker.
+- Use `navigator.serviceWorker.register` for collab.
+- Make tree, header, or Flush depend on the worker.
+- Change hub routes.
+
+#### Test scenarios
+
+1. **Fallback**
+   - **Given** SharedWorker is undefined or the provider is forced to the tab path (test hook).
+   - **When** you run `m4-tree` two-tabs drop (or catalog CRDT two-tabs).
+   - **Then** B still sees A’s drop. Hub still has one owner.
+   - **How:** `e2e/m4-shared-worker.spec.ts` + existing m4 specs. Fail if missing SharedWorker blanks the tree.
+2. **Share in one profile**
+   - **Given** Chromium (or a browser with SharedWorker); two pages, **same** Playwright context; Compose hub.
+   - **When** both show the tree (catalog + a page).
+   - **Then** catalog (and the open page, if both opened the same `doc_id`) use the worker-held A sockets; a drop in page 1 appears in page 2 without reload.
+   - **How:** same spec; optional hub metric / `performance.getEntriesByType('resource')` / debug hook counting WS upgrades. Fail if each tab still opens a duplicate catalog TCP **and** the worker is running (implementation did not actually share).
+3. **Seam holds**
+   - **Given** `mount-editor.js`.
+   - **When** you search for SharedWorker / `keck-shared-worker`.
+   - **Then** none. Memory `pnpm test` still has no worker.
+   - **How:** extend `sync-provider.test.ts`. Fail if the editor thread owns the worker.
+
+---
+
+### 9. step-verify
+
+[Back to overall summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · [7](#7-step-links) · [8](#8-step-shared-worker) · **9**
+
+| | |
+|---|---|
+| **n** | 9 |
+| **id** | `step-verify` |
+| **title** | Close-out: two pages, link, move, header undo |
+| **dependsOn** | `step-shared-worker` |
+| **kind** | implement |
+| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+
+**Adds:** board `done`. Person + clone + smoke. SharedWorker is an optimization; exit 1–10 must hold on the fallback path.
+
+#### Work
+
+1. Runbook: M4 close-out — two pages in the tree, link, drop to a folder, Flush, clone `wiki/`, header undo/redo vs keyboard. Note SharedWorker vs per-tab.
+2. Person in Chrome or Firefox (Chrome has SharedWorker; if Firefox path is fallback-only, say so on the board).
+3. `pnpm test:e2e:m1`, M2 pane, M3 flush/live, new `m4-*.spec.ts` including `m4-shared-worker`.
+4. Mark [M4.state.yaml](./M4.state.yaml) steps 1–9 `done` with evidence.
 5. Re-read [fromDoc-review](../M2/fromDoc-review.md) S4/S5 note (dogfood starts after this); do not “close” S1–S7 here unless already green.
 
 #### Do not
@@ -592,6 +662,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 - Start M5 lease in this step.
 - Record remotes as required evidence (optional note only).
 - Close M4 if clone folders do not match the tree after Flush.
+- Close M4 if the app requires SharedWorker to open two pages.
 
 #### Test scenarios
 
@@ -601,13 +672,13 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
    - **Then** git tree matches catalog `gitPath`s; the link still resolves; header undo/redo matches keyboard on the open page.
    - **How:** `pnpm test:e2e:m4` (or Actual) + clone script. Fail if any exit bullet is demo-only.
 2. **Smoke**
-   - **Then** `m4-tree`, `m4-header`, `m4-move`, `m4-link` pass; `pnpm test:e2e:m1`, M2 pane, `pnpm test:e2e:m3` still pass.
+   - **Then** `m4-tree`, `m4-header`, `m4-move`, `m4-link`, `m4-shared-worker` pass; `pnpm test:e2e:m1`, M2 pane, `pnpm test:e2e:m3` still pass.
    - **How:** those commands.
 3. **Manual path**
-   - **Then** runbook M4 close-out holds (tree, drop, Flush, clone, undo button, outline still headings).
+   - **Then** runbook M4 close-out holds (tree, drop, Flush, clone, undo button, outline still headings). Two tabs in one window still sync if SharedWorker is on.
    - **How:** person + evidence on the board (date + browser).
 4. **Prior milestones green**
-   - **Then** memory `pnpm test:e2e` (m0 + m2) still passes with the new chrome.
+   - **Then** memory `pnpm test:e2e` (m0 + m2) still passes with the new chrome (no worker).
    - **How:** `pnpm test` + `pnpm test:e2e`. Fail if the tree requires Docker in the default suite.
 
 ---
@@ -629,7 +700,8 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | Day 3 | 3 `step-catalog-crdt` |
 | Day 4 | 4 `step-chrome` → 5 `step-tree` |
 | Day 5 | 6 `step-git-mv` |
-| Day 6 | 7 `step-links` → 8 `step-verify` |
+| Day 6 | 7 `step-links` |
+| Day 7 | 8 `step-shared-worker` → 9 `step-verify` |
 
 If M3 is still open, **stop**. Do not fake a second page as two git paths on one Y.Doc.
 
@@ -639,8 +711,12 @@ If M3 is still open, **stop**. Do not fake a second page as two git paths on one
 |---|---|
 | Gate skipped | Step 1 **Gate held** fails closed |
 | `doc_id` sticky / second hub owner per page | Step 2 **One wiki owner**; HA grain |
-| Second `connect()` kills home WS (`_gen`) | Step 2 provider sessions |
-| Bare export no longer home | Step 2 **Home still hydrates** / **Export per doc** |
+| Second `connect()` kills home WS (`_gen`) | Step 2 provider sessions **per doc** |
+| GET `/export` still serving Yjs / silent home | Step 2 **Export per doc**; [rpc.md](../rpc.md) |
+| Mux frames (C) or path suffix (B) | Wire A only; step 1 spike uses `?doc=` |
+| SharedWorker required for the tree | Step 8 last; **Fallback** test; verify does not close if worker is mandatory |
+| Service Worker used as WS | Forbidden; detect `SharedWorker` |
+| Two Playwright **contexts** expected to share one worker | They must not; share assert is two pages, one context |
 | Tree reads `wiki/` | Step 5 data = catalog; step 6 git lags live |
 | `git mv` on every drop | Step 6 only on Flush |
 | `commit_pins` still home-only | Step 6 **Two files** |
@@ -658,6 +734,7 @@ M5 may assume:
 
 - Two (or more) published spaces + `venus:catalog` on the same wiki owner.
 - Tree + header exist; current page is visible; undo/redo is host chrome.
+- Per-tab A sockets work; SharedWorker is an optional host fan-in of those sockets.
 - Flush `git mv`s; clone folders match catalog after publish.
 - Linked-doc export has stable `docId` comments.
 - Freeze / `store.readonly` / CodeMirror / lease holder chip are **new**.
@@ -677,3 +754,4 @@ M5 exit is: second user cannot type in WYSIWYG during the lease; they see who ho
 8. `mount-editor` stays unaware of catalog, tree, header, and git.
 9. No lease, no comment-commit why, no remotes required.
 10. Memory default stays Docker-free for m0/m2 e2e.
+11. Hub wire is A. SharedWorker does not change URLs or frames.

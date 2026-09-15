@@ -22,7 +22,7 @@ Cloud and devices: same space ids on the hub (hosted Postgres or later on-device
 | Kind | Space id (prototype) | Concurrent writes | Notes |
 |---|---|---|---|
 | **Published page** | `docId` (random hub space id) | Yes, when **no** lease | Only accepted `affine:*` blocks. Freeze = readonly during lease. |
-| **Catalog** | `venus:catalog` | Yes (folder moves) | Live wiki tree. Not a docs-framework TOC. |
+| **Catalog** | `venus:catalog` (SQL `4fe5c16e-4be3-5700-a456-ecc8e86cdf1a`) | Yes (folder moves) | Live wiki tree. Not a docs-framework TOC. |
 | **Review session** | `venus:review:<docId>` | Comments yes; hunk **values** last-writer | Lease, threads, commit records. **Not** the proposal tree. |
 | **Commit Before** | `venus:review:<docId>:c:<commitId>:before` | No | Readonly clone of parent clock. |
 | **Commit After** | `venus:review:<docId>:c:<commitId>:after` | **Yes** until accept/reject | Proposal tree. Same **block ids** as published/`T0`. |
@@ -125,7 +125,7 @@ v1 **UI** may show one tip ([v1-concerns.md](../../drafts/pre-design/v1-concerns
 
 A **pin** ([LiveSnapshot](../LiveSnapshot/README.md)) is a short-lived copy of Yjs bytes for flush or lease `T0`. It is **not** a space. First-commit Before is that pin loaded into the Before space (kept until the lease ends). Idle snapshot pins are dropped after git convert.
 
-`GET /api/block/…/export` is the **current** tree in Postgres, not `T0`, not git.
+gRPC **`Hub.ExportDoc`** is the **current** tree (RAM or Postgres), not `T0`, not git. GET `/api/block/…/export` is advertisement JSON. [rpc.md](../rpc.md).
 
 ## What Postgres holds
 

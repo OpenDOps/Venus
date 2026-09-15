@@ -45,14 +45,14 @@ Tab A CatalogTree     Tab B CatalogTree
 | Hub fact (M3.0) | Catalog (M4) |
 |---|---|
 | One live owner per `workspace_id` | Unchanged. Catalog is not a second wiki. |
-| Room RAM + persist is per `doc_id` | Catalog SQL uuid = v5 of `venus:catalog`. Pages keep their own ids. |
-| Bare `/collaboration/:workspace` + export | Still **home**. Catalog uses the same workspace path; recon locks how the socket names `doc_id` ([M4 step-spaces](../../../M4/plan.md#2-step-spaces)). |
+| Room RAM + persist is per `doc_id` | Catalog SQL uuid = `4fe5c16e-4be3-5700-a456-ecc8e86cdf1a` (v5 of `venus:catalog`). Pages keep their own ids. |
+| Bare `/collaboration/:workspace` + export | Still **home**. Second docs: **same path** + `?doc=<sql uuid>` ([M4 wire A](../../../M4/plan.md#spaces-and-git)). SharedWorker (step 8) does not change the URL. |
 | Dirty trigger on `crdt_update` | Catalog persist upserts `dirty(workspace, catalog_uuid, clock)` like any page. One `jobs` row per wiki. Flush pins catalog **with** dirty pages so `gitPath` matches files. |
 | Hub does not walk CRDT items | Still true. Hub never knows “folder” vs “page”. |
 
-`SyncProvider.connect('venus:catalog', catalog.spaceDoc)` sits next to `connect('doc:home', page.spaceDoc)`. `mount-editor` imports neither.
+`SyncProvider.connect('venus:catalog', catalog.spaceDoc)` sits next to `connect('doc:home', page.spaceDoc)` — **two sockets** (A) unless a SharedWorker is holding them for this profile. `mount-editor` imports neither.
 
-Memory mode (`VITE_SYNC_URL` unset): one in-tab Y.Doc; tree still works; second tab does not sync (same as M0).
+Memory mode (`VITE_SYNC_URL` unset): one in-tab Y.Doc; tree still works; second tab does not sync (same as M0). No SharedWorker.
 
 ## Concurrent tabs and users
 
@@ -116,7 +116,7 @@ The catalog stays ours. The **view** should still be a real tree with ordered dr
 | **react-arborist** | Built-in DnD, but opinionated DOM and an internal store that fights Yjs. |
 | **@dnd-kit sortable tree** | DnD kit only; we still build tree a11y. AFFiNE left dnd-kit for pragmatic-dnd. |
 | **HTML5 DnD custom list** | Small, but keyboard / drop-between / a11y become a second project. |
-| **`@headless-tree/react`** | **Yes.** Headless: `dataLoader` reads the Y.Map; `onDrop` writes catalog ops. Ordered DnD, keyboard, rename, `role="tree"`. MIT. No `@affine/core`. Pin Actual in [api-map](../../../api-map.md) at M4 recon (`^1.6` on npm as of 2026-01). |
+| **`@headless-tree/react`** | **Yes.** Headless: `dataLoader` reads the Y.Map; `onDrop` writes catalog ops. Ordered DnD, keyboard, rename, `role="tree"`. MIT. No `@affine/core`. Pin Actual **`1.7.0`** (+ `@headless-tree/core@1.7.0`) in [api-map](../../../api-map.md). |
 
 Headless Tree must stay a **view**:
 

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package venus.hub.v1;
+
+import "venus/rpc/v1/error.proto";
+
+// Internal hub RPC. Browser collab stays AFFiNE WebSocket; blobs stay HTTP
+// for the tab. Sidecar and other Venus processes use this service.
+service Hub {
+  rpc ListDocs(ListDocsRequest) returns (ListDocsResponse);
+  rpc ExportDoc(ExportDocRequest) returns (ExportDocResponse);
+}
+
+message ListDocsRequest {
+  string workspace_id = 1;
+}
+
+message ListDocsResponse {
+  repeated venus.rpc.v1.DocRef docs = 1;
+  venus.rpc.v1.Advertisement advertisement = 2;
+}
+
+message ExportDocRequest {
+  string workspace_id = 1;
+  // SQL uuid. Unset = home (PAGE_DOC_ID). Guid / empty / non-uuid = invalid_doc.
+  optional string doc_id = 2;
+}
+
+message ExportDocResponse {
+  bytes yjs_update_v1 = 1;
+  string doc_id = 2;
+}
+
+// On failure the server sets gRPC Status and packs venus.rpc.v1.Error in
+// details. It does not return these messages with a populated error field.

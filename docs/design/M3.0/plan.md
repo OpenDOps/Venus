@@ -46,7 +46,7 @@ M2 pane still photographs the **synced Store**, not export.
 | Later                                                        | Why not M3.0                                                                          |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | `wiki/` git, flush, autocomment                              | M3                                                                                    |
-| Folder tree, catalog CRDT, many pages per wiki on one socket | [M4](../M4/README.md) |
+| Folder tree, catalog CRDT, many pages per wiki (N sockets, one Room, `?doc=`) | [M4](../M4/README.md) |
 | Lease freeze, CodeMirror                                     | M5                                                                                    |
 | Review After/Before/Diff                                     | M6                                                                                    |
 | k8s ingress, many hub replicas, HPA, session drain           | [Hub fleet](../../devops/hub-fleet.md) after lease is proven; M3.0 may be one replica |

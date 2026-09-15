@@ -6,6 +6,7 @@ Source of Compose service **`hub`**. Architecture: [architecture.md](./architect
 
 ```text
 Venus/
+  proto/venus/               rpc Error/Advertisement; hub ListDocs/ExportDoc
   Cargo.toml                 workspace; members = ["crates/venus-hub", "crates/venus-sidecar"]
   Cargo.lock
   rust-toolchain.toml        channel 1.98.1; rust-analyzer + rust-src
@@ -14,7 +15,7 @@ Venus/
     Cargo.toml               lib + bin `venus-hub`; y-octo, axum, sqlx, tokio
                              test: tokio-tungstenite, testcontainers, futures-util
     src/
-      lib.rs                 crate root: modules + DEFAULT_WORKSPACE_ID / PAGE_DOC_ID / SUBPROTOCOL
+      lib.rs                 crate root: modules + DEFAULT_WORKSPACE_ID / PAGE_DOC_ID / CATALOG_DOC_ID / SUBPROTOCOL
       main.rs                process entry
       config.rs             env → Config
       protocol.rs           y-protocols + y-octo apply/encode
@@ -23,6 +24,7 @@ Venus/
       schema.sql             included by db::migrate
       lease.rs               workspace_lease
       http.rs                Axum routes + WS loop
+      rpc.rs                 JSON envelope (`error` / advertisement); GET /export discovery
       blobs.rs               BlockSuite sha() + content-type sniff
     tests/
       recon.rs               M3.0 step-recon-hub (no Postgres)
@@ -36,11 +38,12 @@ The workspace also has `crates/venus-sidecar` (M3 snapshotter). The hub crate do
 
 ### `lib.rs`
 
-Crate root. Declares `blobs`, `config`, `db`, `http`, `lease`, `protocol`, `room`.
+Crate root. Declares `blobs`, `config`, `db`, `http`, `lease`, `protocol`, `room`, `rpc`.
 
 | Symbol | Value | Meaning |
 |---|---|---|
-| `PAGE_DOC_ID` | `"395cd07b-bdb1-5f54-ada8-e9a3fabb6a20"` | SQL `doc_id` (UUID v5 of `doc:home`). The page `spaceDoc` on `/collaboration/:workspace_id`. BlockSuite `createDoc` stays `doc:home`. |
+| `PAGE_DOC_ID` | `"395cd07b-bdb1-5f54-ada8-e9a3fabb6a20"` | SQL `doc_id` (UUID v5 of `doc:home`). Bare `/collaboration/:workspace_id`. BlockSuite guid stays `doc:home`. |
+| `CATALOG_DOC_ID` | `"4fe5c16e-4be3-5700-a456-ecc8e86cdf1a"` | SQL `doc_id` (UUID v5 of `venus:catalog`). `?doc=` that uuid. Guid stays `venus:catalog`. |
 | `DEFAULT_WORKSPACE_ID` | `"77e4a2b1-8b40-5979-a73c-fd4477216d00"` | UUID v5 of `venus-m0`. M0 wiki in the URL and lease. |
 | `SUBPROTOCOL` | `"AFFiNE"` | `Sec-WebSocket-Protocol` |
 
@@ -75,6 +78,10 @@ y-protocols/sync via y-octo (`read_sync_message` / `write_sync_message`). Tags 0
 | `is_noop_update` | Skip empty / all-zero bins |
 
 Does **not** talk to Postgres or sockets.
+
+### `rpc.rs`
+
+JSON envelope for HTTP GET and collab errors. Same `error` object as [`venus.rpc.v1.Error`](../../../../../proto/venus/rpc/v1/error.proto). GET `/api/block/{id}/export` is advertisement (home + catalog + gRPC bind). Product Yjs export is gRPC `Hub.ExportDoc` (listen `HUB_GRPC_LISTEN`, default `:3100`). Clients check root `error`. Contract: [rpc.md](../../../rpc.md).
 
 ### `room.rs`
 
@@ -122,8 +129,8 @@ Axum `Router`. CORS: methods `GET`/`HEAD`/`POST`/`DELETE`, headers `Content-Type
 |---|---|
 | `GET /` | Plain `venus-hub` |
 | `POST /collaboration/{id}` | Health JSON `{ "protocol": "AFFiNE" }`; **no** lease |
-| `GET /collaboration/{id}` | No `Upgrade: websocket` → same health JSON as POST (`OptionalWs`). Upgrade → `Hub::get_room` then `ws.protocols(["AFFiNE"])`; **503** only on `GetRoomError::Held`; store/hydrate fail → **500**. Bad id → **400**. |
-| `GET /api/block/{id}/export` | `Hub::live_export` (hot: clone room, drop `rooms`, encode; cold: single-flight SQL per `workspace_id`) |
+| `GET /collaboration/{id}` | No `Upgrade: websocket` → same health JSON as POST (`OptionalWs`) unless `?doc=` is present and not a SQL uuid → **400**. Upgrade → `take_doc_id` (omit = `PAGE_DOC_ID`) then `Hub::get_room`, `ensure_doc`, `ws.protocols(["AFFiNE"])`; **503** only on `GetRoomError::Held`; store/hydrate fail → **500**. Bad workspace id or bad `doc` → **400** `{ "error": { "code", "message" } }`. |
+| `GET /api/block/{id}/export` | Advertisement JSON (no Yjs). Bare GET **200** `{ "advertisement": { … } }`. `?doc=` **400** `export_http_disabled` (or `invalid_doc`). Encode is gRPC `ExportDoc` / `Hub::live_export`. |
 | `POST /api/blobs/{id}` | `blob_hash(&body)` + `db::put_blob` (no extra copy) |
 | `GET`/`HEAD`/`DELETE /api/blobs/…/{hash}` | GET/HEAD: `Cache-Control: public, max-age=31536000, immutable` + quoted `ETag` of the hash; matching `If-None-Match` → `blob_len` then **304** (missing → 404); else `get_blob` / `blob_len`. DELETE: `delete_blob` |
 

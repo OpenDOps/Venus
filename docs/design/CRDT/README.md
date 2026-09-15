@@ -19,7 +19,7 @@ M1 Actuals proved the wire. Product **Sync server** is Compose `hub`; persist ta
 | Sync server | Venus **hub** (Compose `hub`, Rust + y-octo) | OctoBase keck; host `cargo run` as DoD; AFFiNE Cloud / nbstore |
 | Persist | **Hosted:** Postgres 16 (Compose `postgres`, `pg-venus-data`) | IndexedDB as hosted refresh truth; SQLite |
 | Blobs | hub `POST`/`GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00` (bytes in the same Postgres) | `blob:` URLs only |
-| Doc export | `GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export` → Yjs update v1 | Markdown, `T0`, git |
+| Doc export | gRPC `Hub.ExportDoc` → Yjs update v1. GET `/export` = advertisement JSON. | Markdown, `T0`, git |
 | Optional decode | y-octo `0.1.0` or Node `Y.applyUpdate` | `@affine/native` |
 
 Ids: workspace `77e4a2b1-8b40-5979-a73c-fd4477216d00` (v5 of `venus-m0`) = hub room `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`. Page `doc:home` = that room’s `spaceDoc`. SQL `doc_id` is UUID v5 of `doc:home`.
@@ -62,22 +62,23 @@ image bytes  ──HTTP──►  Postgres  (blob, same DB)
 
 The hub is **stateless** besides Postgres and in-memory rooms. `docker compose down` without `-v` keeps `pg-venus-data`. Omitting Postgres env makes the hub refuse to start — that is required. Image bytes: [blobs](../../scenarios/blobs.md).
 
-## Doc export (M1 step 7)
+## Doc export (internal gRPC)
 
-Browsers already have the tree over the socket. **Other clients** (curl, sidecar, later lease/git) are not in that session. They read the **current** Y.Doc:
+Browsers already have the tree over the socket. **Other clients** (sidecar, later lease/git) are not in that session. They read the **current** Y.Doc over **gRPC** (`venus.hub.v1.Hub/ExportDoc`). GET `/api/block/:workspace/export` is advertisement JSON (available docs, `?doc=` / gRPC how-to). It does **not** return Yjs. Envelope: [rpc.md](../rpc.md).
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export -o /tmp/venus-page.yjs
+curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
+# JSON advertisement — check there is no root "error"
 ```
 
 ```text
-curl / sidecar / Venus service
-        │  GET /api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
+sidecar / Venus service
+        │  gRPC Hub.ExportDoc (omit doc_id = home)
         ▼
 hub  (bytes already in Postgres / live RAM encode)
 ```
 
-The hub does **not** ask browsers. This is not a named version. A **pin** keeps an export (or a replica encode); lease `T0` is that pin at acquire. [LiveSnapshot](../LiveSnapshot/README.md). [M1 step 7](../M1/plan.md#7-step-snapshot). How we test: [doc export](../../scenarios/doc-export.md) (`apps/web/src/host/snapshot.test.ts`).
+The hub does **not** ask browsers. This is not a named version. A **pin** keeps an export (or a replica encode); lease `T0` is that pin at acquire. [LiveSnapshot](../LiveSnapshot/README.md). [M1 step 7](../M1/plan.md#7-step-snapshot) used HTTP bytes; that GET is not the product export. How we test: [doc export](../../scenarios/doc-export.md) (`apps/web/src/host/snapshot.test.ts`).
 
 ## Testing
 

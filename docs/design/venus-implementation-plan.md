@@ -283,7 +283,7 @@ Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./A
 - Thin JS client `OctoBaseKeckProvider` behind `SyncProvider`. Not stock `y-websocket` in this milestone.
 - Two browser tabs edit the same page.
 - Blobs: one image upload (bytes in Postgres via keck HTTP).
-- **Doc export:** Venus (or `curl`) can `GET /api/block/venus-m0/export` (current Y.Doc, not markdown, not `T0`).
+- **Doc export:** Venus can `ExportDoc` (gRPC) the current Y.Doc (not markdown, not `T0`). GET `/export` is advertisement JSON.
 
 **Exit:** refresh / second client sees the same page.
 
@@ -337,6 +337,7 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 - Layout: header top; folder tree left; page editor; in-page outline stays the heading TOC (not a second wiki tree).
 - Publish includes `git mv`.
 - `affine:embed-linked-doc` + markdown link round-trip (`docId` + path).
+- **Wire A:** N sockets on one hub Room; `?doc=<sql uuid>` on `/collaboration/:workspace_id`; bare path = home. Last step: **SharedWorker** in front of those sockets when `typeof SharedWorker === 'function'` (fallback: per-tab). Not a Service Worker. Not multiplexed frames.
 
 **Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves. Header undo/redo matches keyboard undo on the open page.
 

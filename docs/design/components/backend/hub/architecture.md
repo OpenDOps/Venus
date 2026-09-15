@@ -82,7 +82,7 @@ Live collab never waits on markdown, git, or pin convert. Persist is never pause
 
 ## Room as the unit of concurrency
 
-M3.0 is **one Y.Doc per room**. Path `/collaboration/:workspace_id` is a UUID (M0 wiki is UUID v5 of `venus-m0`). That room **is** the page `spaceDoc` (BlockSuite guid `doc:home`). SQL `doc_id` is UUID v5 of `doc:home`. Many pages per wiki (including catalog `venus:catalog`) is [M4](../../../M4/README.md) / [CRDT tree](../../frontend/crdt-tree/); the **lease grain stays `workspace_id`**.
+M3.0 is **one Y.Doc per room at open** (home). Path `/collaboration/:workspace_id` is a UUID (M0 wiki is UUID v5 of `venus-m0`). Bare WS is the page `spaceDoc` (BlockSuite guid `doc:home`). SQL `doc_id` is UUID v5 of `doc:home`. Extra docs: **`?doc=<sql uuid>`** on that path ([M4 wire A1](../../../M4/plan.md#spaces-and-git)). The **lease grain stays `workspace_id`**.
 
 ```text
 Hub
@@ -146,7 +146,7 @@ Two sockets on the same room: A’s Update is visible to B without reload (order
 | Owner | `workspace_lease` | Dropped on SIGTERM |
 | Dirty mark | SQL trigger on persist | Not a hub `INSERT` |
 
-`GET …/export` prefers the live RAM encode if this process has the room; otherwise one SQL snapshot + trail encode shared by concurrent waiters on that `workspace_id`.
+`Hub::live_export` (gRPC `ExportDoc`) prefers the live RAM encode if this process has the room; otherwise one SQL snapshot + trail encode shared by concurrent waiters on that `workspace_id`. GET `/api/block/:id/export` does **not** encode; it returns advertisement JSON.
 
 `GET`/`HEAD /api/blobs/:id/:hash` send `Cache-Control: public, max-age=31536000, immutable` and a quoted `ETag` of the hash. Matching `If-None-Match` answers **304** after `blob_len` (existence only); a missing hash is **404**, not 304.
 

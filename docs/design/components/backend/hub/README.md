@@ -12,7 +12,7 @@ Venus-owned **collab front**. Compose service **`hub`**. Source: [`crates/venus-
 
 Live CRDT HA: [M3.0/high-availability.md](../../../M3.0/high-availability.md). Dirty logic/perf leftovers: [logicals-and-performance.md](../../../M3.0/logicals-and-performance.md). Plan: [M3.0/plan.md](../../../M3.0/plan.md). Dataflow of Venus: [architecture.md](../../../architecture.md). Actuals: [api-map.md](../../../api-map.md).
 
-This folder is the **process** (run, Rust, SQL, HTTP). The **wire** (Yjs on `spaceDoc`, seam, tab share, export as a protocol) stays in [CRDT/README.md](../../../CRDT/README.md). No Rust in the editor: [CRDT/wasm.md](../../../CRDT/wasm.md).
+This folder is the **process** (run, Rust, SQL, HTTP, gRPC). The **wire** (Yjs on `spaceDoc`, seam, tab share, export as a protocol) stays in [CRDT/README.md](../../../CRDT/README.md). JSON/gRPC envelope: [rpc.md](../../../rpc.md). No Rust in the editor: [CRDT/wasm.md](../../../CRDT/wasm.md).
 
 It is **not** BlockSuite, not JWST Block REST, not `fromDoc` / `toDoc`, not git, not `jobs`. The browser editor stays JS (`yjs@13.6.32` on `store.spaceDoc`). Rust is this process only.
 
@@ -90,6 +90,7 @@ Also:
 | `HUB_PERSIST_INTERVAL_MS` | **Required.** Persist tick. Compose `1000`. `>= 1`. Zero would panic the interval. |
 | `HUB_COMPACT_AFTER` | **Required.** Compact when trail length reaches this. Compose `32`. `>= 1`. |
 | `HUB_CORS_ORIGINS` | CORS allow list. Unset → six localhost Vite/Compose origins. Empty → no CORS (same-origin nginx). Comma-separated `http(s)://host[:port]`. `*` is rejected. Methods `GET,HEAD,POST,DELETE`; headers `Content-Type`, `If-None-Match`. Does not echo the request origin. |
+| `HUB_GRPC_LISTEN` | Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default `0.0.0.0:3100`. **Not served yet** (IDL in `proto/`; tonic in M4 `step-spaces`). GET `/export` is advertisement pointing here. [rpc.md](../../../rpc.md) |
 
 Missing or blank pool / persist / compact vars is a startup error that names the variable. Missing host/user/password (and no `DATABASE_URL`) is a startup error. A `sqlite:` URL is a startup error. Do not log the DSN.
 
@@ -130,13 +131,13 @@ dirty         (workspace_id, doc_id) → { clock, first_dirty_at }
 
 After a write, wait **≥2s** before `docker compose restart hub` if you are testing persist.
 
-## HTTP / WS (M1-compatible)
+## HTTP / WS (M1-compatible collab) + export advertisement
 
 | Method | Path | Body / notes |
 |---|---|---|
 | `POST` | `/collaboration/:workspace_id` | `{"protocol":"AFFiNE"}` (health; no lease) |
-| `GET` | `/collaboration/:workspace_id` | No upgrade → `{"protocol":"AFFiNE"}` (health; **no** lease). `Upgrade: websocket` → protocol `AFFiNE`. Lease held by another hub → **503**. Store/hydrate failure → **500** |
-| `GET` | `/api/block/:workspace_id/export` | Yjs update v1, `application/octet-stream` |
+| `GET` | `/collaboration/:workspace_id` | No upgrade → `{"protocol":"AFFiNE"}` (health; **no** lease). `Upgrade: websocket` → protocol `AFFiNE`. Lease held by another hub → **503** `{ "error": { "code": "lease_held", … } }`. Store/hydrate failure → **500** `{ "error": { "code": "store_failed", … } }` |
+| `GET` | `/api/block/:workspace_id/export` | Advertisement JSON. Bare GET **200** `{ "advertisement": { … } }` (no `error`). `?doc=` **400** `export_http_disabled`. Yjs is gRPC `Hub.ExportDoc` (`HUB_GRPC_LISTEN`, default `:3100`). [rpc.md](../../../rpc.md) |
 | `POST` | `/api/blobs/:workspace_id` | `application/octet-stream` → `{ id, exists }` |
 | `GET`/`HEAD`/`DELETE` | `/api/blobs/:workspace_id/:hash` | bytes / `Content-Length` from `octet_length` (no body) / 404 / 204 |
 
