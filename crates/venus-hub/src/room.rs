@@ -926,18 +926,27 @@ impl Hub {
     }
 
     pub async fn live_export(&self, workspace_id: &str) -> Result<Vec<u8>> {
+        self.live_export_doc(workspace_id, PAGE_DOC_ID).await
+    }
+
+    /// RAM encode if this process has the room; else SQL. `doc_id` is a SQL uuid.
+    pub async fn live_export_doc(&self, workspace_id: &str, doc_id: &str) -> Result<Vec<u8>> {
         if let Some(room) = self.live_room(workspace_id).await {
-            return room.encode_live().await;
+            if doc_id != PAGE_DOC_ID {
+                room.ensure_doc(&self.pool, doc_id).await?;
+            }
+            return room.encode_live_doc(doc_id).await;
         }
+        let flight = export_flight_key(workspace_id, doc_id);
         loop {
             let follow = {
                 let mut flights = self.exporting.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(waiters) = flights.get_mut(workspace_id) {
+                if let Some(waiters) = flights.get_mut(&flight) {
                     let (tx, rx) = oneshot::channel();
                     waiters.push(tx);
                     Some(rx)
                 } else {
-                    flights.insert(workspace_id.to_string(), Vec::new());
+                    flights.insert(flight.clone(), Vec::new());
                     None
                 }
             };
@@ -949,14 +958,21 @@ impl Hub {
                 }
             }
 
-            let mut lead = ExportLead::new(&self.exporting, workspace_id);
+            let mut lead = ExportLead::new(&self.exporting, &flight);
             if let Some(room) = self.live_room(workspace_id).await {
-                let result = encode_to_export(room.encode_live().await);
+                if doc_id != PAGE_DOC_ID {
+                    if let Err(e) = room.ensure_doc(&self.pool, doc_id).await {
+                        let result = encode_to_export(Err(e));
+                        lead.complete(&result);
+                        return export_to_result(result);
+                    }
+                }
+                let result = encode_to_export(room.encode_live_doc(doc_id).await);
                 lead.complete(&result);
                 return export_to_result(result);
             }
             self.export_sql_attempts.fetch_add(1, Ordering::SeqCst);
-            let result = encode_to_export(db::default_page_export(&self.pool, workspace_id).await);
+            let result = encode_to_export(db::encode_doc(&self.pool, workspace_id, doc_id).await);
             lead.complete(&result);
             return export_to_result(result);
         }
@@ -1113,6 +1129,14 @@ fn drain_join_timeout(persist_interval: Duration) -> Duration {
     } else {
         persist_interval
     }
+}
+
+fn export_flight_key(workspace_id: &str, doc_id: &str) -> String {
+    let mut s = String::with_capacity(workspace_id.len() + doc_id.len() + 1);
+    s.push_str(workspace_id);
+    s.push('\0');
+    s.push_str(doc_id);
+    s
 }
 
 fn clone_room_result(result: &RoomResult) -> RoomResult {

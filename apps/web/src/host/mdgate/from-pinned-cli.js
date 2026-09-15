@@ -74,7 +74,7 @@ try {
       '/src/host/providers/blob-source.js',
     );
     blobSources = {
-      main: new blob.OctoBaseBlobSource({ origin: blobOrigin }),
+      main: new blob.VenusBlobSource({ origin: blobOrigin }),
     };
   }
   const out = await pin.fromPinnedBytes(bytes, { blobSources });

@@ -1,7 +1,9 @@
 /**
  * Thin Yjs ↔ Venus hub bridge. Speaks y-protocols/sync over WebSocket with
- * subprotocol AFFiNE. `kind: 'octobase'` is a wire alias. Do not import this
- * from mount-editor.js.
+ * subprotocol AFFiNE. `kind: 'venus'`. Do not import this from mount-editor.js.
+ *
+ * `_gen` is per session: catalog + page sockets stay live together. Closing
+ * one doc must not reject another session's `whenReady`.
  */
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
@@ -12,7 +14,7 @@ const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
 const MSG_AUTH = 2;
 const MSG_QUERY_AWARENESS = 3;
-const REMOTE = 'keck';
+const REMOTE = 'hub';
 
 function asBytes(data) {
   if (data instanceof Uint8Array) return data;
@@ -20,8 +22,8 @@ function asBytes(data) {
   return null;
 }
 
-export class OctoBaseKeckProvider {
-  kind = 'octobase';
+export class VenusHubProvider {
+  kind = 'venus';
   synced = false;
 
   /**
@@ -29,13 +31,12 @@ export class OctoBaseKeckProvider {
    */
   constructor(url) {
     this.url = url;
-    /** @type {Map<string, { ws: WebSocket, ydoc: import('yjs').Doc, onUpdate: (u: Uint8Array, origin: unknown) => void }>} */
+    /** @type {Map<string, Session>} */
     this._sessions = new Map();
     /** @type {Set<() => void>} */
     this._syncListeners = new Set();
-    this._ready = Promise.resolve();
-    this._resolveReady = () => {};
-    this._rejectReady = () => {};
+    /** Incremented for each new session (not a single global ready generation). */
+    this._gen = 0;
   }
 
   /**
@@ -50,16 +51,24 @@ export class OctoBaseKeckProvider {
   }
 
   whenReady() {
-    return this._ready;
+    const sessions = [...this._sessions.values()];
+    if (sessions.length === 0) return Promise.resolve();
+    return Promise.all(sessions.map((s) => s.ready)).then(() => {});
   }
 
   connect(docId, ydoc) {
     this.disconnect(docId);
-    this.synced = false;
-    this._ready = new Promise((resolve, reject) => {
-      this._resolveReady = resolve;
-      this._rejectReady = reject;
+    const gen = ++this._gen;
+    let resolveReady = () => {};
+    let rejectReady = () => {};
+    const ready = new Promise((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
     });
+    // Intentional disconnect / late close must not become an unhandled rejection
+    // when waitUntilSynced already lost a Promise.race (abort / timeout).
+    ready.catch(() => {});
+    this.synced = false;
 
     const url = collaborationSocketUrl(this.url, docId);
     const ws = new WebSocket(url, ['AFFiNE']);
@@ -73,7 +82,17 @@ export class OctoBaseKeckProvider {
       ws.send(encoding.toUint8Array(encoder));
     };
     ydoc.on('update', onUpdate);
-    const session = { ws, ydoc, onUpdate };
+    /** @type {Session} */
+    const session = {
+      gen,
+      ws,
+      ydoc,
+      onUpdate,
+      ready,
+      resolveReady,
+      rejectReady,
+      synced: false,
+    };
     this._sessions.set(docId, session);
 
     ws.addEventListener('open', () => {
@@ -89,17 +108,17 @@ export class OctoBaseKeckProvider {
       if (typeof ev.data === 'string') return;
       const bytes = asBytes(ev.data);
       if (!bytes) return;
-      this._handleBinary(ws, ydoc, bytes);
+      this._handleBinary(ws, ydoc, bytes, session);
     });
 
     ws.addEventListener('error', () => {
-      if (this._sessions.get(docId) !== session || this.synced) return;
-      this._rejectReady(new Error('keck websocket error'));
+      if (this._sessions.get(docId) !== session || session.synced) return;
+      session.rejectReady(new Error('hub websocket error'));
     });
 
     ws.addEventListener('close', () => {
-      if (this._sessions.get(docId) !== session || this.synced) return;
-      this._rejectReady(new Error('keck websocket closed before sync'));
+      if (this._sessions.get(docId) !== session || session.synced) return;
+      session.rejectReady(new Error('hub websocket closed before sync'));
     });
   }
 
@@ -107,30 +126,48 @@ export class OctoBaseKeckProvider {
     const session = this._sessions.get(docId);
     if (!session) return;
     session.ydoc.off('update', session.onUpdate);
-    const { ws } = session;
     this._sessions.delete(docId);
+    if (!session.synced) {
+      session.rejectReady(new Error('hub websocket disconnected before sync'));
+    }
+    const { ws } = session;
     if (
       ws.readyState === WebSocket.CONNECTING ||
       ws.readyState === WebSocket.OPEN
     ) {
       ws.close();
     }
-    this.synced = false;
+    this._recomputeSynced();
   }
 
-  _markSynced() {
-    if (this.synced) return;
-    this.synced = true;
-    this._resolveReady();
-    for (const fn of this._syncListeners) fn();
+  /**
+   * @param {Session} session
+   */
+  _markSessionSynced(session) {
+    if (session.synced) return;
+    session.synced = true;
+    session.resolveReady();
+    this._recomputeSynced();
+  }
+
+  _recomputeSynced() {
+    const sessions = [...this._sessions.values()];
+    const next = sessions.length > 0 && sessions.every((s) => s.synced);
+    if (next && !this.synced) {
+      this.synced = true;
+      for (const fn of this._syncListeners) fn();
+    } else if (!next) {
+      this.synced = false;
+    }
   }
 
   /**
    * @param {WebSocket} ws
    * @param {import('yjs').Doc} ydoc
    * @param {Uint8Array} buf
+   * @param {Session} session
    */
-  _handleBinary(ws, ydoc, buf) {
+  _handleBinary(ws, ydoc, buf, session) {
     const decoder = decoding.createDecoder(buf);
     while (decoding.hasContent(decoder)) {
       const messageType = decoding.readVarUint(decoder);
@@ -148,17 +185,30 @@ export class OctoBaseKeckProvider {
           ws.send(reply);
         }
         if (syncType === syncProtocol.messageYjsSyncStep2) {
-          this._markSynced();
+          this._markSessionSynced(session);
         }
       } else if (messageType === MSG_AWARENESS) {
         decoding.readVarUint8Array(decoder);
       } else if (messageType === MSG_AUTH) {
         decoding.readVarUint(decoder);
       } else if (messageType === MSG_QUERY_AWARENESS) {
-        // keck answers awareness itself
+        // hub answers awareness itself
       } else {
         break;
       }
     }
   }
 }
+
+/**
+ * @typedef {{
+ *   gen: number,
+ *   ws: WebSocket,
+ *   ydoc: import('yjs').Doc,
+ *   onUpdate: (u: Uint8Array, origin: unknown) => void,
+ *   ready: Promise<void>,
+ *   resolveReady: () => void,
+ *   rejectReady: (err: Error) => void,
+ *   synced: boolean,
+ * }} Session
+ */

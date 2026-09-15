@@ -49,8 +49,10 @@ test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () =
     /DATABASE_URL:\s*"?postgres:\/\/venus_hub:venus@postgres:5432\/venus/,
   );
   expect(src).toMatch(/127\.0\.0\.1:3000:3000/);
+  expect(src).toMatch(/127\.0\.0\.1:3100:3100/);
   expect(src).toMatch(/127\.0\.0\.1:8080:80/);
   expect(src).toMatch(/127\.0\.0\.1:3001:3000/);
+  expect(src).toMatch(/127\.0\.0\.1:3101:3100/);
   expect(src).not.toMatch(/^\s+- ["']3000:3000["']/m);
   expect(src).toMatch(/ensure-app-role\.sh/);
   expect(src).toMatch(/mem_limit:/);
@@ -61,6 +63,7 @@ test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () =
   expect(src).toMatch(/HUB_PERSIST_INTERVAL_MS:\s*"1000"/);
   expect(src).toMatch(/HUB_COMPACT_AFTER:\s*"32"/);
   expect(src).toMatch(/HUB_CORS_ORIGINS:/);
+  expect(src).toMatch(/HUB_GRPC_LISTEN:\s*"0.0.0.0:3100"/);
   expect(src).toMatch(/http:\/\/localhost:5174/);
   expect(src).not.toMatch(/^\s*octobase:/m);
   expect(src).toMatch(/profiles:\s*\["ha"\]/);
@@ -105,6 +108,8 @@ test('hub image is slim non-root Venus, NOTICE is MIT, not AGPL keck', () => {
   );
   expect(dockerfile).toMatch(/FROM debian:bookworm-slim/);
   expect(dockerfile).toMatch(/^USER venus$/m);
+  expect(dockerfile).toMatch(/COPY proto proto/);
+  expect(dockerfile).toMatch(/EXPOSE 3100/);
   expect(dockerfile).not.toMatch(/^ENV POSTGRES_PASSWORD=/m);
   expect(dockerfile).not.toMatch(/^ENV DATABASE_URL=/m);
   expect(dockerfile).not.toMatch(/postgres:\/\/.*:.*@/);

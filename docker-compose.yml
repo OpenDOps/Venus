@@ -4,7 +4,7 @@
 # Hub image is MIT/Apache Venus code — see deploy/NOTICE.
 # M3 snapshotter is Compose `sidecar` (`--profile snapshot`). Flush autoinits wiki/.
 # Never omit Postgres (no SQLite fallback). Do not publish 5432.
-# Host ports bind 127.0.0.1 only (hub :3000, web :8080, hub-b :3001, sidecar :3002).
+# Host ports bind 127.0.0.1 only (hub :3000, gRPC :3100, web :8080, hub-b :3001/:3101, sidecar :3002).
 # Operators: docs/devops/compose.md  Component: docs/design/components/backend/hub/
 
 # Pool: 32 covers 10 distinct cold exports + 10 blob GETs + 10 room flushes
@@ -30,6 +30,7 @@ x-hub-env: &hub-env
   HUB_COMPACT_AFTER: "32"
   # Vite/Playwright talk to hub:3000. Empty string disables CORS (same-origin nginx).
   HUB_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080"
+  HUB_GRPC_LISTEN: "0.0.0.0:3100"
 
 x-hub-limits: &hub-limits
   mem_limit: 1g
@@ -80,6 +81,7 @@ services:
       HUB_OWNER: hub
     ports:
       - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3100:3100"
     # SIGTERM drain (flush persist, drop lease) before SIGKILL. Default 10s is tight.
     stop_grace_period: 30s
     healthcheck:
@@ -105,6 +107,7 @@ services:
       HUB_OWNER: hub-b
     ports:
       - "127.0.0.1:3001:3000"
+      - "127.0.0.1:3101:3100"
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]

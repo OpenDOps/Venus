@@ -34,6 +34,8 @@ pub struct Config {
     pub db_work_mem: String,
     /// CORS allow list (S9). Unset env → [`DEFAULT_CORS_ORIGINS`]. Empty env → no CORS (same-origin nginx).
     pub cors_origins: Vec<String>,
+    /// Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default [`crate::rpc::GRPC_LISTEN_DEFAULT`].
+    pub grpc_listen: SocketAddr,
 }
 
 /// Compose default. Private-network Postgres; operators targeting managed Postgres set `require`.
@@ -75,7 +77,9 @@ impl Config {
         let db_work_mem = db_work_mem_from_env()?;
         validate_pool_sizes(db_max_connections, db_min_connections)?;
         let cors_origins = cors_origins_from_env()?;
+        let grpc_listen = grpc_listen_from_env()?;
         let (database_url, pg_sslmode) = dsn_from_env()?;
+
         Ok(Self {
             database_url,
             pg_sslmode,
@@ -90,6 +94,7 @@ impl Config {
             db_acquire_timeout,
             db_work_mem,
             cors_origins,
+            grpc_listen,
         })
     }
 }
@@ -116,6 +121,15 @@ fn cors_origins_from_env() -> Result<Vec<String>> {
         Err(_) => Ok(default_cors_origins()),
         Ok(s) => parse_cors_origins(&s),
     }
+}
+
+fn grpc_listen_from_env() -> Result<SocketAddr> {
+    env::var("HUB_GRPC_LISTEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| crate::rpc::GRPC_LISTEN_DEFAULT.into())
+        .parse()
+        .context("HUB_GRPC_LISTEN")
 }
 
 /// Comma-separated `http(s)://host[:port]`. Empty / whitespace → no origins.

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { assertHubOn3000, assertSidecarOn3002 } from './keck-ws';
+import { assertHubOn3000, assertSidecarOn3002 } from './hub-ws';
 
 const NOTE = 'affine-note affine-paragraph rich-text';
 const FLUSH = '[data-testid="venus-flush"]';

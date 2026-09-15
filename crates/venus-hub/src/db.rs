@@ -681,3 +681,21 @@ pub async fn delete_blob(pool: &PgPool, workspace_id: &str, hash: &str) -> Resul
 pub async fn default_page_export(pool: &PgPool, workspace_id: &str) -> Result<Vec<u8>> {
     encode_doc(pool, workspace_id, PAGE_DOC_ID).await
 }
+
+/// Created pages in `page_identity` (not home). Empty until Flush fills the table.
+pub async fn list_created_pages(
+    pool: &PgPool,
+    workspace_id: &str,
+) -> Result<Vec<(String, String, String, String)>> {
+    sqlx::query_as(
+        "SELECT uuid::text, doc_id, name, git_path
+         FROM page_identity
+         WHERE workspace_id = $1::uuid AND uuid <> $2::uuid
+         ORDER BY git_path",
+    )
+    .bind(workspace_id)
+    .bind(PAGE_DOC_ID)
+    .fetch_all(pool)
+    .await
+    .context("list page_identity")
+}

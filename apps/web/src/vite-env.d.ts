@@ -1,4 +1,6 @@
 /// <reference types="vite/client" />
+/// <reference types="node" />
+/// <reference types="vitest/globals" />
 
 interface ImportMetaEnv {
   /** Absolute `ws://…` (Vite) or `same-origin` (Compose/k8s web). */

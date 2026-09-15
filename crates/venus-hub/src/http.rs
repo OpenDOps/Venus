@@ -94,19 +94,32 @@ struct CollabQuery {
     doc: Option<String>,
 }
 
-fn take_doc_id(raw: Option<String>) -> Result<String, Response> {
+/// Wire A / ExportDoc `doc_id`. Omit = home. Empty / guid / non-uuid = error.
+pub fn bind_doc_id(raw: Option<&str>) -> Result<String, &'static str> {
     let Some(id) = raw else {
         return Ok(PAGE_DOC_ID.to_string());
     };
-    if id.is_empty() || !workspace_id_ok(&id) {
-        tracing::warn!(bytes = id.len(), "invalid doc query");
-        return Err(rpc::error_response(
-            StatusCode::BAD_REQUEST,
-            rpc::CODE_INVALID_DOC,
-            "invalid doc",
-        ));
+    if id.is_empty() || !workspace_id_ok(id) {
+        return Err("invalid doc");
     }
     Ok(id.to_ascii_lowercase())
+}
+
+fn take_doc_id(raw: Option<String>) -> Result<String, Response> {
+    match bind_doc_id(raw.as_deref()) {
+        Ok(id) => Ok(id),
+        Err(_) => {
+            tracing::warn!(
+                bytes = raw.as_ref().map(|s| s.len()).unwrap_or(0),
+                "invalid doc query"
+            );
+            Err(rpc::error_response(
+                StatusCode::BAD_REQUEST,
+                rpc::CODE_INVALID_DOC,
+                "invalid doc",
+            ))
+        }
+    }
 }
 
 const BLOB_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";

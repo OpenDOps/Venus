@@ -8,14 +8,14 @@ This is **not** a second CRDT. BlockSuite already owns a Y.Doc. Venus syncs that
 
 ## Stack (M3.0)
 
-M1 Actuals proved the wire. Product **Sync server** is Compose `hub`; persist tables are Venus `crdt_*`; client kind stays `'octobase'` as a wire alias. How the process runs: [hub](../components/backend/hub/).
+M1 Actuals proved the wire. Product **Sync server** is Compose `hub`; persist tables are Venus `crdt_*`; client kind is `'venus'`. How the process runs: [hub](../components/backend/hub/).
 
 | Piece | What we use | Not |
 |---|---|---|
 | Client CRDT | `yjs@13.6.32` on `store.spaceDoc` | A Venus-owned CRDT, markdown-as-Y.Text |
 | Editor | BlockSuite 0.22.4 `TestWorkspace` | `@affine/core` |
-| Sync seam | `SyncProvider` (`memory` \| `octobase` \| `y-websocket`) | Server imports in `mount-editor.js` |
-| JS client | `OctoBaseKeckProvider`: `y-protocols/sync` + `lib0`, `new WebSocket(url, ['AFFiNE'])` | npm OctoBase client; stock `y-websocket` `WebsocketProvider` |
+| Sync seam | `SyncProvider` (`memory` \| `venus` \| `y-websocket`) | Server imports in `mount-editor.js` |
+| JS client | `VenusHubProvider`: `y-protocols/sync` + `lib0`, `new WebSocket(url, ['AFFiNE'])` | npm OctoBase client; stock `y-websocket` `WebsocketProvider` |
 | Sync server | Venus **hub** (Compose `hub`, Rust + y-octo) | OctoBase keck; host `cargo run` as DoD; AFFiNE Cloud / nbstore |
 | Persist | **Hosted:** Postgres 16 (Compose `postgres`, `pg-venus-data`) | IndexedDB as hosted refresh truth; SQLite |
 | Blobs | hub `POST`/`GET /api/blobs/77e4a2b1-8b40-5979-a73c-fd4477216d00` (bytes in the same Postgres) | `blob:` URLs only |
@@ -43,7 +43,7 @@ M1: keck **was** the WS front. **M3.0:** the hub is the WS front (**Rust + y-oct
 ```text
 Tab A types
   → BlockSuite applies to local Y.Doc
-  → OctoBaseKeckProvider sends update v1 on the AFFiNE socket
+  → VenusHubProvider sends update v1 on the AFFiNE socket
   → hub applies (y-octo) and fans out to other sockets on that workspace
   → Tab B’s provider applies the update
   → Tab B’s editor shows the same blocks (no reload)
@@ -84,7 +84,7 @@ The hub does **not** ask browsers. This is not a named version. A **pin** keeps 
 
 | Piece | Scenarios |
 |---|---|
-| Seam / `OctoBaseKeckProvider` | [Sync seam](../../scenarios/sync-seam.md) |
+| Seam / `VenusHubProvider` | [Sync seam](../../scenarios/sync-seam.md) |
 | Share between clients | [Collaboration](../../scenarios/collaboration.md) |
 | Hydrate / Postgres as refresh source | [Hydrate and persist](../../scenarios/hydrate-persist.md) |
 | Blobs | [Blobs](../../scenarios/blobs.md) |

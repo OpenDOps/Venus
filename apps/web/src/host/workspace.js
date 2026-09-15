@@ -26,7 +26,7 @@ async function waitUntilSynced(provider, signal) {
     timer = setTimeout(() => {
       reject(
         new Error(
-          `SyncProvider kind=${provider.kind} did not sync within ${SYNC_TIMEOUT_MS}ms. Is Compose keck up (pnpm sync:up)?`,
+          `SyncProvider kind=${provider.kind} did not sync within ${SYNC_TIMEOUT_MS}ms. Is Compose hub up (pnpm sync:up)?`,
         ),
       );
     }, SYNC_TIMEOUT_MS);
@@ -67,6 +67,16 @@ function seedHomePage(store) {
   seedHomeNote(store, noteId);
 }
 
+/** Second page: affine:page root only. Not the home “Why Venus” seed. */
+function seedEmptyPage(store) {
+  const pageId = store.addBlock('affine:page', {
+    title: new Text(''),
+  });
+  store.addBlock('affine:surface', {}, pageId);
+  const noteId = store.addBlock('affine:note', {}, pageId);
+  store.addBlock('affine:paragraph', {}, noteId);
+}
+
 function openBareM0Workspace(options = {}) {
   const manager = new StoreExtensionManager(getInternalStoreExtensions());
   const workspace = new TestWorkspace({
@@ -83,7 +93,7 @@ function openBareM0Workspace(options = {}) {
 
 /**
  * Offline clone from Yjs update v1. Does **not** seed, does **not** connect
- * a SyncProvider (keck never sees this pin). Convert with `fromDoc` on the
+ * a SyncProvider (the hub never sees this pin). Convert with `fromDoc` on the
  * returned store — never `fromDoc` the live published Store for git / T0.
  */
 export function hydrateM0FromUpdate(bytes, options = {}) {
@@ -138,4 +148,45 @@ export async function createM0Workspace(provider, options = {}) {
   }
 
   return { workspace, store, docId, provider: sync };
+}
+
+/**
+ * Open another page on an existing collection. `uuid` is the minted SQL
+ * uuid / BlockSuite `createDoc` id (wire A `?doc=`). Connects that Y.Doc;
+ * seeds an empty `affine:page` only if the hub has no root yet.
+ * Do not call from App boot — home is still `createM0Workspace`.
+ */
+export async function openWorkspaceDoc(workspace, provider, uuid, options = {}) {
+  const signal = options.signal;
+  const docId = String(uuid).toLowerCase();
+  const doc = workspace.createDoc(docId);
+  const store = doc.getStore();
+
+  provider.connect(docId, store.spaceDoc);
+  try {
+    await waitUntilSynced(provider, signal);
+    await Promise.resolve();
+  } catch (err) {
+    provider.disconnect(docId);
+    throw err;
+  }
+
+  if (signal?.aborted) {
+    provider.disconnect(docId);
+    throw abortError();
+  }
+
+  if (hasPageRoot(store)) {
+    store.load();
+  } else {
+    store.load(() => seedEmptyPage(store));
+    store.resetHistory();
+  }
+
+  if (signal?.aborted) {
+    provider.disconnect(docId);
+    throw abortError();
+  }
+
+  return { workspace, store, docId, provider };
 }

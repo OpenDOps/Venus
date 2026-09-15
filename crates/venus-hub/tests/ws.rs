@@ -1177,6 +1177,7 @@ async fn second_doc_query_does_not_mix_into_home() {
     let mut b = connect_affine_doc(live.addr, &workspace, other).await;
     let _ = drain_hello(&mut b).await;
 
+    send_update(&mut home, extra_spike_bin()).await;
     send_update(&mut a, from_hex(YJS_SPIKE_KV_HEX)).await;
     let update = recv_update(&mut b).await;
     let mut other_doc = Doc::default();
@@ -1195,10 +1196,91 @@ async fn second_doc_query_does_not_mix_into_home() {
         !map_has_v(&sql_home),
         "home SQL must not receive the extra doc update"
     );
+    let home_k2 = match sql_home.get_map("spike") {
+        Ok(map) => format!("{:?}", map.get("k2")).contains("v2"),
+        Err(_) => false,
+    };
+    assert!(
+        home_k2,
+        "home still has prior bytes after the second doc writes"
+    );
     assert_eq!(
         lease_count(&pool, live.hub.lease.owner()).await,
         1,
         "one wiki owner"
     );
+    stop_hub(live).await;
+}
+
+/// M4 step-spaces: minted uuid (not catalog constant) persists across hub restart.
+#[tokio::test(flavor = "multi_thread")]
+async fn minted_page_persists_and_home_still_hydrates() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let page = unique_workspace();
+    let owner = ["owner-m4-spaces-", &uuid_like()].concat();
+    let live = spawn_hub(pool.clone(), owner.clone()).await;
+
+    let mut home = connect_affine(live.addr, &workspace).await;
+    let _ = drain_hello(&mut home).await;
+    send_update(&mut home, extra_spike_bin()).await;
+
+    let mut a = connect_affine_doc(live.addr, &workspace, &page).await;
+    let _ = drain_hello(&mut a).await;
+    send_update(&mut a, spike_bin()).await;
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let dirty_pages: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM dirty WHERE workspace_id = $1::uuid")
+            .bind(&workspace)
+            .fetch_one(&pool)
+            .await
+            .expect("dirty count");
+    assert!(
+        dirty_pages >= 2,
+        "second page persist must upsert a second dirty row, got {dirty_pages}"
+    );
+    assert_eq!(dirty_wiki_rows(&pool, &workspace).await, 1);
+    assert_eq!(lease_count(&pool, live.hub.lease.owner()).await, 1);
+
+    stop_hub(live).await;
+
+    let live = spawn_hub(pool.clone(), ["owner-m4-spaces-2-", &uuid_like()].concat()).await;
+    let mut home2 = connect_affine(live.addr, &workspace).await;
+    let home_step2 = drain_hello(&mut home2).await;
+    let mut home_doc = Doc::default();
+    apply_v1(&mut home_doc, &home_step2).expect("home hydrate");
+    let home_k2 = match home_doc.get_map("spike") {
+        Ok(map) => format!("{:?}", map.get("k2")).contains("v2"),
+        Err(_) => false,
+    };
+    assert!(home_k2, "home still hydrates after the second page");
+    assert!(!map_has_v(&home_doc), "home must not hold the minted page");
+
+    let mut page2 = connect_affine_doc(live.addr, &workspace, &page).await;
+    let page_step2 = drain_hello(&mut page2).await;
+    let mut page_doc = Doc::default();
+    apply_v1(&mut page_doc, &page_step2).expect("page hydrate");
+    assert!(
+        map_has_v(&page_doc),
+        "minted uuid must hydrate from SQL, not tab RAM"
+    );
+
+    let live_b = spawn_hub(pool, ["owner-m4-spaces-b-", &uuid_like()].concat()).await;
+    match live_b.hub.get_room(&workspace).await {
+        Err(GetRoomError::Held { workspace_id, .. }) => {
+            assert_eq!(workspace_id, workspace);
+        }
+        Err(GetRoomError::Store(e)) => panic!("second page must not mint a second owner: {e:#}"),
+        Ok(_) => panic!("second hub must not open a RAM doc for the same wiki"),
+    }
+    let (status, _) =
+        connect_affine_doc_http_status(live_b.addr, &workspace, &format!("?doc={page}")).await;
+    assert_eq!(
+        status, 503,
+        "second hub WS on the page uuid is still lease_held"
+    );
+
+    stop_hub(live_b).await;
     stop_hub(live).await;
 }

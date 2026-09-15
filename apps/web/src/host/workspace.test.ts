@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
 import { PAGE_DOC_ID, WORKSPACE_ID } from './ids.js';
-import { createM0Workspace } from './workspace.js';
+import { createM0Workspace, openWorkspaceDoc } from './workspace.js';
 import { SEED_H1, SEED_TITLE } from './seed.js';
 import pkg from '../../package.json' with { type: 'json' };
 import type { Doc } from 'yjs';
@@ -32,6 +35,32 @@ test('single page default tree', async () => {
     true,
   );
   expect(store.canUndo).toBe(false);
+});
+
+test('memory createDoc second page is a second Y.Doc', async () => {
+  const { workspace, store, provider } = await createM0Workspace();
+  const uuid = crypto.randomUUID();
+  const second = await openWorkspaceDoc(workspace, provider, uuid);
+  expect(second.docId).toBe(uuid);
+  expect(workspace.docs.size).toBe(2);
+  expect(second.store.root?.flavour).toBe('affine:page');
+  expect(second.store.root?.props.title?.toString()).toBe('');
+  expect(store.root?.props.title?.toString()).toBe(SEED_TITLE);
+  const note = second.store.root?.children.find(
+    (c) => c.flavour === 'affine:note',
+  );
+  expect(
+    note?.children.some(
+      (c) => c.flavour === 'affine:paragraph' && c.props.type === 'h1',
+    ),
+  ).toBe(false);
+});
+
+test('App boot does not mint a second page', () => {
+  const hostDir = dirname(fileURLToPath(import.meta.url));
+  const app = readFileSync(join(hostDir, '../App.tsx'), 'utf8');
+  expect(app).toMatch(/createM0Workspace/);
+  expect(app).not.toMatch(/openWorkspaceDoc/);
 });
 
 test('no sync socket on create', async () => {
@@ -144,7 +173,7 @@ test('abort during wait disconnects without throwing a sync timeout', async () =
 test('blobSources.main is wired as blobSync main', async () => {
   const keys: string[] = [];
   const main = {
-    name: 'octobase',
+    name: 'venus',
     readonly: false,
     get: async () => null,
     set: async (key: string) => {
@@ -157,7 +186,7 @@ test('blobSources.main is wired as blobSync main', async () => {
   const { store } = await createM0Workspace(undefined, {
     blobSources: { main },
   });
-  expect(store.blobSync.main.name).toBe('octobase');
+  expect(store.blobSync.main.name).toBe('venus');
   const id = await store.blobSync.set(new Blob([new Uint8Array([1, 2, 3])]));
   expect(keys).toEqual([id]);
 });

@@ -6,7 +6,7 @@ How to build the design in [venus-design.md](./venus-design.md) without taking a
 
 Start with a **thin host** around BlockSuite. M1 proved the wire on OctoBase **keck**. **[M3.0](#m30--venus-hub-replace-keck-week)** replaces keck with a Venus-owned **hub** (apply + broadcast + persist) before git. Then catalog, snapshotter, lease, review. Do not start from the AFFiNE web app.
 
-`SyncProvider` product kind is `venus` after M3.0 (`octobase` may remain as a wire alias; `memory` for tests). Cloud does **not** switch to Hocuspocus or nbstore. Licensing: [licensing.md](../legal/licensing.md). v1 scope and the git/WYSIWYG rule: [v1-concerns.md](../drafts/pre-design/v1-concerns.md). Spec-driven plans: [venus-plan.md](../drafts/pre-design/venus-plan.md). Pitch: [pitch.md](../marketing/pitch.md).
+`SyncProvider` product kind is `venus` after M3.0 (`memory` for tests). Cloud does **not** switch to Hocuspocus or nbstore. Licensing: [licensing.md](../legal/licensing.md). v1 scope and the git/WYSIWYG rule: [v1-concerns.md](../drafts/pre-design/v1-concerns.md). Spec-driven plans: [venus-plan.md](../drafts/pre-design/venus-plan.md). Pitch: [pitch.md](../marketing/pitch.md).
 
 **Hosted runtime:** persist is **Postgres in Docker**. Collab front is a **second Docker**: **`hub`**. Compose is `postgres` + `hub` + `web`. Do not put the front and Postgres in one container. On-device later: one hub process + local store, sync to hosted hub.
 
@@ -57,7 +57,7 @@ Venus hub      (Compose `hub`)  WS + blob HTTP
 Postgres       (Compose `postgres`)  crdt_* + blobs
 ```
 
-Client: `yjs` + `y-protocols` + subprotocol `AFFiNE` (M1 `OctoBaseKeckProvider` or `VenusHubProvider`). Do not invent a new CRDT. Do not use nbstore.
+Client: `yjs` + `y-protocols` + subprotocol `AFFiNE` (`VenusHubProvider`; M1 shipped this as `OctoBaseKeckProvider`). Do not invent a new CRDT. Do not use nbstore.
 
 M1: keck in Docker. **M3.0 replaces that process** with the hub; same seam. Venus snapshotter reads export / replica, then pin. Dirty: SQL trigger on hub persist ([M3.0 HA](./M3.0/high-availability.md)). [CRDT — seam](./CRDT/README.md#seam).
 
@@ -262,7 +262,7 @@ Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./A
 | M2 | [Markdown projection](#m2--markdown-projection-week) | done 2026-08-30 |
 | M3.0 | [Venus hub](#m30--venus-hub-replace-keck-week) | done 2026-09-13 |
 | M3 | [Git snapshotter](#m3--git-snapshotter-week) | done 2026-09-14 |
-| M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | not started |
+| M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | in progress (step 1 done 2026-09-15) |
 | M5 | [Lease + freeze](#m5--lease--freeze-week) | not started |
 | M6 | [Comment-commit](#m6--comment-commit-markdown-only-2-weeks) | not started |
 | M7 | [Threads, alternatives, stacks](#m7--threads-alternatives-stacks-2-weeks) | not started |
@@ -329,7 +329,7 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 ### M4 — Folder tree + links + product header (1–2 weeks)
 
-**Status:** not started. Step-by-step: [M4/plan.md](./M4/plan.md). Board: [M4/M4.state.yaml](./M4/M4.state.yaml). **Gate:** [M3](./M3/README.md) **closed**.
+**Status:** in progress — [step-spaces](./M4/plan.md#2-step-spaces) done 2026-09-15. Next [step-catalog-crdt](./M4/plan.md#3-step-catalog-crdt). Step-by-step: [M4/plan.md](./M4/plan.md). Board: [M4/M4.state.yaml](./M4/M4.state.yaml). **Gate:** [M3](./M3/README.md) **closed**.
 
 - Catalog CRDT: folders, reorder, rename, `gitPath`.
 - Tree UI; drop to reparent (live CRDT).

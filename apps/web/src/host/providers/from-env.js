@@ -1,6 +1,6 @@
 import { MemoryNoopProvider } from '../sync-provider.js';
-import { OctoBaseBlobSource, blobOriginFromSyncUrl } from './blob-source.js';
-import { OctoBaseKeckProvider } from './octobase-keck-provider.js';
+import { VenusBlobSource, blobOriginFromSyncUrl } from './blob-source.js';
+import { VenusHubProvider } from './venus-hub-provider.js';
 import { COLLABORATION_PATH, WORKSPACE_ID } from '../ids.js';
 
 /** Bake this in Compose/k8s web. Browser WS is same-origin `/collaboration/…`. */
@@ -37,7 +37,7 @@ export function resolveSyncUrl(env = import.meta.env) {
 export function providerFromEnv(env = import.meta.env) {
   const url = resolveSyncUrl(env);
   if (!url) return new MemoryNoopProvider();
-  return new OctoBaseKeckProvider(url);
+  return new VenusHubProvider(url);
 }
 
 /**
@@ -55,14 +55,14 @@ export function blobSourcesFromEnv(env = import.meta.env) {
     typeof window !== 'undefined' || raw === SAME_ORIGIN_SYNC;
   if (sameOrigin) {
     return {
-      main: new OctoBaseBlobSource({
+      main: new VenusBlobSource({
         workspaceId: WORKSPACE_ID,
         origin: '',
       }),
     };
   }
   return {
-    main: new OctoBaseBlobSource({
+    main: new VenusBlobSource({
       workspaceId: WORKSPACE_ID,
       origin: blobOriginFromSyncUrl(raw),
     }),

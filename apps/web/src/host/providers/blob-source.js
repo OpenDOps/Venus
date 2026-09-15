@@ -3,7 +3,7 @@ import { WORKSPACE_ID } from '../ids.js';
 /**
  * BlobSource → hub POST/GET /api/blobs/:workspace. Do not import this from
  * mount-editor.js. No list route. Hash is SHA-256 base64url with
- * padding (same as BlockSuite `sha()`; confirmed against M1 keck 276e0e9).
+ * padding (same as BlockSuite `sha()`).
  */
 
 export function blobOriginFromSyncUrl(syncUrl, { sameOrigin = false } = {}) {
@@ -37,8 +37,8 @@ function sniffType(buf) {
   return 'application/octet-stream';
 }
 
-export class OctoBaseBlobSource {
-  name = 'octobase';
+export class VenusBlobSource {
+  name = 'venus';
   readonly = false;
 
   /**

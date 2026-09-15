@@ -18,6 +18,7 @@ type M0Workspace = {
   id: string;
   docs: { size: number };
   meta: { docMetas: unknown[] };
+  createDoc: (id: string) => { getStore: () => M0Store };
 };
 
 type M0Store = {
@@ -64,6 +65,22 @@ export function createM0Workspace(
   options?: BlobSourcesOption & {
     signal?: AbortSignal;
   },
+): Promise<{
+  workspace: M0Workspace;
+  store: M0Store;
+  docId: string;
+  provider: SyncProvider;
+}>;
+
+/**
+ * Second page on an existing collection. `uuid` is the minted SQL uuid.
+ * Empty `affine:page` seed (not home). Do not call from App boot.
+ */
+export function openWorkspaceDoc(
+  workspace: M0Workspace,
+  provider: SyncProvider,
+  uuid: string,
+  options?: { signal?: AbortSignal },
 ): Promise<{
   workspace: M0Workspace;
   store: M0Store;

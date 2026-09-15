@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
 
 import { WORKSPACE_ID } from '../src/host/ids.js';
-import { OctoBaseKeckProvider } from '../src/host/providers/octobase-keck-provider.js';
+import { VenusHubProvider } from '../src/host/providers/venus-hub-provider.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const HUB = 'http://127.0.0.1:3000';
@@ -103,7 +103,7 @@ function withReady(provider, ms) {
 
 async function writeSpike(workspace) {
   const doc = new Y.Doc();
-  const provider = new OctoBaseKeckProvider(
+  const provider = new VenusHubProvider(
     `ws://127.0.0.1:3000/collaboration/${workspace}`,
   );
   provider.connect('spike', doc);
@@ -136,7 +136,7 @@ async function checkExportAd(workspace, label) {
 
 async function checkWs(workspace, label) {
   const doc = new Y.Doc();
-  const provider = new OctoBaseKeckProvider(
+  const provider = new VenusHubProvider(
     `ws://127.0.0.1:3000/collaboration/${workspace}`,
   );
   try {

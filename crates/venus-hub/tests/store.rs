@@ -2330,3 +2330,177 @@ async fn persist_cap_drops_oldest_keeps_newest() {
         "oldest bins past the cap must not be in SQL"
     );
 }
+
+/// M4 step-spaces: ExportDoc omit = home; a minted uuid is a different tree.
+#[tokio::test]
+async fn export_doc_per_sql_uuid() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let page = unique_workspace();
+    db::push_update(&pool, &ws, PAGE_DOC_ID, &spike_kv("home", "h"))
+        .await
+        .expect("home");
+    db::push_update(&pool, &ws, &page, &spike_bin())
+        .await
+        .expect("page");
+
+    let hub = Hub::new(
+        pool.clone(),
+        Lease::new(
+            pool.clone(),
+            ["export-doc-", &uuid_like()].concat(),
+            Duration::from_secs(20),
+        ),
+        Duration::from_secs(1),
+        32,
+    );
+
+    let home_bin = hub.live_export(&ws).await.expect("omit = home");
+    let page_bin = hub.live_export_doc(&ws, &page).await.expect("second uuid");
+    assert_ne!(
+        home_bin, page_bin,
+        "ExportDoc per doc_id must not always be home"
+    );
+
+    let mut home = Doc::default();
+    apply_v1(&mut home, &home_bin).expect("home");
+    assert!(map_has(&home, "home", "h"), "omit doc_id is PAGE_DOC_ID");
+    assert!(!map_has_v(&home), "home must not hold the page spike");
+
+    let mut other = Doc::default();
+    apply_v1(&mut other, &page_bin).expect("page");
+    assert!(map_has_v(&other), "second sql uuid export");
+    assert!(!map_has(&other, "home", "h"));
+
+    hub.shutdown().await;
+}
+
+#[tokio::test]
+async fn grpc_export_doc_and_list_docs() {
+    use tokio::net::TcpListener;
+    use venus_hub::grpc::pb::venus::hub::v1::hub_client::HubClient;
+    use venus_hub::grpc::pb::venus::hub::v1::{ExportDocRequest, ListDocsRequest};
+    use venus_hub::grpc::serve_listener;
+    use venus_hub::CATALOG_DOC_ID;
+
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let page = unique_workspace();
+    db::push_update(&pool, &ws, PAGE_DOC_ID, &spike_kv("home", "h"))
+        .await
+        .expect("home");
+    db::push_update(&pool, &ws, &page, &spike_bin())
+        .await
+        .expect("page");
+    sqlx::query(
+        "INSERT INTO page_identity (workspace_id, uuid, doc_id, name, git_path)
+         VALUES ($1::uuid, $2::uuid, $2::text, 'protocol', 'spec/protocol.md')",
+    )
+    .bind(&ws)
+    .bind(&page)
+    .execute(&pool)
+    .await
+    .expect("page_identity row");
+
+    let hub = Hub::new(
+        pool.clone(),
+        Lease::new(
+            pool,
+            ["grpc-", &uuid_like()].concat(),
+            Duration::from_secs(20),
+        ),
+        Duration::from_secs(1),
+        32,
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("grpc bind");
+    let addr = listener.local_addr().expect("addr");
+    let serving = hub.clone();
+    let server = tokio::spawn(async move {
+        serve_listener(serving, listener).await.expect("grpc serve");
+    });
+    let endpoint = format!("http://{addr}");
+    let mut client = None;
+    for _ in 0..100 {
+        match HubClient::connect(endpoint.clone()).await {
+            Ok(c) => {
+                client = Some(c);
+                break;
+            }
+            Err(_) => tokio::time::sleep(Duration::from_millis(20)).await,
+        }
+    }
+    let mut client = client.expect("grpc client");
+
+    let home = client
+        .export_doc(ExportDocRequest {
+            workspace_id: ws.clone(),
+            doc_id: None,
+        })
+        .await
+        .expect("ExportDoc omit")
+        .into_inner();
+    assert_eq!(home.doc_id, PAGE_DOC_ID);
+    let mut home_doc = Doc::default();
+    apply_v1(&mut home_doc, &home.yjs_update_v1).expect("home yjs");
+    assert!(map_has(&home_doc, "home", "h"));
+
+    let page_ex = client
+        .export_doc(ExportDocRequest {
+            workspace_id: ws.clone(),
+            doc_id: Some(page.clone()),
+        })
+        .await
+        .expect("ExportDoc page")
+        .into_inner();
+    assert_eq!(page_ex.doc_id, page);
+    let mut page_doc = Doc::default();
+    apply_v1(&mut page_doc, &page_ex.yjs_update_v1).expect("page yjs");
+    assert!(map_has_v(&page_doc));
+    assert_ne!(home.yjs_update_v1, page_ex.yjs_update_v1);
+
+    let guid = client
+        .export_doc(ExportDocRequest {
+            workspace_id: ws.clone(),
+            doc_id: Some("doc:home".into()),
+        })
+        .await;
+    assert_eq!(
+        guid.unwrap_err().code(),
+        tonic::Code::InvalidArgument,
+        "guid is invalid_doc"
+    );
+
+    let listed = client
+        .list_docs(ListDocsRequest {
+            workspace_id: ws.clone(),
+        })
+        .await
+        .expect("ListDocs")
+        .into_inner();
+    let roles: Vec<&str> = listed.docs.iter().map(|d| d.role.as_str()).collect();
+    assert_eq!(listed.docs[0].sql_id, PAGE_DOC_ID);
+    assert_eq!(listed.docs[0].role, "home");
+    assert_eq!(listed.docs[1].sql_id, CATALOG_DOC_ID);
+    assert_eq!(listed.docs[1].role, "catalog");
+    assert!(roles.contains(&"page"));
+    assert!(listed
+        .docs
+        .iter()
+        .any(|d| d.role == "page" && d.sql_id == page));
+    let ad = listed.advertisement.expect("advertisement");
+    assert!(!ad.http_export);
+    assert_eq!(
+        ad.grpc.as_ref().expect("grpc bind").service,
+        "venus.hub.v1.Hub"
+    );
+    assert_eq!(
+        ad.docs.len(),
+        2,
+        "GET-shaped advertisement stays home+catalog"
+    );
+
+    server.abort();
+    let _ = server.await;
+    hub.shutdown().await;
+}

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectedCollaborationWs, assertHubOn3000 } from './keck-ws';
+import { expectedCollaborationWs, assertHubOn3000 } from './hub-ws';
 
 const NOTE = 'affine-note affine-paragraph rich-text';
 const HUB_WS = expectedCollaborationWs();
@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   await assertHubOn3000();
 });
 
-test('octobase kind (hub wire alias) and AFFiNE websocket when VITE_SYNC_URL is set', async ({
+test('venus kind and AFFiNE websocket when VITE_SYNC_URL is set', async ({
   page,
 }) => {
   const wsUrls: string[] = [];
@@ -54,7 +54,7 @@ test('octobase kind (hub wire alias) and AFFiNE websocket when VITE_SYNC_URL is 
 
   const kind = await page.evaluate(() => window.__VENUS_PROVIDER_KIND__);
   expect(kind, 'must not stay on memory while VITE_SYNC_URL is set').toBe(
-    'octobase',
+    'venus',
   );
 
   await expect

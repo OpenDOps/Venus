@@ -92,7 +92,7 @@ Also:
 | `HUB_PERSIST_INTERVAL_MS` | **Required.** Persist tick. Compose `1000`. `>= 1`. Zero would panic the interval. |
 | `HUB_COMPACT_AFTER` | **Required.** Compact when trail length reaches this. Compose `32`. `>= 1`. |
 | `HUB_CORS_ORIGINS` | CORS allow list. Unset → six localhost Vite/Compose origins. Empty → no CORS (same-origin nginx). Comma-separated `http(s)://host[:port]`. `*` is rejected. Methods `GET,HEAD,POST,DELETE`; headers `Content-Type`, `If-None-Match`. Does not echo the request origin. |
-| `HUB_GRPC_LISTEN` | Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default `0.0.0.0:3100`. **Not served yet** (IDL in `proto/`; tonic in M4 `step-spaces`). GET `/export` is advertisement pointing here. [rpc.md](../../../rpc.md) |
+| `HUB_GRPC_LISTEN` | Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default `0.0.0.0:3100`. Compose host bind `127.0.0.1:3100` (hub-b: `127.0.0.1:3101`). GET `/export` is advertisement pointing here. [rpc.md](../../../rpc.md) |
 
 Missing or blank pool / persist / compact vars is a startup error that names the variable. Missing host/user/password (and no `DATABASE_URL`) is a startup error. A `sqlite:` URL is a startup error. Do not log the DSN.
 
@@ -100,7 +100,7 @@ Missing or blank pool / persist / compact vars is a startup error that names the
 
 ### Second owner (lease)
 
-One live RAM doc per `workspace_id`. A second hub against the **same** Postgres must not apply:
+One live owner per `workspace_id` (many page `doc_id`s on that room). A second hub against the **same** Postgres must not apply:
 
 ```bash
 pnpm compose:ha
@@ -148,7 +148,7 @@ No `/api/pages`. No `/api/block/:id/:block` CRUD. CORS: `GET`/`HEAD`/`POST`/`DEL
 
 ## Client
 
-The host still uses `OctoBaseKeckProvider` (`kind: 'octobase'`) as a **wire alias**. Bytes and URLs did not change; `mount-editor.js` still does not import the server. `VITE_SYNC_URL` unset → memory. Product kind name `venus` may replace the alias later; e2e asserts `octobase` until then.
+The host uses `VenusHubProvider` (`kind: 'venus'`). Bytes and URLs did not change; `mount-editor.js` still does not import the server. `VITE_SYNC_URL` unset → memory. e2e asserts `venus`.
 
 ## License
 

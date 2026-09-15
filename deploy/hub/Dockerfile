@@ -10,6 +10,8 @@ COPY crates/venus-hub crates/venus-hub
 # Workspace member only (Cargo.toml lists both crates). This image still
 # builds and runs venus-hub — do not CMD venus-sidecar here.
 COPY crates/venus-sidecar crates/venus-sidecar
+# tonic-build (crates/venus-hub/build.rs) compiles proto/venus.
+COPY proto proto
 RUN cargo build --release -p venus-hub
 
 FROM debian:bookworm-slim
@@ -26,7 +28,9 @@ ENV POSTGRES_HOST=postgres
 ENV POSTGRES_PORT=5432
 ENV POSTGRES_DB=venus
 ENV HUB_LISTEN=0.0.0.0:3000
+ENV HUB_GRPC_LISTEN=0.0.0.0:3100
 
 EXPOSE 3000
+EXPOSE 3100
 USER venus
 CMD ["venus-hub"]

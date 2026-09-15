@@ -3,8 +3,8 @@ export function blobOriginFromSyncUrl(
   options?: { sameOrigin?: boolean },
 ): string;
 
-export class OctoBaseBlobSource {
-  readonly name: 'octobase';
+export class VenusBlobSource {
+  readonly name: 'venus';
   readonly readonly: false;
   readonly origin: string;
   constructor(options?: { workspaceId?: string; origin?: string });

@@ -4,7 +4,7 @@ Implemented tests, grouped by the **feature** they prove (the boxes on [architec
 
 Commands assume the **repo root**. Machine setup (Docker, `.env`, ports): [runbook](../runbook.md). This folder is **what we assert**.
 
-M1/M2 e2e need Compose **hub**. Kind stays `'octobase'` (wire alias). Internals: [hub](../design/components/backend/hub/).
+M1/M2 e2e need Compose **hub**. Kind is `'venus'`. Internals: [hub](../design/components/backend/hub/).
 
 ## Runners
 
@@ -37,7 +37,7 @@ Do not `docker compose down -v` between M1 specs. One Playwright worker for M1.
 | Feature | Architecture boxes | File |
 |---|---|---|
 | [Editor host](./editor-host.md) | Host, Store, outline | M0 editor, seed, outline |
-| [Sync seam](./sync-seam.md) | SyncProvider | memory vs octobase alias; no server in `mount-editor` |
+| [Sync seam](./sync-seam.md) | SyncProvider | memory vs venus; no server in `mount-editor` |
 | [Hydrate and persist](./hydrate-persist.md) | Store, hub, Postgres | seed-once; refresh drops (memory) vs keeps (sync) |
 | [Collaboration](./collaboration.md) | Tab A / Tab B, WS | two tabs, no reload; M3 live-during-flush is opt-in |
 | [Blobs](./blobs.md) | Blob HTTP, Postgres | image upload, second tab, reload |

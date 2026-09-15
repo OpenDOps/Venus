@@ -129,8 +129,9 @@ test('Map complete: Names — git snapshotter Actuals are concrete', () => {
   expect(section).toContain('wiki/.venus/ids/doc:home.json');
   expect(section).toContain('SNAPSHOT_IDLE_MS');
   expect(section).toContain('60000');
-  expect(section).toContain('POST http://127.0.0.1:3002/flush');
-  expect(section).toContain('GET http://127.0.0.1:3002/git/log');
+  expect(section).toMatch(/POST .*\/flush/);
+  expect(section).toContain('GET /git/log');
+  expect(section).toContain('127.0.0.1:3002');
   expect(section).toMatch(/inflight/i);
   expect(section).toMatch(/pin at \*\*claim\*\*|pin at claim/i);
   expect(section).toMatch(/`jobs`/);

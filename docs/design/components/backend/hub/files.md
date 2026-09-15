@@ -12,18 +12,20 @@ Venus/
   rust-toolchain.toml        channel 1.98.1; rust-analyzer + rust-src
   deploy/hub/Dockerfile      build rust:1.98.1-bookworm; runtime debian:bookworm-slim USER venus
   crates/venus-hub/
-    Cargo.toml               lib + bin `venus-hub`; y-octo, axum, sqlx, tokio
+    Cargo.toml               lib + bin `venus-hub`; y-octo, axum, sqlx, tokio, tonic, prost
                              test: tokio-tungstenite, testcontainers, futures-util
+    build.rs                 tonic-build + protoc-bin-vendored; `proto/venus`
     src/
       lib.rs                 crate root: modules + DEFAULT_WORKSPACE_ID / PAGE_DOC_ID / CATALOG_DOC_ID / SUBPROTOCOL
-      main.rs                process entry
-      config.rs             env → Config
+      main.rs                process entry (HTTP `:3000` + gRPC `:3100`)
+      config.rs             env → Config (`HUB_GRPC_LISTEN`)
       protocol.rs           y-protocols + y-octo apply/encode
-      room.rs                Room + Hub
+      room.rs                Room + Hub (`Map<doc_id, Doc>`; one persist tick per Room)
       db.rs                  Postgres CRDT / blob API
       schema.sql             included by db::migrate
       lease.rs               workspace_lease
-      http.rs                Axum routes + WS loop
+      http.rs                Axum routes + WS loop (`?doc=` bind)
+      grpc.rs                tonic `Hub.ExportDoc` / `ListDocs`
       rpc.rs                 JSON envelope (`error` / advertisement); GET /export discovery
       blobs.rs               BlockSuite sha() + content-type sniff
     tests/
@@ -38,7 +40,7 @@ The workspace also has `crates/venus-sidecar` (M3 snapshotter). The hub crate do
 
 ### `lib.rs`
 
-Crate root. Declares `blobs`, `config`, `db`, `http`, `lease`, `protocol`, `room`, `rpc`.
+Crate root. Declares `blobs`, `config`, `db`, `grpc`, `http`, `lease`, `protocol`, `room`, `rpc`.
 
 | Symbol | Value | Meaning |
 |---|---|---|
@@ -51,13 +53,13 @@ No I/O.
 
 ### `main.rs`
 
-Binary. Tracing, `Config::from_env` (pool / persist / compact env required), `connect_with` + migrate, construct `Lease` and `Hub`, bind TCP, `Hub::heartbeat` task (`lease_ttl / 3`, `MissedTickBehavior::Delay`; sheds stolen rooms, evicts idle), `axum::serve` with graceful shutdown, then `Hub::shutdown_with_heartbeat` even if serve returned `Err`. Startup logs pool sizes, persist/compact knobs, and CORS origin count, never the DSN.
+Binary. Tracing, `Config::from_env` (pool / persist / compact env required), `connect_with` + migrate, construct `Lease` and `Hub`, bind HTTP TCP and gRPC (`HUB_GRPC_LISTEN`, default `:3100`; bind failure is fatal), `Hub::heartbeat` task (`lease_ttl / 3`, `MissedTickBehavior::Delay`; sheds stolen rooms, evicts idle), `axum::serve` with graceful shutdown, then `Hub::shutdown_with_heartbeat` even if serve returned `Err` (gRPC task aborted). Startup logs pool sizes, persist/compact knobs, CORS origin count, and gRPC bind, never the DSN.
 
 Does **not** decode Yjs. Does **not** open rooms until HTTP asks.
 
 ### `config.rs`
 
-`Config`: `database_url`, `pg_sslmode` (logged at start; never log the DSN), `listen`, `owner`, `persist_interval` (`HUB_PERSIST_INTERVAL_MS`, required, `>= 1`), `lease_ttl` (20s, `HUB_LEASE_TTL_SECS`), `heartbeat_interval` (`ttl / 3` unless `HUB_HEARTBEAT_INTERVAL_SECS`; startup requires `ttl >= 3 × interval`), `compact_after` (`HUB_COMPACT_AFTER`, required, `>= 1`), pool (`HUB_DB_MAX_CONNECTIONS` `>= 1`, `HUB_DB_MIN_CONNECTIONS` `>= 0` and `<= max`, `HUB_DB_ACQUIRE_TIMEOUT_SECS` `>= 1`, `HUB_DB_WORK_MEM` a size with an explicit unit, normalized by `parse_work_mem` — P5), `cors_origins` (`HUB_CORS_ORIGINS`; unset → six localhost origins; empty → none; `*` rejected). Missing/blank pool or timer vars fail start naming the var.
+`Config`: `database_url`, `pg_sslmode` (logged at start; never log the DSN), `listen`, `grpc_listen` (`HUB_GRPC_LISTEN`, default `0.0.0.0:3100`), `owner`, `persist_interval` (`HUB_PERSIST_INTERVAL_MS`, required, `>= 1`), `lease_ttl` (20s, `HUB_LEASE_TTL_SECS`), `heartbeat_interval` (`ttl / 3` unless `HUB_HEARTBEAT_INTERVAL_SECS`; startup requires `ttl >= 3 × interval`), `compact_after` (`HUB_COMPACT_AFTER`, required, `>= 1`), pool (`HUB_DB_MAX_CONNECTIONS` `>= 1`, `HUB_DB_MIN_CONNECTIONS` `>= 0` and `<= max`, `HUB_DB_ACQUIRE_TIMEOUT_SECS` `>= 1`, `HUB_DB_WORK_MEM` a size with an explicit unit, normalized by `parse_work_mem` — P5), `cors_origins` (`HUB_CORS_ORIGINS`; unset → six localhost origins; empty → none; `*` rejected). Missing/blank pool or timer vars fail start naming the var.
 
 `database_url_from_env`: non-empty `DATABASE_URL` wins and is not rewritten (`pg_sslmode` is the query value, or `unset` if missing). Else `POSTGRES_HOST` + `USER` + `PASSWORD` (required) plus optional port / db and `POSTGRES_SSLMODE` (libpq tokens, default `disable`). Rejects `sqlite` and unknown `sslmode` (so a typo cannot inject query params). Percent-encodes user/password when building the URL.
 
@@ -82,6 +84,10 @@ Does **not** talk to Postgres or sockets.
 ### `rpc.rs`
 
 JSON envelope for HTTP GET and collab errors. Same `error` object as [`venus.rpc.v1.Error`](../../../../../proto/venus/rpc/v1/error.proto). GET `/api/block/{id}/export` is advertisement (home + catalog + gRPC bind). Product Yjs export is gRPC `Hub.ExportDoc` (listen `HUB_GRPC_LISTEN`, default `:3100`). Clients check root `error`. Contract: [rpc.md](../../../rpc.md).
+
+### `grpc.rs`
+
+tonic `venus.hub.v1.Hub`: `ExportDoc` (`doc_id` omit = home; guid / empty / non-uuid = `InvalidArgument` / `invalid_doc`) and `ListDocs` (home + catalog + `page_identity` rows). Failures pack `venus.rpc.v1.Error` in `Status.details`. `serve` / `serve_listener` for the process and crate tests. Generated stubs live under `pb` (`include_proto!`).
 
 ### `room.rs`
 
@@ -108,6 +114,7 @@ Postgres store. Opaque Yjs bytes. Public surface used by rooms and HTTP:
 | `compact` | Exclusive lock, read snapshot + trail, **COMMIT**, merge in RAM (skip bad trail bins; snapshot apply fail-closed, L17). Re-lock; if `MAX(seq)` is unchanged, UPSERT snapshot, `DELETE seq <= max_seq`, return remaining trail length. If seq moved, skip the write (persist retries). Hidden `compact_after_load` (P11) / `compact_after_now_max` (D1) inject between those phases in tests. |
 | `put_blob` / `get_blob` / `blob_len` / `delete_blob` | `blob` table. HEAD and GET **304** use `blob_len` (`octet_length`), not `get_blob`. |
 | `default_page_export` | `get_doc` for `PAGE_DOC_ID` |
+| `list_created_pages` | `page_identity` rows other than home. Empty until Flush. `ListDocs` uses this. |
 
 Does **not** stringify history. Does **not** write `jobs`.
 
@@ -145,10 +152,10 @@ No `/api/block/:id/:block` CRUD. `handle_socket`: `connect_client`, send `attach
 | File | Needs | Covers |
 |---|---|---|
 | `tests/recon.rs` | Nothing | api-map Chosen backend; y-octo apply of browser fixtures; two `Room` clients Step2/Update; lagged client Full-detach (256 slots) and byte-budget detach; truncated frame applies prefix; fan-out `Bytes` share storage; crate has no keck deps; hub sources do not `INSERT INTO jobs` |
-| `tests/store.rs` | Docker (testcontainers `postgres:16`) or `DATABASE_URL` / `POSTGRES_*` | `push_update` → `get_doc`; new connection still hydrates; compact merges trail; `get_doc` during compact keeps `spike.k=v`; garbage trail bin skipped, both good keys kept; corrupt snapshot skipped (trail hydrates, row kept, compact still fails); hydrate failure releases the lease; flush put-back after closed pool; abort during INSERT then leftover flush; P3 skip compact SQL when trail short; SQL rebuild compact; compact skips write if the trail moved during merge; foreign trail row survives compact; blob put/get/`blob_len`; HTTP GET `Cache-Control` + quoted `ETag`, `If-None-Match` **304**, HEAD `Content-Length` without body; concurrent `get_room` single-flight; concurrent cold `live_export` one SQL per `workspace_id`; one-statement heartbeat miss set (SQL error is not a steal); migrate drops leftover `crdt_update_ws_doc_seq`; two migrates serialize; persist cap drops oldest and keeps newest; `get_room` after shutdown is Store and does not acquire; `compact_after < 1` skips compact; garbage workspace_id is 400 on blob/export; `connect_with` honors max/min connections; CORS preflight allowlist (DELETE yes, PUT no; empty list has no Allow-Origin); M3 4.1: migrate creates `dirty_wiki` / `jobs` / `last_flushed`; persist trigger upserts `dirty_wiki` not `jobs` |
-| `tests/ws.rs` | Docker (same Postgres as store) | `cargo test -p venus-hub --test ws`. tokio-tungstenite + y-octo `Doc` (no Node, no keck). A→B `spike.k=v`; late joiner Step2; second `Hub` WS is 503; stolen lease sheds RAM (no further `INSERT`); idle room sheds and drops the lease; Format/bold fan-out without crash; wait ≥2s, `Hub::shutdown`, new `Hub` hydrates; SIGTERM before tick flushes and drops lease (reopen is a **new** Hub); abort persist without flush, client Update restores; oversized WS binary closes; missed pong closes; zero `ws_ping` does not panic; plain GET `/collaboration` is health JSON; garbage `workspace_id` is 400 and does not acquire; persist upserts `dirty_wiki`, does not write `jobs` |
+| `tests/store.rs` | Docker (testcontainers `postgres:16`) or `DATABASE_URL` / `POSTGRES_*` | `push_update` → `get_doc`; new connection still hydrates; compact merges trail; `get_doc` during compact keeps `spike.k=v`; garbage trail bin skipped, both good keys kept; corrupt snapshot skipped (trail hydrates, row kept, compact still fails); hydrate failure releases the lease; flush put-back after closed pool; abort during INSERT then leftover flush; P3 skip compact SQL when trail short; SQL rebuild compact; compact skips write if the trail moved during merge; foreign trail row survives compact; blob put/get/`blob_len`; HTTP GET `Cache-Control` + quoted `ETag`, `If-None-Match` **304**, HEAD `Content-Length` without body; concurrent `get_room` single-flight; concurrent cold `live_export` one SQL per `workspace_id`; one-statement heartbeat miss set (SQL error is not a steal); migrate drops leftover `crdt_update_ws_doc_seq`; two migrates serialize; persist cap drops oldest and keeps newest; `get_room` after shutdown is Store and does not acquire; `compact_after < 1` skips compact; garbage workspace_id is 400 on blob/export; `connect_with` honors max/min connections; CORS preflight allowlist (DELETE yes, PUT no; empty list has no Allow-Origin); M3 4.1: migrate creates `dirty_wiki` / `jobs` / `last_flushed`; persist trigger upserts `dirty_wiki` not `jobs`; M4: `live_export_doc` omit = home, minted uuid is a different tree; gRPC `ExportDoc` / `ListDocs` |
+| `tests/ws.rs` | Docker (same Postgres as store) | `cargo test -p venus-hub --test ws`. tokio-tungstenite + y-octo `Doc` (no Node, no keck). A→B `spike.k=v`; late joiner Step2; second `Hub` WS is 503; stolen lease sheds RAM (no further `INSERT`); idle room sheds and drops the lease; Format/bold fan-out without crash; wait ≥2s, `Hub::shutdown`, new `Hub` hydrates; SIGTERM before tick flushes and drops lease (reopen is a **new** Hub); abort persist without flush, client Update restores; oversized WS binary closes; missed pong closes; zero `ws_ping` does not panic; plain GET `/collaboration` is health JSON; garbage `workspace_id` is 400 and does not acquire; persist upserts `dirty_wiki`, does not write `jobs`; M4: `?doc=` isolation; minted uuid persists across hub restart; second hub on that uuid is still 503 / one `workspace_lease` |
 | `src/*` `#[cfg(test)]` | Nothing | protocol round-trip, trailing-bytes decode, format mark, DSN/sqlite reject, blob hash, `POSTGRES_SSLMODE` allowlist; `request_stop` stores a Notify permit; `RwLock<Doc>` readers overlap, apply waits for a write; persist prefix clone shares `Bytes` storage; zero `ws_ping` interval is `None`; `workspace_id` UUID; blob `If-None-Match` vs quoted hash / `*`; `compact_after < 1`; pool/timer env parse and required-var error; CORS origin parse (`*`, path, empty) |
 
 ## Deploy
 
-[`deploy/hub/Dockerfile`](../../../../../deploy/hub/Dockerfile): build on `rust:1.98.1-bookworm`, copy the binary into `debian:bookworm-slim` with `ca-certificates`, run as `USER venus` (uid 65532). No `POSTGRES_PASSWORD` / `DATABASE_URL` in the image — Compose injects them (`venus_hub`). `EXPOSE 3000`. Do **not** `COPY deploy/octobase`.
+[`deploy/hub/Dockerfile`](../../../../../deploy/hub/Dockerfile): build on `rust:1.98.1-bookworm`, copy `proto/` (tonic-build) and the binary into `debian:bookworm-slim` with `ca-certificates`, run as `USER venus` (uid 65532). No `POSTGRES_PASSWORD` / `DATABASE_URL` in the image — Compose injects them (`venus_hub`). `EXPOSE 3000` and `EXPOSE 3100`. Do **not** `COPY deploy/octobase`.

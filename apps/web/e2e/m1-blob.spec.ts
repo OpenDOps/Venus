@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { WORKSPACE_ID, assertHubOn3000 } from './keck-ws';
+import { WORKSPACE_ID, assertHubOn3000 } from './hub-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';

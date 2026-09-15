@@ -35,7 +35,7 @@ flowchart TB
     tabB["Tab B<br/>BlockSuite Store<br/>store.spaceDoc Y.Doc"]
   end
 
-  ws["SyncProvider kind octobase<br/>wire alias for the hub<br/>Yjs update v1 · y-protocols/sync<br/>WebSocket subprotocol AFFiNE"]
+  ws["SyncProvider kind venus<br/>VenusHubProvider<br/>Yjs update v1 · y-protocols/sync<br/>WebSocket subprotocol AFFiNE"]
   hub["Venus hub<br/>Compose hub :3000<br/>Rust + y-octo<br/>/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00"]
   pg[("Postgres<br/>Compose postgres<br/>crdt_snapshot / crdt_update<br/>blob / workspace_lease / dirty<br/>volume pg-venus-data")]
 

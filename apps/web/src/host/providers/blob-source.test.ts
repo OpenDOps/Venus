@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import {
-  OctoBaseBlobSource,
+  VenusBlobSource,
   blobOriginFromSyncUrl,
 } from './blob-source.js';
 import { blobSourcesFromEnv } from './from-env.js';
@@ -28,21 +28,21 @@ test('blobSourcesFromEnv is unset without VITE_SYNC_URL', () => {
   expect(blobSourcesFromEnv({ VITE_SYNC_URL: '  ' })).toBeUndefined();
 });
 
-test('blobSourcesFromEnv uses OctoBaseBlobSource when VITE_SYNC_URL is set', () => {
+test('blobSourcesFromEnv uses VenusBlobSource when VITE_SYNC_URL is set', () => {
   const sources = blobSourcesFromEnv({
     VITE_SYNC_URL: `ws://127.0.0.1:3000${COLLABORATION_PATH}`,
   });
-  expect(sources?.main).toBeInstanceOf(OctoBaseBlobSource);
-  expect(sources?.main.name).toBe('octobase');
+  expect(sources?.main).toBeInstanceOf(VenusBlobSource);
+  expect(sources?.main.name).toBe('venus');
 });
 
 test('blobSourcesFromEnv same-origin uses empty origin (nginx /api proxy)', () => {
   const sources = blobSourcesFromEnv({ VITE_SYNC_URL: 'same-origin' });
-  expect(sources?.main).toBeInstanceOf(OctoBaseBlobSource);
+  expect(sources?.main).toBeInstanceOf(VenusBlobSource);
   expect(sources?.main.origin).toBe('');
 });
 
-test('OctoBaseBlobSource POSTs bytes, GETs them, list is empty', async () => {
+test('VenusBlobSource POSTs bytes, GETs them, list is empty', async () => {
   const stored = new Map<string, ArrayBuffer>();
   const orig = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -80,7 +80,7 @@ test('OctoBaseBlobSource POSTs bytes, GETs them, list is empty', async () => {
   }) as typeof fetch;
 
   try {
-    const src = new OctoBaseBlobSource({
+    const src = new VenusBlobSource({
       workspaceId: WORKSPACE_ID,
       origin: 'http://127.0.0.1:3000',
     });

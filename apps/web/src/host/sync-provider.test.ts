@@ -6,7 +6,7 @@ import type { Doc } from 'yjs';
 import type { SyncProvider } from './sync-provider.js';
 import { MemoryNoopProvider } from './sync-provider.js';
 import { providerFromEnv } from './providers/from-env.js';
-import { OctoBaseKeckProvider } from './providers/octobase-keck-provider.js';
+import { VenusHubProvider } from './providers/venus-hub-provider.js';
 import { createM0Workspace } from './workspace.js';
 import { COLLABORATION_PATH, PAGE_DOC_ID, PAGE_SQL_ID, CATALOG_GUID, CATALOG_SQL_ID, sqlIdForDoc, collaborationSocketUrl } from './ids.js';
 
@@ -66,7 +66,7 @@ test('Seam holds: editor host files do not import live sync clients', () => {
     expect(src, name).not.toMatch(importOf('hocuspocus'));
     expect(src, name).not.toMatch(importOf('y-protocols'));
     expect(src, name).not.toMatch(importOf('lib0'));
-    expect(src, name).not.toMatch(/octobase-keck-provider/);
+    expect(src, name).not.toMatch(/venus-hub-provider/);
     expect(src, name).not.toMatch(/from-env/);
     expect(src, name).not.toMatch(/providers\//);
     expect(src, name).not.toMatch(/venus-hub/);
@@ -102,7 +102,7 @@ test('Env switch: unset VITE_SYNC_URL is memory and constructs no WebSocket', as
   }
 });
 
-test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until connect', async () => {
+test('Env switch: VITE_SYNC_URL selects venus without opening a socket until connect', async () => {
   const Ws = globalThis.WebSocket;
   const constructed: unknown[] = [];
   class StubSocket {
@@ -126,8 +126,11 @@ test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until 
   try {
     const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
     const fromEnv = providerFromEnv({ VITE_SYNC_URL: url });
-    expect(fromEnv).toBeInstanceOf(OctoBaseKeckProvider);
-    expect(fromEnv.kind).toBe('octobase');
+    expect(fromEnv).toBeInstanceOf(VenusHubProvider);
+    if (!(fromEnv instanceof VenusHubProvider)) {
+      throw new Error('expected VenusHubProvider');
+    }
+    expect(fromEnv.kind).toBe('venus');
     expect(constructed).toEqual([]);
 
     fromEnv.connect(PAGE_DOC_ID, (await createM0Workspace()).store.spaceDoc);
@@ -137,6 +140,7 @@ test('Env switch: VITE_SYNC_URL selects octobase without opening a socket until 
       [url, ['AFFiNE']],
       [`${url}?doc=${CATALOG_SQL_ID}`, ['AFFiNE']],
     ]);
+    expect(fromEnv._gen).toBe(2);
     fromEnv.disconnect(PAGE_DOC_ID);
     fromEnv.disconnect(CATALOG_GUID);
   } finally {
@@ -156,9 +160,9 @@ test('Env switch: same-origin needs location.host and does not open a socket yet
   });
   try {
     const fromEnv = providerFromEnv({ VITE_SYNC_URL: 'same-origin' });
-    expect(fromEnv).toBeInstanceOf(OctoBaseKeckProvider);
+    expect(fromEnv).toBeInstanceOf(VenusHubProvider);
     expect(fromEnv).toMatchObject({
-      kind: 'octobase',
+      kind: 'venus',
       url: `ws://127.0.0.1:8080${COLLABORATION_PATH}`,
     });
   } finally {
@@ -178,4 +182,49 @@ test('wire A: ?doc= is SQL uuid; home omits the query', () => {
     `${base}?doc=${CATALOG_SQL_ID}`,
   );
   expect(() => sqlIdForDoc('doc:protocol')).toThrow(/SQL uuid/);
+});
+
+test('venus hub _gen is per session; disconnect one keeps the other socket', () => {
+  const sockets: Array<{ closed: boolean }> = [];
+  class StubWs {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+    readyState = 1;
+    binaryType = '';
+    closed = false;
+    listeners: Record<string, Array<() => void>> = {};
+    constructor(..._args: unknown[]) {
+      sockets.push(this);
+    }
+    addEventListener(type: string, fn: () => void) {
+      (this.listeners[type] ??= []).push(fn);
+    }
+    close() {
+      this.readyState = 3;
+      this.closed = true;
+      for (const fn of this.listeners.close ?? []) fn();
+    }
+  }
+  const Ws = globalThis.WebSocket;
+  // @ts-expect-error stub
+  globalThis.WebSocket = StubWs;
+  try {
+    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const provider = new VenusHubProvider(url);
+    const homeDoc = { on() {}, off() {} } as unknown as Doc;
+    const pageDoc = { on() {}, off() {} } as unknown as Doc;
+    const page = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    provider.connect(PAGE_DOC_ID, homeDoc);
+    provider.connect(page, pageDoc);
+    expect(provider._gen).toBe(2);
+    expect(sockets).toHaveLength(2);
+    provider.disconnect(PAGE_DOC_ID);
+    expect(sockets[0]?.closed).toBe(true);
+    expect(sockets[1]?.closed).toBe(false);
+    provider.disconnect(page);
+  } finally {
+    globalThis.WebSocket = Ws;
+  }
 });

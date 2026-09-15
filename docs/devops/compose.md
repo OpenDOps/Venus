@@ -9,7 +9,7 @@ keck stays under `deploy/octobase/` as M1 history; product Compose does not buil
 | Service | Image | Host port | Role |
 |---|---|---|---|
 | `postgres` | `postgres:16` | none | `crdt_*` + blob bytes. Volume `pg-venus-data`, database `venus`. Superuser `venus`. |
-| `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, doc export. Connects as `venus_hub` (NOSUPERUSER). |
+| `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` (WS/HTTP), `127.0.0.1:3100` (gRPC `ExportDoc` / `ListDocs`) | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, advertisement GET `/export`. Connects as `venus_hub` (NOSUPERUSER). |
 | `web` | `deploy/web/Dockerfile` (nginx + `apps/web/dist`) | `127.0.0.1:8080` | Host UI. Same-origin proxy: `/api` and `/collaboration` → `hub:3000`. |
 | `sidecar` | `deploy/sidecar/Dockerfile` (`node:22`, `USER venus`) | `127.0.0.1:3002` | Optional `--profile snapshot`. Observer + N workers on Venus `jobs` (`SKIP LOCKED`). Health `GET /`. `POST /flush` pulls `jobs.not_before` to now (does not pin). `GET /git/log?path=spec/home.md` → `{ subject, sha }[]`. Workers autoinit `WIKI_DIR` and git-commit. DSN required for the queue (`DATABASE_URL` / `POSTGRES_*`, same role as hub). Bind-mount `./wiki:/wiki`. |
 
@@ -17,7 +17,7 @@ Default `docker compose config --services` prints `postgres`, `hub`, `web` (plus
 
 Hub Postgres env (required; no SQLite): `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (Compose hub: `postgres` / `venus_hub` / `venus`) and `DATABASE_URL=postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable` (`DATABASE_URL` wins). Service `postgres` still uses superuser `venus` to create that role (`deploy/postgres/ensure-app-role.sh`, also the healthcheck so existing volumes get it). `POSTGRES_SSLMODE` defaults to `disable` (private network); set `require` against managed Postgres.
 
-Host ports bind **`127.0.0.1` only** (`3000`, `8080`, `hub-b` `3001`, sidecar `3002`). The LAN cannot reach the unauthenticated hub. Vite / Playwright on the same machine are unchanged.
+Host ports bind **`127.0.0.1` only** (`3000`, gRPC `3100`, `8080`, `hub-b` `3001` / gRPC `3101`, sidecar `3002`). The LAN cannot reach the unauthenticated hub. Vite / Playwright on the same machine are unchanged.
 
 Hub and postgres have memory / pids limits. Hub drops all capabilities and sets `no-new-privileges`. The hub image does not bake `POSTGRES_PASSWORD` / `DATABASE_URL`.
 

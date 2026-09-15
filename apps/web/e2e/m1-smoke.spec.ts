@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { assertHubOn3000 } from './keck-ws';
+import { assertHubOn3000 } from './hub-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -41,7 +41,7 @@ test.beforeAll(async () => {
 test('smoke: seed H1, type hello, reload keeps it', async ({ page }) => {
   const pageErrors = await waitForHydrated(page);
   const kind = await page.evaluate(() => window.__VENUS_PROVIDER_KIND__);
-  expect(kind, 'smoke must run with sync env').toBe('octobase');
+  expect(kind, 'smoke must run with sync env').toBe('venus');
   await expect(page.locator('doc-title')).toContainText(SEED_TITLE);
 
   await page.locator(NOTE).first().click();

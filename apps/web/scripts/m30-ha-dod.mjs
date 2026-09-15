@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import * as Y from 'yjs';
 
 import { WORKSPACE_ID } from '../src/host/ids.js';
-import { OctoBaseKeckProvider } from '../src/host/providers/octobase-keck-provider.js';
+import { VenusHubProvider } from '../src/host/providers/venus-hub-provider.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const COMPOSE_TIMEOUT_MS = 20 * 60 * 1000;
@@ -169,7 +169,7 @@ function leaseLiveOwners() {
 
 async function wsHasDrain(port, drainId, label) {
   const doc = new Y.Doc();
-  const provider = new OctoBaseKeckProvider(
+  const provider = new VenusHubProvider(
     `ws://127.0.0.1:${port}/collaboration/${WORKSPACE_ID}`,
   );
   try {
@@ -197,7 +197,7 @@ compose(['up', '--build', '-d', '--wait', 'postgres', 'hub']);
 await waitHub(3000, 'hub A');
 
 const doc = new Y.Doc();
-const providerA = new OctoBaseKeckProvider(
+const providerA = new VenusHubProvider(
   `ws://127.0.0.1:3000/collaboration/${WORKSPACE_ID}`,
 );
 providerA.connect('spike', doc);
@@ -261,7 +261,7 @@ if (last) {
 }
 
 const b = new Y.Doc();
-const providerB = new OctoBaseKeckProvider(
+const providerB = new VenusHubProvider(
   `ws://127.0.0.1:3001/collaboration/${WORKSPACE_ID}`,
 );
 try {

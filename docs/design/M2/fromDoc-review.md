@@ -106,6 +106,8 @@ Detail: [security.md](./security.md). `toDoc` still runs only in Vitest (`roundT
 
 **Revisit after M4.** One-page M2 keeps S4 apply-resolution and S5 synced-doc inlining mostly latent. [M4](../M4/README.md) adds catalog, two pages, and `embed-linked-doc` round-trip; [dogfood](../venus-implementation-plan.md#v1-dogfood--document-the-product) starts then. Re-read this note and [security.md](./security.md) before treating the wiki as the product store.
 
+**M4 recon (2026-09-15):** catalog + wire A are mapped ([api-map](../api-map.md) Names — catalog / tree / header). Do **not** change apply or `toDoc` in M4 recon. Export keeps `venus:doc:` first. S4 path-suffix inject and S5 `'content'` inlining stay open until [step-links](../M4/plan.md#7-step-links) / dogfood.
+
 | ID | Sev | M2 status | Finding |
 |---|---|---|---|
 | S1 | High | Latent | `toDoc` fetches `http(s)` and `data:` image URLs via `FetchUtils` with no allowlist / no `imageProxy`. SSRF and `data:` DoS when M6 hunk parse runs. |

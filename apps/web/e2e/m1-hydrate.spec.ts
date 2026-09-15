@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { assertHubOn3000 } from './keck-ws';
+import { assertHubOn3000 } from './hub-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';

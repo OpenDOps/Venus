@@ -1,6 +1,6 @@
 # Sync seam
 
-**Feature:** the editor talks to a `SyncProvider`. Default is memory. Live hub is env-selected (`kind: 'octobase'` alias). `mount-editor` does not import the server.
+**Feature:** the editor talks to a `SyncProvider`. Default is memory. Live hub is env-selected (`kind: 'venus'`). `mount-editor` does not import the server.
 
 **Boxes:** SyncProvider, hub WS ([architecture](../design/architecture.md#elements), [CRDT seam](../design/CRDT/README.md#seam)).
 
@@ -22,10 +22,10 @@ The Vitest env-switch tests **do not** open a socket.
 | `sync-provider.test.ts` — second provider | another `SyncProvider` can be passed; `mount-editor` unused |
 | `sync-provider.test.ts` — Seam holds | `mount-editor.js` / `editor-container.js` / `boot.js` do not import live clients, `from-env`, or `providers/` |
 | `sync-provider.test.ts` — unset env | no `VITE_SYNC_URL` → memory, no `WebSocket` constructed |
-| `sync-provider.test.ts` — set env | `VITE_SYNC_URL` selects `octobase` without connecting until `connect` |
+| `sync-provider.test.ts` — set env | `VITE_SYNC_URL` selects `venus` without connecting until `connect` |
 
 ## Playwright
 
 | Spec | Needs | Proves |
 |---|---|---|
-| `e2e/m1-provider.spec.ts` | Compose hub, `PLAYWRIGHT_M1=1` Playwright this file | `GET /` is `venus-hub`; `kind === 'octobase'` (alias); one WS to `ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with subprotocol `AFFiNE` |
+| `e2e/m1-provider.spec.ts` | Compose hub, `PLAYWRIGHT_M1=1` Playwright this file | `GET /` is `venus-hub`; `kind === 'venus'`; one WS to `ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with subprotocol `AFFiNE` |

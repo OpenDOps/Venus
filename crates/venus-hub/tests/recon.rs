@@ -1,8 +1,18 @@
 //! M3.0 step-recon-hub: y-octo apply + y-protocols without keck or Postgres.
+//! M4 step-recon-catalog: gate M3, catalog Actuals, two docs on one Room / lease.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use sqlx::PgPool;
+use tokio::sync::OnceCell;
+use venus_hub::config::database_url_from_env;
+use venus_hub::db;
+use venus_hub::lease::Lease;
 use venus_hub::protocol::{apply_v1, decode_sync_messages, encode_doc_update, encode_v1};
-use venus_hub::room::{Room, OUTBOUND_CAP, PERSIST_BYTES};
+use venus_hub::room::{Hub, Room, OUTBOUND_CAP, PERSIST_BYTES};
+use venus_hub::CATALOG_DOC_ID;
 use y_octo::{Any, Doc, DocMessage, SyncMessage, TextDeltaOp, TextInsert};
 
 /// `yjs@13.6.32` `Y.encodeStateAsUpdate` after `doc.getMap('spike').set('k','v')` (23 bytes).
@@ -71,13 +81,76 @@ fn api_map_chosen_backend_is_venus_hub() {
     );
 }
 
+/// M4 step-recon-catalog: M3 board steps 1–9 (and pin sub-steps) are `done`.
 #[test]
-fn api_map_m4_wire_is_a1_sql_uuid() {
+fn m3_board_is_closed() {
+    let board = include_str!("../../../docs/design/M3/M3.state.yaml");
+    let pending = board
+        .lines()
+        .filter(|l| l.trim() == "state: pending")
+        .count();
+    assert_eq!(
+        pending, 0,
+        "M4 recon fails closed while M3.state.yaml still has pending steps"
+    );
+    for id in [
+        "step-recon-snapshot",
+        "step-worker",
+        "step-rust-adapter",
+        "step-pin",
+        "step-pin-schema",
+        "step-pin-queue",
+        "step-pin-cut",
+        "step-dirty-idle",
+        "step-flush",
+        "step-live-during-flush",
+        "step-git-log",
+        "step-verify",
+    ] {
+        assert_eq!(
+            board_step_state(board, id),
+            "done",
+            "{id} must be done before M4 recon"
+        );
+    }
+}
+
+fn board_step_state<'a>(yaml: &'a str, id: &str) -> &'a str {
+    let key = format!("{id}:");
+    let mut lines = yaml.lines();
+    while let Some(line) = lines.next() {
+        let t = line.trim_start();
+        let Some(rest) = t.strip_prefix(&key) else {
+            continue;
+        };
+        if !rest.is_empty() && rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '-') {
+            continue;
+        }
+        for line in lines.by_ref() {
+            let s = line.trim();
+            if let Some(v) = s.strip_prefix("state:") {
+                return v.trim();
+            }
+            if s.starts_with("step-") {
+                break;
+            }
+        }
+        panic!("{id}: no state: line");
+    }
+    panic!("M3.state.yaml missing {id}");
+}
+
+#[test]
+fn api_map_m4_catalog_actuals() {
     let map = include_str!("../../../docs/design/api-map.md");
     let catalog = match map.split_once("## Names — catalog / tree / header") {
-        Some((_, rest)) => rest,
+        Some((_, rest)) => rest.split("## Forbidden imports").next().expect("catalog"),
         None => panic!("api-map.md missing catalog names"),
     };
+    assert!(
+        !catalog.contains("*recon:") && !catalog.contains("| recon:"),
+        "catalog Actuals must not be recon: placeholders"
+    );
     assert!(
         catalog.contains("?doc=<sql uuid>")
             && catalog.contains("A1+B+C1")
@@ -87,10 +160,74 @@ fn api_map_m4_wire_is_a1_sql_uuid() {
         "M4 wire Actual must be A1 SQL uuid, omit=home, C1 400, catalog guid locked"
     );
     assert!(
+        catalog.contains("**None.** Do not pre-seed a second page")
+            && catalog.contains("{folder}/{uuid}.md"),
+        "no second seed page; create is uuid.md"
+    );
+    assert!(
         catalog.contains("venus.hub.v1.Hub/ExportDoc")
             && catalog.contains("export_http_disabled")
-            && catalog.contains("@headless-tree/react@1.7.0"),
-        "M4 export Actual is gRPC ExportDoc; GET is advertisement; tree pin 1.7.0"
+            && catalog.contains("@headless-tree/react@1.7.0")
+            && catalog.contains("data-testid=\"venus-tree\""),
+        "gRPC ExportDoc; GET advertisement; tree pin 1.7.0 + venus-tree"
+    );
+    assert!(
+        catalog.contains("`store.undo()`")
+            && catalog.contains("canUndo$")
+            && catalog.contains("canRedo$"),
+        "header undo is store.undo / canUndo$ subscribe"
+    );
+    assert!(
+        catalog.contains("On Flush, not on drop")
+            && catalog.contains("page_identity")
+            && catalog.contains("pages.yaml"),
+        "git mv on Flush; page_identity + pages.yaml from catalog pin"
+    );
+    assert!(
+        catalog.contains("typeof SharedWorker === 'function'")
+            && catalog.contains("Not `navigator.serviceWorker`"),
+        "SharedWorker detect is SharedWorker, not serviceWorker"
+    );
+    assert!(
+        catalog.contains("One persist tick per Room"),
+        "persist Actual is one tick per Room, not a task per doc"
+    );
+    let http = include_str!("../src/http.rs");
+    assert!(
+        http.contains("fn take_doc_id") && http.contains("attach_doc"),
+        "hub HTTP must bind ?doc= via take_doc_id + attach_doc"
+    );
+    assert!(
+        !http.contains("/collaboration/:workspace_id/:doc"),
+        "wire A is a query, not a path suffix"
+    );
+}
+
+/// M4 recon: two pages make S4/S5 live later. Do not “fix” apply here.
+#[test]
+fn from_doc_review_s4_s5_stay_open() {
+    let review = include_str!("../../../docs/design/M2/fromDoc-review.md");
+    assert!(
+        review.contains("Revisit after M4")
+            && review.contains("S4")
+            && review.contains("S5")
+            && review.contains("venus:doc:"),
+        "fromDoc-review must still name S4/S5 and venus:doc: identity"
+    );
+    assert!(
+        review.contains("Do **not** change apply")
+            || review.contains("do not change apply")
+            || review.contains("Do **not** change apply or `toDoc`"),
+        "M4 recon must record: do not fix apply / toDoc in this step"
+    );
+    let map = include_str!("../../../docs/design/api-map.md");
+    let catalog = map
+        .split_once("## Names — catalog / tree / header")
+        .expect("catalog")
+        .1;
+    assert!(
+        catalog.contains("<!-- venus:doc:") && catalog.contains("Import: `venus:doc:` first"),
+        "export Actual keeps venus:doc: first"
     );
 }
 
@@ -432,4 +569,256 @@ async fn fanout_recipients_share_frame_bytes() {
         c.as_ptr(),
         "Outbound Bytes clone must share storage, not copy the frame"
     );
+}
+
+/// M4 recon spike: one Room, two docs, no keck. Home bytes stay; B on the
+/// second `doc_id` sees A's map key.
+#[tokio::test]
+async fn two_docs_one_room_without_keck() {
+    let room = Room::new(venus_hub::DEFAULT_WORKSPACE_ID.into(), Doc::default());
+
+    let (home_id, home_tx, mut home_rx) = room.connect_client();
+    room.attach(home_id, home_tx).await.expect("home");
+    let home = Doc::default();
+    {
+        let mut map = home.get_or_create_map("spike").expect("map");
+        map.insert("k".to_string(), "home").expect("insert");
+    }
+    room.handle_binary(
+        home_id,
+        &encode_doc_update(encode_v1(&home).unwrap()).unwrap(),
+    )
+    .await;
+
+    let (a_id, a_tx, _a_rx) = room.connect_client();
+    room.attach_doc(a_id, a_tx, CATALOG_DOC_ID)
+        .await
+        .expect("A on catalog uuid");
+    let (b_id, b_tx, mut b_rx) = room.connect_client();
+    room.attach_doc(b_id, b_tx, CATALOG_DOC_ID)
+        .await
+        .expect("B on catalog uuid");
+
+    room.handle_binary(
+        a_id,
+        &encode_doc_update(from_hex(YJS_SPIKE_KV_HEX)).unwrap(),
+    )
+    .await;
+    let out = tokio::time::timeout(Duration::from_millis(200), b_rx.recv())
+        .await
+        .expect("B receives second-doc Update")
+        .expect("Update");
+    let msgs = decode_sync_messages(&out).messages;
+    let update = match &msgs[0] {
+        SyncMessage::Doc(DocMessage::Update(bin)) => bin,
+        other => panic!("expected Update, got {other:?}"),
+    };
+    let mut b = Doc::default();
+    apply_v1(&mut b, update).expect("B applies");
+    assert!(map_has_v(&b), "B on the second doc_id must see spike.k=v");
+
+    let leaked = tokio::time::timeout(Duration::from_millis(80), home_rx.recv()).await;
+    match leaked {
+        Err(_) | Ok(None) => {}
+        Ok(Some(frame)) => panic!("home socket must not receive second-doc fanout, got {frame:?}"),
+    }
+
+    let mut home_live = Doc::default();
+    apply_v1(
+        &mut home_live,
+        &room.encode_live().await.expect("home live"),
+    )
+    .expect("apply home");
+    assert!(
+        map_has(&home_live, "k", "home"),
+        "home must keep prior bytes"
+    );
+    assert!(
+        !map_has_v(&home_live),
+        "second doc must not apply into PAGE_DOC_ID"
+    );
+    let mut other_live = Doc::default();
+    apply_v1(
+        &mut other_live,
+        &room
+            .encode_live_doc(CATALOG_DOC_ID)
+            .await
+            .expect("other live"),
+    )
+    .expect("apply other");
+    assert!(map_has_v(&other_live), "catalog uuid holds the spike");
+}
+
+fn map_has(doc: &Doc, key: &str, needle: &str) -> bool {
+    match doc.get_map("spike") {
+        Ok(map) => format!("{:?}", map.get(key)).contains(needle),
+        Err(_) => false,
+    }
+}
+
+struct TestPg {
+    database_url: String,
+    _container: Option<
+        testcontainers_modules::testcontainers::ContainerAsync<
+            testcontainers_modules::postgres::Postgres,
+        >,
+    >,
+}
+
+static PG: OnceCell<TestPg> = OnceCell::const_new();
+
+async fn start_pg() -> TestPg {
+    if let Ok(database_url) = database_url_from_env() {
+        let pool = db::connect(&database_url)
+            .await
+            .expect("connect env postgres");
+        db::migrate(&pool).await.expect("migrate");
+        return TestPg {
+            database_url,
+            _container: None,
+        };
+    }
+
+    use testcontainers_modules::postgres::Postgres;
+    use testcontainers_modules::testcontainers::{runners::AsyncRunner, ImageExt};
+
+    let container = Postgres::default()
+        .with_tag("16".to_string())
+        .start()
+        .await
+        .expect("start postgres:16 (Docker or set DATABASE_URL / POSTGRES_*)");
+    let host = container
+        .get_host()
+        .await
+        .expect("postgres host")
+        .to_string();
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("postgres port")
+        .to_string();
+    let database_url: String = [
+        "postgres://postgres:postgres@",
+        host.as_str(),
+        ":",
+        port.as_str(),
+        "/postgres?sslmode=disable",
+    ]
+    .concat();
+    let pool = db::connect(&database_url)
+        .await
+        .expect("connect testcontainers postgres");
+    db::migrate(&pool).await.expect("migrate");
+    TestPg {
+        database_url,
+        _container: Some(container),
+    }
+}
+
+async fn connect_pool() -> PgPool {
+    let pg = PG.get_or_init(start_pg).await;
+    db::connect(&pg.database_url).await.expect("connect")
+}
+
+fn unique_workspace() -> String {
+    static SEQ: AtomicU64 = AtomicU64::new(1);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed) as u128;
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let mixed = t ^ (n << 48);
+    let mut id = String::with_capacity(36);
+    let _ = std::fmt::Write::write_fmt(
+        &mut id,
+        format_args!(
+            "{:08x}-{:04x}-4{:03x}-a{:03x}-{:012x}",
+            (mixed >> 96) as u32,
+            (mixed >> 80) as u16,
+            (mixed >> 64) as u16 & 0x0fff,
+            (mixed >> 48) as u16 & 0x0fff,
+            mixed as u64 & 0x0000_ffff_ffff_ffff
+        ),
+    );
+    id
+}
+
+async fn lease_count(pool: &PgPool, owner: &str) -> i64 {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*)::bigint FROM workspace_lease WHERE owner = $1")
+            .bind(owner)
+            .fetch_one(pool)
+            .await
+            .expect("lease count");
+    n
+}
+
+/// M4 recon: two `doc_id`s on the M0 wiki owner. Not a second hub process.
+#[tokio::test]
+async fn two_docs_one_wiki_lease() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let owner = ["owner-m4-recon-", &workspace[0..8]].concat();
+    let lease = Lease::new(pool.clone(), owner.clone(), Duration::from_secs(20));
+    let hub = Hub::new(pool.clone(), lease, Duration::from_secs(3600), 32);
+    let room = hub.get_room(&workspace).await.expect("one wiki room");
+
+    let (home_id, home_tx, _home_rx) = room.connect_client();
+    room.attach(home_id, home_tx).await.expect("home");
+    let home = Doc::default();
+    {
+        let mut map = home.get_or_create_map("spike").expect("map");
+        map.insert("k".to_string(), "home").expect("insert");
+    }
+    room.handle_binary(
+        home_id,
+        &encode_doc_update(encode_v1(&home).unwrap()).unwrap(),
+    )
+    .await;
+
+    let (a_id, a_tx, _a_rx) = room.connect_client();
+    room.attach_doc(a_id, a_tx, CATALOG_DOC_ID)
+        .await
+        .expect("A");
+    let (b_id, b_tx, mut b_rx) = room.connect_client();
+    room.attach_doc(b_id, b_tx, CATALOG_DOC_ID)
+        .await
+        .expect("B");
+    room.handle_binary(
+        a_id,
+        &encode_doc_update(from_hex(YJS_SPIKE_KV_HEX)).unwrap(),
+    )
+    .await;
+    let _ = tokio::time::timeout(Duration::from_millis(200), b_rx.recv())
+        .await
+        .expect("B fanout")
+        .expect("Update");
+
+    let mut home_live = Doc::default();
+    apply_v1(
+        &mut home_live,
+        &room.encode_live().await.expect("home live"),
+    )
+    .expect("apply home");
+    assert!(
+        map_has(&home_live, "k", "home"),
+        "home still has prior bytes after the second doc writes"
+    );
+    let mut other_live = Doc::default();
+    apply_v1(
+        &mut other_live,
+        &room
+            .encode_live_doc(CATALOG_DOC_ID)
+            .await
+            .expect("other live"),
+    )
+    .expect("apply other");
+    assert!(map_has_v(&other_live), "second doc_id round-trips");
+    assert_eq!(
+        lease_count(&pool, hub.lease.owner()).await,
+        1,
+        "opening a second doc_id must not mint a second workspace_lease"
+    );
+    assert_eq!(room.workspace_id, workspace);
+    hub.shutdown().await;
 }

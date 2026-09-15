@@ -17,16 +17,37 @@ columns:
 steps:
   step-recon-catalog: # 1
     n: 1
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Gate held
+        status: pass
+        evidence: "2026-09-15 cargo test -p venus-hub --test recon m3_board_is_closed — M3.state.yaml steps 1–9 and pin 4.1–4.3 are state: done; no pending"
+      - name: Map complete
+        status: pass
+        evidence: "2026-09-15 cargo test -p venus-hub --test recon api_map_m4_catalog_actuals — Names — catalog / tree / header Actuals: A1+B+C1 ?doc=<sql uuid>, venus:catalog / 4fe5c16e-…, no protocol seed / uuid.md, gRPC ExportDoc, GET advertisement, @headless-tree/react@1.7.0, store.undo/canUndo$, git mv on Flush, page_identity + pages.yaml, SharedWorker not serviceWorker. from_doc_review_s4_s5_stay_open: do not change apply; venus:doc: first."
+      - name: Spike two docs
+        status: pass
+        evidence: "2026-09-15 cargo test -p venus-hub --test recon — 17 passed. two_docs_one_room_without_keck: A writes catalog SQL uuid, B sees spike.k=v, home keeps prior bytes, no keck. two_docs_one_wiki_lease: Hub.get_room one workspace_lease. WS: cargo test -p venus-hub --test ws second_doc_query_does_not_mix_into_home (bare path + ?doc= + persist isolation + lease=1)."
   step-spaces: # 2
     n: 2
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Second page persists
+        status: pass
+        evidence: "2026-09-15 cargo test -p venus-hub --test ws minted_page_persists_and_home_still_hydrates — minted uuid (not catalog constant), type, wait ≥2s, restart hub, hydrate page + home; two dirty rows, one dirty_wiki. Host: pnpm vitest workspace.test.ts memory createDoc second page (docs.size === 2, empty affine:page, not Why Venus)."
+      - name: Home still hydrates
+        status: pass
+        evidence: "2026-09-15 pnpm test:e2e:m1 — 10 passed (hydrate, two-tabs, smoke, blob, provider). Bare collab still home. snapshot.test.ts GET /export is advertisement JSON (no root error, not octet-stream) after compose hub rebuild."
+      - name: One wiki owner
+        status: pass
+        evidence: "2026-09-15 minted_page_persists_and_home_still_hydrates — second hub get_room Held; WS ?doc=<minted uuid> is 503; lease_count=1. cargo test -p venus-hub --test ws — 20 passed including second_hub_ws_is_503_while_lease_held."
+      - name: Export per doc
+        status: pass
+        evidence: "2026-09-15 cargo test -p venus-hub --test store export_doc — export_doc_per_sql_uuid + grpc_export_doc_and_list_docs: ExportDoc omit = home; minted uuid is a different tree; guid invalid_doc; ListDocs home+catalog+page_identity; advertisement GET stays home+catalog. Compose 127.0.0.1:3100 Hub.ExportDoc."
   step-catalog-crdt: # 3
     n: 3
     state: pending

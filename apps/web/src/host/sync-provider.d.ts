@@ -1,10 +1,10 @@
 import type { Doc } from 'yjs';
 
-export type SyncProviderKind = 'memory' | 'octobase' | 'y-websocket';
+export type SyncProviderKind = 'memory' | 'venus' | 'y-websocket';
 
 /**
- * M1 implements OctoBase keck behind this.
- * Do not import OctoBase / y-protocols into the editor host.
+ * Live hub is `VenusHubProvider` (`kind: 'venus'`).
+ * Do not import y-protocols into the editor host.
  */
 export interface SyncProvider {
   readonly kind: SyncProviderKind;

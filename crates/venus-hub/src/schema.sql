@@ -81,6 +81,18 @@ CREATE TABLE IF NOT EXISTS last_flushed (
     PRIMARY KEY (workspace_id, doc_id)
 );
 
+-- Flush cache of catalog kind: doc nodes. Hub persist does not write this.
+-- Sidecar replaces rows from the catalog pin. ListDocs reads it (lags Flush).
+CREATE TABLE IF NOT EXISTS page_identity (
+    workspace_id UUID NOT NULL,
+    uuid UUID NOT NULL,
+    doc_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    git_path TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, uuid),
+    UNIQUE (workspace_id, git_path)
+);
+
 -- Fold two UUIDs (256 bits) to one int8 advisory key. All 16+16 bytes
 -- participate via XOR. Distinct (ws, doc) can still collide (64-bit
 -- pigeonhole). Not hashtext; not the session SCHEMA_MIGRATE_LOCK.

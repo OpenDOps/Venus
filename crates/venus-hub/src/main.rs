@@ -21,6 +21,7 @@ async fn main() -> Result<()> {
     let cfg = Config::from_env()?;
     tracing::info!(
         listen = %cfg.listen,
+        grpc = %cfg.grpc_listen,
         owner = %cfg.owner,
         pg_sslmode = %cfg.pg_sslmode,
         lease_ttl_secs = cfg.lease_ttl.as_secs(),
@@ -50,6 +51,18 @@ async fn main() -> Result<()> {
     let lease = Lease::new(pool.clone(), cfg.owner.clone(), cfg.lease_ttl);
     let hub = Hub::new(pool, lease, cfg.persist_interval, cfg.compact_after);
 
+    let grpc_addr = cfg.grpc_listen;
+    let grpc_listener = TcpListener::bind(grpc_addr)
+        .await
+        .with_context(|| format!("bind grpc {grpc_addr}"))?;
+    tracing::info!(grpc = %grpc_addr, "gRPC Hub.ExportDoc / ListDocs");
+    let grpc_hub = hub.clone();
+    let grpc = tokio::spawn(async move {
+        if let Err(e) = venus_hub::grpc::serve_listener(grpc_hub, grpc_listener).await {
+            tracing::error!(error = %e, "grpc serve");
+        }
+    });
+
     let listener = TcpListener::bind(cfg.listen)
         .await
         .with_context(|| format!("bind {}", cfg.listen))?;
@@ -72,6 +85,8 @@ async fn main() -> Result<()> {
         .await
         .context("serve");
     hub.shutdown_with_heartbeat(heartbeat).await;
+    grpc.abort();
+    let _ = grpc.await;
     tracing::info!("hub drained");
     serve_result
 }
