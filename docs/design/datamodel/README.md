@@ -18,7 +18,7 @@ browsers ──Yjs──► hub ──► Postgres     published, catalog, revie
                           │
                      pin + fromDoc
                           ▼
-                    wiki/  git          .md + .venus/ids + assets
+                    wiki/  git          .md + .venus/ids + .venus/pages.yaml + assets
                           │
                      last_flushed
                           ▼
@@ -40,6 +40,7 @@ browsers ──Yjs──► hub ──► Postgres     published, catalog, revie
 |---|---|
 | [README.md](./README.md) | This map |
 | [crdt.md](./crdt.md) | Spaces: published, catalog, review, Before/After, blobs, Postgres |
-| [git.md](./git.md) | `wiki/` tree, sidecar, two commit classes |
+| [git.md](./git.md) | `wiki/` tree, sidecar, two commit classes, `pages.yaml` (pages + folders projection) |
+| [page-identity.md](./page-identity.md) | uuid, docname, POSIX filename, DB `page_identity`, YAML. Not a new component. |
 
 M1 only implements **one** published space (`venus-m0` / `doc:home`). Catalog and extra page spaces start at [M4](../M4/README.md). Review spaces start at M5–M6. The layout below is the product model those milestones fill in.

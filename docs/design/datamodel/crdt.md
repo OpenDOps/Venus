@@ -49,16 +49,16 @@ Catalog
   nodes: Map<nodeId, Node>
 
 Node
-  id
-  kind            // folder | doc
-  name            // "lease.md" or "crdt"
-  parentId        // null = wiki root
+  id              // page: uuid (home: doc:home); folder: folder:<uuid>
+  kind            // folder | doc  (folder = grouping; doc = a page / leaf)
+  name            // docname (UTF, tree); not always the file stem
+  parentId        // null = wiki root (no stored root node)
   order           // fractional index among siblings
-  docId?          // space id when kind=doc
-  gitPath         // derived, cached: spec/crdt/lease.md
+  docId?          // kind=doc only: uuid for created pages; doc:home for home
+  gitPath         // derived from POSIX filenames: {dir}/{filename}.md
 ```
 
-Moves = reparent + order. They do not rewrite page bodies. Next git commit that includes the move does `git mv` ([git.md](./git.md)). Empty folders may exist only in the catalog until a placeholder exists in git.
+Moves = reparent + order. They do not rewrite page bodies. Next git commit that includes the move does `git mv` ([git.md](./git.md)). Empty folders may have no git directory until a page is under them; they **are** listed in YAML `folders:`. **Delete:** reject if the node has children ([page-identity — Delete](./page-identity.md#delete)). **Create / first filename `{uuid}.md` / tree rename / YAML map:** [page-identity](./page-identity.md).
 
 Host view + hub loop: [CRDT tree](../components/frontend/crdt-tree/).
 

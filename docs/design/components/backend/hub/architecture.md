@@ -40,7 +40,7 @@ flowchart TB
     lease["lease.rs"]
   end
 
-  pg[("Postgres\ncrdt_* blob lease dirty")]
+  pg[("Postgres\ncrdt_* blob lease dirty\npage_identity")]
 
   a --> http
   curl --> http

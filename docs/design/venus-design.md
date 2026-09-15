@@ -273,7 +273,7 @@ Every published markdown tree change Venus writes is a git commit. Do not mix th
 
 | Class | When | Message | Input |
 |---|---|---|---|
-| **Snapshot** | Idle / Flush / flush-before-lease after WYSIWYG | Autocomment `snapshot: <title>` | Pin of dirty pages + catalog `git mv` |
+| **Snapshot** | Idle / Flush / flush-before-lease after WYSIWYG | One dirty page: `snapshot: <H1>`. Several or catalog-only: `snapshot:` | Pin of dirty pages + catalog `git mv` |
 | **Comment-commit** | Markdown lease **accept** (agent, contract, session-unite, revert) | **Required** why | Hunks vs `T0` |
 
 Idle snapshot is **not** a session-bound commit and **not** temporal why. Filter `snapshot:` in `git log` when you want rationale.

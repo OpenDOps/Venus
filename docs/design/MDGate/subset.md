@@ -31,10 +31,10 @@ Pin: `@blocksuite/affine` **0.22.4** ([api-map.md](../api-map.md)). There is **n
 
 ```markdown
 [protocol](protocol.md)
-<!-- venus:doc:doc:protocol -->
+<!-- venus:doc:a1b2c3d4-e5f6-7890-abcd-ef1234567890 -->
 ```
 
-Link text = target catalog `name`. Href = POSIX relative from the exporting file’s `gitPath` to the target `gitPath` (same dir → `protocol.md`; nested → `../design/protocol.md`). Comment `pageId` = live `affine:embed-linked-doc` `pageId` = catalog `docId` (guid). Import / restore: `venus:doc:` first, catalog `gitPath` second ([venus-design](../venus-design.md#cross-document-references)). A Flush that `git mv`s also rewrites hrefs in the same cut so that SHA’s clone links match the folders. Do not write `./workspace/<ws>/…` into git.
+Link text = target catalog `name`. Href = POSIX relative from the exporting file’s `gitPath` to the target `gitPath` (same dir → `protocol.md`; nested → `../design/protocol.md`). Comment `pageId` = live `affine:embed-linked-doc` `pageId` = catalog `docId` (uuid for M4-created pages). Import / restore: `venus:doc:` first, catalog `gitPath` second ([venus-design](../venus-design.md#cross-document-references)). A Flush that `git mv`s also rewrites hrefs in the same cut so that SHA’s clone links match the folders. Do not write `./workspace/<ws>/…` into git. Create/rename: [page-identity](../datamodel/page-identity.md).
 
 ### Linked-doc export vs toDoc
 

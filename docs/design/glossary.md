@@ -9,7 +9,7 @@ Words that collide in Venus. Product + data design: [venus-design.md](./venus-de
 | **Doc export** | gRPC read of the **current** Y.Doc: `venus.hub.v1.Hub/ExportDoc` (Yjs update v1; omit `doc_id` = home). Next call can differ. Prefers live RAM on the owner, else Postgres. GET `/api/block/…/export` is **advertisement JSON** (no Yjs). Envelope: [rpc.md](./rpc.md). | No | No | [M1 step 7](./M1/plan.md#7-step-snapshot) (historical GET bytes); M4 recon: gRPC |
 | **Pin** | Frozen copy of export bytes (and catalog) at time T. Convert and git run on this copy. Live CRDT is not paused. | Yes | No | M3+ ([LiveSnapshot](./LiveSnapshot/README.md)) |
 | **`T0`** | The pin **kept** at lease acquire. Review Before/Diff is vs this clock. | Yes | No | M5 |
-| **Git snapshot commit** | WYSIWYG pin → markdown + autocomment (`snapshot: <title>`). Not a review why. | Yes (git SHA) | No | M3 |
+| **Git snapshot commit** | WYSIWYG pin → markdown + autocomment. One dirty page: `snapshot: <H1>` (M3). Several pages or catalog-only: `snapshot:`. Not a review why. | Yes (git SHA) | No | M3 / M4 |
 | **Markdown projection** | `MarkdownAdapter.fromDoc` of the block tree. Share format, **not** a second live replica. | n/a | Pane is in the app; git is files | [M2](./M2/README.md) ([MDGate](./MDGate/README.md)) |
 
 **Doc export** is the only one M1 implements. A pin **keeps** an export (or a replica encode). Lease `T0` is a pin that outlives the flush. Git flush converts pins, not the live store.

@@ -7,8 +7,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
-    "isolatedModules": true,
-    "types": ["node"]
+    "isolatedModules": true
   },
   "include": ["vite.config.ts"]
 }

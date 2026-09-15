@@ -20,4 +20,4 @@ Host chrome in `apps/web`. Talks to the hub only through `SyncProvider` (Yjs upd
 
 | Component | Milestone | Role |
 |---|---|---|
-| [CRDT tree](./frontend/crdt-tree/) | [M4](../M4/README.md) | Collaborative wiki folder tree. Catalog Y.Doc on the hub + React tree with drag-and-drop. |
+| [CRDT tree](./frontend/crdt-tree/) | [M4](../M4/README.md) | Collaborative wiki folder tree. Catalog Y.Doc on the hub + React tree with drag-and-drop. Docname vs git filename: [page-identity](../datamodel/page-identity.md). |

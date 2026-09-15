@@ -8,7 +8,7 @@
 | **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
 | **Board** | [M4.state.yaml](./M4.state.yaml) |
 
-Parent design: [venus-design.md](../venus-design.md) ([folder tree](../venus-design.md#folder-tree-table-of-contents), [cross-document references](../venus-design.md#cross-document-references)). Catalog: [datamodel catalog](../datamodel/crdt.md#catalog). Tree: [CRDT tree](../components/frontend/crdt-tree/). Git: [datamodel git](../datamodel/git.md). Pin + `git mv`: [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Header: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree). Hub: [M3.0](../M3.0/README.md), [M3.0 HA](../M3.0/high-availability.md), [backend hub](../components/backend/hub/). Snapshotter: [M3](../M3/README.md). Dataflow: [architecture.md](../architecture.md). Envelope: [rpc.md](../rpc.md). Words: [glossary.md](../glossary.md). Installed symbols: [api-map.md](../api-map.md).
+Parent design: [venus-design.md](../venus-design.md) ([folder tree](../venus-design.md#folder-tree-table-of-contents), [cross-document references](../venus-design.md#cross-document-references)). Catalog: [datamodel catalog](../datamodel/crdt.md#catalog). Tree: [CRDT tree](../components/frontend/crdt-tree/). Git: [datamodel git](../datamodel/git.md). Pin + `git mv`: [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Create / `{uuid}.md` / rename / DB map: [page-identity](../datamodel/page-identity.md) ([hub](../components/backend/hub/page-identity.md)). Header: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree). Hub: [M3.0](../M3.0/README.md), [M3.0 HA](../M3.0/high-availability.md), [backend hub](../components/backend/hub/). Snapshotter: [M3](../M3/README.md). Dataflow: [architecture.md](../architecture.md). Envelope: [rpc.md](../rpc.md). Words: [glossary.md](../glossary.md). Installed symbols: [api-map.md](../api-map.md).
 
 This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
 
@@ -24,17 +24,18 @@ If path is identity, every rename is a broken link. If the tree is a docs-framew
 
 All of these must be true at once:
 
-1. **Two published pages** on the M0 wiki (seed `doc:home` plus one more, mint `space_id` once). Refresh / second tab hydrates both. Lease grain stays `workspace_id` (one live hub owner for the wiki).
+1. **Two published pages** on the M0 wiki: seed `doc:home` plus one page **created through the API** ([page-identity](../datamodel/page-identity.md) — mint uuid once, first file `{uuid}.md`, tree rename). Refresh / second tab hydrates both. Lease grain stays `workspace_id` (one live hub owner for the wiki). Do not pre-seed `doc:protocol`.
 2. **Catalog CRDT** space `venus:catalog` (api-map Actual) on the hub: folders, docs, `parentId`, sibling `order`, derived `gitPath`. Moves = reparent + order. They do **not** rewrite page bodies.
 3. **Tree UI** reads only that catalog. Click opens the page in the editor. Drop reparents (live CRDT; other tab sees it without reload). Outline stays the **in-page heading TOC**, not a second wiki tree.
-4. **Product header** on the same slice: Undo / Redo on the **open** page’s `Store` (`store.undo()` / `store.redo()`, disabled by subscribing to `store.history.canUndo$` / `canRedo$`). Shows the current catalog name / `gitPath`. Not `@affine/core`. Not a history list of Yjs transactions.
+4. **Product header** on the same slice: Undo / Redo on the **open** page’s `Store` (`store.undo()` / `store.redo()`, disabled by subscribing to `store.history.canUndo$` / `canRedo$`). **`venus-page-title` = catalog `name`** of the open node. Not `@affine/core`. Not a history list of Yjs transactions.
 5. **Layout:** header top; folder tree left; page editor; outline right. Markdown pane may remain host chrome; it must not occupy the tree slot or become the wiki TOC.
-6. **Publish includes `git mv`.** Flush pins **catalog + dirty pages** in the same cut. If `gitPath` changed and the body clock did not, **`git mv` only** (no `fromDoc` of the unchanged page). Clone of `wiki/` shows the new folders. Sibling **order** is not in git.
+6. **Publish includes `git mv`.** Flush pins **catalog + dirty pages** in the same cut. If `gitPath` changed and the body clock did not, **`git mv` only** (no `fromDoc` of the unchanged page). Clone of `wiki/` shows the new folders. Sibling **order** is not in git. Flush always rewrites `wiki/.venus/pages.yaml`: `pages:` from DB `page_identity`, `folders:` from catalog pin (YAML is not identity).
 7. **`affine:embed-linked-doc`** with `pageId = docId` plus markdown round-trip of **export** form: catalog title, path relative to the current file, `<!-- venus:doc:<id> -->`. After a move, the card still resolves; the next snapshot’s markdown path matches the new `gitPath`. Recreating the card from markdown is still M6 apply, not adapter `toDoc`.
 8. Header undo/redo matches keyboard undo (⌘Z / Ctrl+Z) on the open page.
 9. [api-map.md](../api-map.md) Actual column is filled for every catalog / tree / header / `git mv` / linked-doc name the code uses.
 10. Existing **M1 Playwright**, M2 export / pane, and M3 Flush / live-during-flush stay green. `mount-editor` still imports neither catalog nor git.
 11. **Wire A** holds without a SharedWorker. Where `SharedWorker` exists, two pages in one browsing profile share the worker’s A sockets; where it does not, per-tab sockets still pass 1–10.
+12. **Create → rename → map** e2e ([page-identity](../datamodel/page-identity.md)) is green (includes **delete**: reject non-empty folder; leaf page gone from tree, DB, git). M4 is not `done` without it.
 
 ## Non-goals (do not start)
 
@@ -50,7 +51,7 @@ All of these must be true at once:
 | `@affine/core` explorer, Docusaurus, VitePress as the live tree | Forbidden |
 | History timeline of `store.history` | Not a product surface ([implementation plan](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree)) |
 | Empty catalog folders as git placeholders | Git has no empty dirs; catalog may lead |
-| Convert / catalog ops inside the hub | Hub stays apply + broadcast + persist + export/blob |
+| Convert / catalog ops inside the hub | Hub stays apply + broadcast + persist + export/blob. Delete **authorization** may read the catalog snapshot to count children; that is not merge. |
 | Auth / ACL | Leftover ([Identity](../venus-implementation-plan.md#identity-v1)) |
 | Frame multiplex (C) / path suffix (B) | Wire is **A** (`?doc=`). Do not wrap y-protocols. |
 | Service Worker as the collab socket | Different API. Detect **`SharedWorker`**. SW is not the fallback and not the optimization. |
@@ -63,10 +64,10 @@ Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystrok
 2. **Path is not identity.** Links and catalog docs key by `docId` (hub space / BlockSuite guid). `gitPath` is derived and cached. Renames do not mint a new space.
 3. **Mint once.** `collection.createDoc()` / hub space ids are created **once**, then synced. Never invent the same `space_id` independently on two devices ([implementation plan — collection](../venus-implementation-plan.md#1-collection--hub-workspace)).
 4. **Wiki sticky unchanged.** Owner / lease grain is `workspace_id`, not `doc_id`, not cookie. Many pages live **on that owner**. [M3.0 HA rooms](../M3.0/high-availability.md#rooms).
-5. **SQL `doc_id` is UUID v5** of the BlockSuite guid (same DNS namespace as `PAGE_DOC_ID` / `doc:home`). Catalog space guid `venus:catalog` gets its own v5. Recon records both. Hub must persist **any** of those ids, not only `PAGE_DOC_ID`.
+5. **SQL `doc_id` is a UUID.** Home = v5 of `doc:home` (`PAGE_DOC_ID`). Catalog = v5 of `venus:catalog` (`CATALOG_DOC_ID`). Created pages **mint uuid v4** (= SQL `doc_id` = BlockSuite `createDoc` id). Hub must persist **any** of those ids, not only `PAGE_DOC_ID`.
 6. **Catalog is not an `affine:page`.** It is a small Y.Doc (`Y.Map` of nodes). Do not hang folders on the published block schema.
 7. **One apply queue per `docId`**, one persist buffer per `docId`, inside the **one** room for the wiki. Not per socket.
-8. **M1 default collab path stays.** `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with no `?doc=` still hydrates `doc:home`. Second docs (catalog, protocol) use `?doc=<sql uuid>` on **that same path**. **Doc export is gRPC** (`Hub.ExportDoc`, omit `doc_id` = home). GET `/api/block/:workspace/export` is advertisement JSON (no Yjs). Envelope: [rpc.md](../rpc.md).
+8. **M1 default collab path stays.** `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with no `?doc=` still hydrates `doc:home`. Second docs (catalog, created pages) use `?doc=<sql uuid>` on **that same path**. **Doc export is gRPC** (`Hub.ExportDoc`, omit `doc_id` = home). GET `/api/block/:workspace/export` is advertisement JSON (no Yjs). Envelope: [rpc.md](../rpc.md).
 9. **Pin then convert.** Catalog bytes ride in the **same MVCC cut** as dirty pages so `gitPath` matches the files you write ([LiveSnapshot](../LiveSnapshot/README.md)). Convert page bodies with the M3 Rust `fromDoc` (JS CLI oracle). Catalog-only dirty → `git mv` / write paths, **no** `fromDoc` of an unchanged body. Cut still released before `fromDoc`.
 10. **Dirty clocks.** Catalog persist upserts `dirty(workspace_id, catalog_sql_uuid, clock)` via the existing trigger. One `jobs` row per wiki still. Sidecar `commit_pins` must stop skipping every `doc_id` that is not home.
 11. **Tree data = catalog only.** Drop = catalog reparent. Do not scan `wiki/` for the live tree. Do not use AFFiNE explorer.
@@ -90,7 +91,7 @@ Venus/
     src/host/
       catalog/                      # Y.Map schema + ops; not mount-editor
         schema.js
-        ops.js
+        ops.js                      # create / rename / reparent / deleteNode
         git-path.js
         CatalogTree.tsx           # @headless-tree/react; drop → catalog ops
       chrome/                       # header undo/redo + current page
@@ -105,8 +106,11 @@ Venus/
       m4-header.spec.ts
       m4-move.spec.ts
       m4-link.spec.ts
+      m4-create-rename.spec.ts      # required DoD; datamodel/page-identity.md
       m4-shared-worker.spec.ts      # step 8; skip if no SharedWorker
   docs/design/api-map.md            # catalog Actuals in step 1
+  docs/design/datamodel/page-identity.md
+  docs/design/components/backend/hub/page-identity.md
   docs/design/M4/
     …
 ```
@@ -119,36 +123,36 @@ Venus/
 Tab A / Tab B
         │  catalog Y.Doc  venus:catalog     (folders, order, gitPath)
         │  page Y.Doc     doc:home
-        │  page Y.Doc     doc:protocol      (mint once)
+        │  page Y.Doc     <uuid>            (create API; not pre-seeded)
         ▼
 SyncProvider  (kind octobase alias)
         │  AFFiNE WS  /collaboration/<workspace>              → home
-        │  AFFiNE WS  /collaboration/<workspace>?doc=<uuid>   → catalog / protocol
+        │  AFFiNE WS  /collaboration/<workspace>?doc=<uuid>   → catalog / created page
         │  (step 8: SharedWorker may own those sockets; tabs still hold Y.Doc)
         ▼
 Venus hub  one owner per workspace_id
         │  apply / broadcast / persist per docId
         ▼
-Postgres  crdt_* / dirty  (home, protocol, catalog each a doc_id)
+Postgres  crdt_* / dirty / page_identity  (home, created pages, catalog)
 
 Flush / idle
         │  claim → MVCC cut of S (dirty pages ∪ catalog)
         │  fromDoc dirty page pins; git mv if gitPath changed
         ▼
 wiki/  spec/home.md
-       spec/protocol.md   → after move e.g. design/protocol.md
+       spec/<uuid>.md     → after tree rename e.g. spec/protocol.md
+       .venus/pages.yaml  ← pages + folders naming map (pages from DB, folders from catalog pin)
        .venus/ids/<docId>.json
 ```
 
-Ids (Intent; catalog Actual locked):
+Ids (Intent; catalog Actual locked; second page is create-API, not seed):
 
 ```text
 TestWorkspace.id     =  77e4a2b1-8b40-5979-a73c-fd4477216d00
 doc:home             =  existing page; SQL PAGE_DOC_ID 395cd07b-bdb1-5f54-ada8-e9a3fabb6a20
 venus:catalog        =  catalog Y.Doc guid; SQL CATALOG_DOC_ID 4fe5c16e-4be3-5700-a456-ecc8e86cdf1a
-doc:protocol         =  second seed page (or Actual mint); SQL v5
+created page         =  uuid v4 = SQL doc_id = BlockSuite createDoc id; first gitPath {folder}/{uuid}.md
 gitPath home         =  spec/home.md
-gitPath protocol     =  spec/protocol.md   (until a move)
 ```
 
 ## Chosen stack
@@ -158,12 +162,12 @@ Locked in [step-recon-catalog](#1-step-recon-catalog). If this section disagrees
 | Piece | Intent |
 |---|---|
 | Live CRDT | Unchanged hub + `OctoBaseKeckProvider` (`kind: 'octobase'` alias). **Many `doc_id`s per room.** **Wire A:** N sockets, one Room, same `/collaboration/:workspace_id`. Socket names `doc_id` with query `?doc=<sql uuid>`. Omit `doc` = home (M1). Not path suffix (B). Not frame multiplex (C). |
-| Catalog | Plain Y.Doc, `Y.Map` nodes. Fields: `id`, `kind` (`folder` \| `doc`), `name`, `parentId`, `order`, `docId?`, `gitPath`. |
-| Order | Fractional index among siblings (recon locks the helper). |
+| Catalog | Plain Y.Doc, `Y.Map` nodes. Fields: `id`, `kind` (`folder` \| `doc`), `name`, `parentId`, `order`, `docId?`, `gitPath`. Create: `{uuid}.md`; rename in tree. |
+| Order | Fractional index **string** on each catalog node. **Not git.** Helper pin is step 3 (`ops.js`). |
 | Tree UI | **`@headless-tree/react@1.7.0`** view over the catalog Y.Doc. Data loader reads `Y.Map`; drop calls catalog `reparent` / `setOrder`. Not AFFiNE explorer. Design: [CRDT tree](../components/frontend/crdt-tree/). |
-| Header | Host chrome: `store.undo()` / `store.redo()`; **subscribe** to `store.history.canUndo$` / `canRedo$` (do not poll). Title = catalog name / `gitPath`. |
+| Header | Host chrome: `store.undo()` / `store.redo()`; **subscribe** to `store.history.canUndo$` / `canRedo$` (do not poll). **`venus-page-title` = catalog `name`**. |
 | Linked-doc | `affine:embed-linked-doc` `pageId = docId`. **Git:** `[catalog name](posix-relative gitPath)` + `<!-- venus:doc:<docId> -->`. Never `./workspace/<ws>/…` in `wiki/`. |
-| Git | Same sidecar. `git2` `git mv` when catalog `gitPath` ≠ last committed path. Autocomment still `snapshot: <title>`. |
+| Git | Same sidecar. `git2` `git mv` when catalog `gitPath` ≠ last committed path. Autocomment: one dirty page → `snapshot: <H1>` (M3); several / catalog-only → `snapshot:`. **`pages.yaml` every Flush:** `pages:` from DB, `folders:` from catalog pin. |
 | Tab sockets | Default: one TCP per **connected** Y.Doc in that tab (catalog + current page). `OctoBaseKeckProvider` `_gen` is **per session**, not global. |
 | SharedWorker | Last product step ([`step-shared-worker`](#8-step-shared-worker)): if `typeof SharedWorker === 'function'`, one worker per origin+workspace holds those **same A sockets**; tabs `postMessage` updates. `Y.Doc` + BlockSuite stay in the tab. Missing API → per-tab A (required fallback). **Not** a Service Worker. |
 | Out of scope | Lease UI, remotes, `@affine/core`, convert in hub, `toDoc` restoring the card, y-protocols envelope (C) |
@@ -174,9 +178,9 @@ Locked in [step-recon-catalog](#1-step-recon-catalog). If this section disagrees
 |---|---|
 | **Wire** | **A1+B+C1, locked.** N sockets on one Room. `WS /collaboration/:workspace_id` = home. `WS /collaboration/:workspace_id?doc=<sql uuid>` = that `doc_id`. Guid in `?doc=` is **400**. Vanilla `y-protocols` / `AFFiNE` frames. SharedWorker (step 8) does not change this URL. |
 | **Export** | **gRPC `Hub.ExportDoc`**. `doc_id` = SQL uuid; omit = home. GET `/api/block/:workspace/export` = advertisement (available docs + `?doc=` / gRPC). GET `?doc=` = 400 `export_http_disabled`. No HTTP Yjs. [rpc.md](../rpc.md). |
-| **Seed catalog** | If empty after sync: folder `spec`, doc `home` → `doc:home`, doc `protocol` → second page. Same seed-once rule as pages. |
+| **Seed catalog** | If **`folder:spec`** or **`doc:home`** missing after sync: write those two (`spec` + `home` → `doc:home` / `spec/home.md`) **only**. No second seed page. User folders mint `folder:` + uuid v4. Further pages: [page-identity](../datamodel/page-identity.md). |
 | **Move** | Catalog reparent live; git catches up on Flush. |
-| **Empty folders** | Catalog only until a page lives under them. |
+| **Empty folders** | No git directory until a page lives under them. YAML `folders:` still lists them. |
 
 ## Steps summary
 
@@ -186,7 +190,7 @@ What each step **adds** to the product (not how to test it — that is under eac
 |---|---|---|
 | 1 | [`step-recon-catalog`](#1-step-recon-catalog) | Gate + map: wire **A** (`?doc=`), catalog schema, tree/header symbols, `git mv`, linked-doc Actuals; spike two docs. |
 | 2 | [`step-spaces`](#2-step-spaces) | Hub + host: many pages per wiki; bare path still home; `?doc=` bind; gRPC `ExportDoc` per doc. Per-tab sockets. |
-| 3 | [`step-catalog-crdt`](#3-step-catalog-crdt) | Catalog Y.Doc ops: seed, reparent, `gitPath`. Two tabs see moves. No tree chrome yet. |
+| 3 | [`step-catalog-crdt`](#3-step-catalog-crdt) | Catalog Y.Doc ops: seed, reparent, `gitPath`, `deleteNode` (reject if children). Two tabs see moves. No tree chrome yet. |
 | 4 | [`step-chrome`](#4-step-chrome) | Layout slots + product header (undo/redo, current page) on the open Store. |
 | 5 | [`step-tree`](#5-step-tree) | Tree UI; click opens; drop reparents. Outline stays headings. |
 | 6 | [`step-git-mv`](#6-step-git-mv) | Sidecar: catalog in the cut; two files; `git mv` on Flush when path changed. |
@@ -221,7 +225,7 @@ M4 dies if each page is a second hub owner, or if the tree scans git, or if undo
 
 1. Confirm [M3.state.yaml](../M3/M3.state.yaml) steps 1–9 `done`.
 2. Spike (throwaway ok): two Y.Docs on the M0 `workspace_id` **without** keck, **wire A**. Bare `/collaboration/:workspace_id` = home; second socket `?doc=<sql uuid>`. Prove home still hydrates; second doc round-trips; lease row count stays 1. Do not spike B (path suffix) or C (mux).
-3. Fill [api-map.md](../api-map.md) **Names — catalog / tree / header**: catalog guid, SQL uuids, **gRPC ExportDoc**, node schema, order helper, tree mount, header undo APIs, `git mv` behavior, linked-doc title/path post-process, SharedWorker feature-detect. Multi-doc wire Actual is A (already chosen). Envelope: [rpc.md](../rpc.md).
+3. Fill [api-map.md](../api-map.md) **Names — catalog / tree / header**: catalog guid, SQL uuids, **gRPC ExportDoc**, node schema, order helper, tree mount, header undo APIs, `git mv` behavior, linked-doc title/path post-process, **create-page uuid.md + `page_identity` + `pages.yaml`**, SharedWorker feature-detect. Multi-doc wire Actual is A (already chosen). Do **not** fill a second seed `doc:protocol`. Envelope: [rpc.md](../rpc.md). Create/rename DoD: [page-identity](../datamodel/page-identity.md).
 4. Record: Room is `Map<doc_id, Doc>`; apply/persist per `docId`; owner still `workspace_id`. Bare collaboration still home. GET `/export` is advertisement, not home Yjs.
 5. Note M2 [fromDoc-review](../M2/fromDoc-review.md) S4/S5: two pages make linked-doc resolution and synced-doc inlining live — do not “fix” apply here; export must keep `venus:doc:` first.
 
@@ -244,7 +248,7 @@ M4 dies if each page is a second hub owner, or if the tree scans git, or if undo
 2. **Map complete**
    - **Given** this repo after this step.
    - **When** you read [api-map.md](../api-map.md) **Names — catalog / tree / header**.
-   - **Then** Actuals are concrete: multi-doc wire **A** (`?doc=`), catalog guid + SQL uuid, second seed `docId` + `gitPath`, tree testid + `@headless-tree/react@1.7.0`, header undo methods, **gRPC ExportDoc**, GET export advertisement, `git mv` on Flush, SharedWorker detect (`SharedWorker`, not `serviceWorker`).
+   - **Then** Actuals are concrete: multi-doc wire **A** (`?doc=`), catalog guid + SQL uuid, **create-page uuid.md** (no `doc:protocol` seed), tree testid + `@headless-tree/react@1.7.0`, header undo methods, **gRPC ExportDoc**, GET export advertisement, `git mv` on Flush, `page_identity` + `pages.yaml`, SharedWorker detect (`SharedWorker`, not `serviceWorker`).
    - **How:** grep / review. Fail if cells are still empty or `recon:`.
 3. **Spike two docs**
    - **Given** hub + Postgres (testcontainers or Compose).
@@ -276,7 +280,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 1. Room: `Map<doc_id, Doc>` (or equivalent). Hydrate/apply/persist/broadcast **per `docId`**. One persist task per doc or one task that drains every buffer — Actual. Do not pause persist.
 2. Wire **A:** `connect(docId, ydoc)` opens another WS to the **same** `/collaboration/:workspace_id` with `?doc=<sql uuid>` (omit for home). Hub binds that socket to that `doc_id` at upgrade. `OctoBaseKeckProvider` `_gen` is **per session** so catalog + page stay live together. Do not wrap frames. Do not add `/collaboration/:ws/:doc`. No SharedWorker in this step.
 3. Export: **gRPC `ExportDoc`** per `doc_id` (`Hub::live_export` generalized). GET `/api/block/:workspace/export` stays advertisement JSON (no Yjs). Do not add `GET …/:doc/export`. `live_export` must not always encode `PAGE_DOC_ID` only.
-4. Host: mint the second seed doc **once** after sync (same seed-if-empty rule as home). Memory provider: both docs exist in one `TestWorkspace` without WS.
+4. Host: do **not** mint a second seed doc at boot. Second page = create API ([page-identity](../datamodel/page-identity.md)). Memory provider: home exists; tests call `createDoc` / create API for another page.
 5. Dirty trigger already keys `doc_id` — a persist on the second page upserts a second `dirty` row; still one `dirty_wiki` / `jobs` grain.
 
 #### Do not
@@ -291,7 +295,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Test scenarios
 
 1. **Second page persists**
-   - **Given** hub + Postgres; second seed `docId` from api-map.
+   - **Given** hub + Postgres; a page created via the create API (uuid from that call, not a recon constant).
    - **When** you type (or set a Yjs key) on that page, wait ≥2s, restart **only** the hub.
    - **Then** a new client hydrates that page’s bytes. Home still hydrates.
    - **How:** hub WS/store test + host Vitest. Fail if the second page lived only in tab RAM.
@@ -321,18 +325,18 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 |---|---|
 | **n** | 3 |
 | **id** | `step-catalog-crdt` |
-| **title** | Catalog Y.Doc: seed, reparent, gitPath |
+| **title** | Catalog Y.Doc: seed, reparent, gitPath, delete |
 | **dependsOn** | `step-spaces` |
 | **kind** | implement |
 | **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** the collaborative tree as data. No folder UI. Host (or tests) can reparent and see `gitPath` change.
+**Adds:** the collaborative tree as data. No folder UI. Host (or tests) can reparent, delete (reject if children), and see `gitPath` change.
 
 #### Work
 
-1. Schema module: `nodes` map as in [datamodel](../datamodel/crdt.md#catalog). `gitPath` derived from ancestor `name`s (docs get `.md` in git; catalog `name` Actual). `parentId` null = wiki root.
-2. Ops: `createFolder`, `createDoc` (mint `docId` once + `createDoc` on the workspace), `rename`, `reparent`, `setOrder`. Reparent does **not** touch page bodies.
-3. Seed-once: if catalog has no nodes after sync, write `spec/` + `home` (`doc:home` → `spec/home.md`) + `protocol` (Actual → `spec/protocol.md`).
+1. Schema module: `nodes` map as in [datamodel](../datamodel/crdt.md#catalog). `gitPath` derived from ancestor **filenames** (docs get `.md` in git). `parentId` null = wiki root.
+2. Ops: `createFolder`, `createDoc` (mint **uuid** once + `createDoc(uuid)` on the workspace + `page_identity` **HTTP POST**), `rename` (docname + POSIX filename filter, sibling `_1`), `reparent`, `setOrder`, `deleteNode` (reject `node_not_empty` / `home_protected`; leaf page also **HTTP DELETE**s `page_identity`). Reparent does **not** touch page bodies. See [page-identity](../datamodel/page-identity.md). Folder ids: `folder:` + uuid v4. Root: `parentId: null`.
+3. Seed-once: if catalog has no nodes after sync, write `spec/` + `home` (`doc:home` → `spec/home.md`) **only**. Do not seed protocol.
 4. Connect the catalog Y.Doc through `SyncProvider` like a page. Two tabs share it.
 5. Vitest can run these ops on `MemoryNoopProvider` (no Docker).
 
@@ -346,24 +350,36 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Test scenarios
 
 1. **Seed catalog**
-   - **Given** empty catalog + seeded home/protocol pages (memory ok).
+   - **Given** empty catalog + seeded home (memory ok).
    - **When** seed-once runs.
-   - **Then** nodes include folder `spec`, doc `home` with `docId=doc:home` and `gitPath=spec/home.md`, doc `protocol` with Actual `docId` and `gitPath=spec/protocol.md`. A second seed does not duplicate.
+   - **Then** nodes include folder `id=folder:spec` (`name` spec) and doc `home` with `docId=doc:home` and `gitPath=spec/home.md`. **No** protocol node. A second seed does not duplicate (same ids).
    - **How:** `pnpm --filter @venus/web test` under `src/host/catalog/`. Fail if seed always `add`s.
-2. **Reparent**
+2. **Create then rename**
    - **Given** that seed.
-   - **When** you `createFolder` `design` at root and reparent `protocol` under it.
-   - **Then** `protocol.gitPath` is `design/protocol.md` (or Actual). Home `gitPath` unchanged. Protocol page Y.Doc body bytes unchanged.
+   - **When** you `createDoc` under `spec`, then `rename` to `protocol`.
+   - **Then** first `gitPath` is `spec/<uuid>.md`; after rename `spec/protocol.md`; uuid / `docId` unchanged. `foo/bar` becomes file `foo_bar.md` (name kept); sibling clash gets `_1`.
+   - **How:** same Vitest. Fail if create used a hardcoded `doc:protocol`.
+3. **Reparent**
+   - **Given** a created page renamed `protocol`.
+   - **When** you `createFolder` `design` at root and reparent that page under it.
+   - **Then** `gitPath` is `design/protocol.md`. Home `gitPath` unchanged. Page Y.Doc body bytes unchanged.
    - **How:** same Vitest. Fail if reparent `Y.applyUpdate`s the page.
-3. **gitPath derived**
+4. **gitPath derived**
    - **Given** a nested folder `spec/crdt`.
    - **When** you reparent `home` under it.
-   - **Then** `gitPath` is `spec/crdt/home.md` (or Actual). Rename of folder `spec` → `SPEC` updates descendant paths.
+   - **Then** `gitPath` is `spec/crdt/home.md`. Rename of folder `spec` → `SPEC` updates descendant paths (allowlist still applies).
    - **How:** same Vitest.
-4. **A→B catalog**
+5. **Delete rejects non-empty; leaf ok**
+   - **Given** seed (`spec` + `home`) plus a created page under `spec`.
+   - **When** you `deleteNode(spec)`.
+   - **Then** error `node_not_empty`; nodes unchanged.
+   - **When** you `deleteNode` that created page.
+   - **Then** the catalog row is gone; home remains. `deleteNode(home)` errors `home_protected`.
+   - **How:** same Vitest (memory ok for catalog; hub Delete API when Compose). Fail if children were cascaded or reparented.
+6. **A→B catalog**
    - **Given** Compose hub; two tabs.
-   - **When** A reparents `protocol` (ops API or test hook).
-   - **Then** B’s catalog shows the new parent / `gitPath` without reload.
+   - **When** A creates or reparents a page (ops API or test hook).
+   - **Then** B’s catalog shows the new node / `gitPath` without reload.
    - **How:** Playwright `e2e/m4-tree.spec.ts` (ops via `window.__VENUS_*` until the tree exists) or a hub Yjs test. Fail if catalog was tab-local.
 
 ---
@@ -387,7 +403,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 1. Layout: header top; **tree slot** left; editor; outline right. Flush / git-log chrome stay host controls (header or existing bar — Actual). Markdown pane does not take the tree slot.
 2. Header `data-testid="venus-header"`: Undo / Redo buttons (`venus-undo` / `venus-redo`) call `store.undo()` / `store.redo()` on the **open** Store; **subscribe** to `store.history.canUndo$` / `canRedo$` to disable (do not poll `canUndo`). Switching pages tears down the old subscribe.
-3. Current page: catalog `name` and/or `gitPath` (`venus-page-title`). Switching the open doc (test hook until step 5) rebinds header + editor + outline + md pane to that Store.
+3. Current page: catalog **`name`** (`venus-page-title`). Not `gitPath`, not affine page title. Switching the open doc (test hook until step 5) rebinds header + editor + outline + md pane to that Store.
 4. Vitest: `mount-editor.js` has no header/catalog imports. No `@affine/core` in `@venus/web`.
 
 #### Do not
@@ -404,9 +420,9 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
    - **Then** the word is gone. Redo brings it back. After undo, the Undo button is disabled because `canUndo$` went false (seed constructor history still reset). Keyboard ⌘Z / Ctrl+Z still matches. Fail if the button stays enabled until a later click/poll.
    - **How:** `e2e/m4-header.spec.ts` (memory ok). Fail if undo is a second stack.
 2. **Current page**
-   - **Given** catalog seed (home + protocol).
-   - **When** the open doc is protocol (test hook or later tree click).
-   - **Then** `[data-testid=venus-page-title]` contains that catalog name or `gitPath`, not only “Venus” from home.
+   - **Given** catalog seed (home) plus a page created in the test hook.
+   - **When** that created page is open (test hook or later tree click).
+   - **Then** `[data-testid=venus-page-title]` is that catalog **`name`**, not only “Venus” from home, not `gitPath`.
    - **How:** same spec or Vitest. Fail if the title is hard-coded `doc:home`.
 3. **Layout**
    - **Given** `/`.
@@ -440,7 +456,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 1. Mount [CatalogTree](../components/frontend/crdt-tree/) (`@headless-tree/react`). `data-testid="venus-tree"`. `dataLoader` from catalog nodes; drop → `reparent` + `setOrder`. No AFFiNE explorer. Do not let the library own the tree.
 2. Click a doc → that Store is open (editor, outline, header, md pane).
-3. Drop a doc onto a folder → catalog `reparent` (live). Optional: create folder / create page controls (needed for dogfood; at least one way to add a page besides seed).
+3. Drop a doc onto a folder → catalog `reparent` (live). **Required:** create page / folder (`venus-create-page` / `venus-create-folder`) with **`createAt`** = selected folder, or the folder that was **right-clicked**. [page-identity](../datamodel/page-identity.md). **Delete:** control hidden when the node has children or is home; calling the op still errors. Empty folder / leaf page may delete.
 4. Two tabs: drop in A appears in B without reload.
 5. Accessible: keyboard focus / aria tree Actual. Do not scrape `wiki/` to build rows.
 
@@ -456,23 +472,28 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 1. **Lists nodes**
    - **Given** seeded catalog.
    - **When** you open `/`.
-   - **Then** `[data-testid=venus-tree]` shows `spec`, `home`, and the protocol page name (Actual). Outline still has H1 `Why Venus` when home is open, not `spec`.
+   - **Then** `[data-testid=venus-tree]` shows `spec` and `home`. After create (this spec or `m4-create-rename`), the new uuid row is listed. Outline still has H1 `Why Venus` when home is open, not `spec`.
    - **How:** `e2e/m4-tree.spec.ts`. Fail if the tree is the heading list.
 2. **Click opens**
    - **Given** that tree.
-   - **When** you click protocol.
+   - **When** you click the created (or renamed) page.
    - **Then** the editor shows that page (not home seed H1 only); header title matches; undo binds that Store.
    - **How:** same spec. Fail if click only scrolls outline.
 3. **Drop reparents**
-   - **Given** folder `design` (seed extra or create-folder control).
-   - **When** you drop protocol onto `design`.
-   - **Then** catalog `gitPath` is `design/protocol.md` (or Actual). Second tab sees the new parent without reload. Page body unchanged.
+   - **Given** folder `design` (create-folder) and a created page.
+   - **When** you drop that page onto `design`.
+   - **Then** catalog `gitPath` is `design/{name}.md` (uuid.md if not yet renamed). Second tab sees the new parent without reload. Page body unchanged.
    - **How:** Playwright drag-and-drop or the tree’s published drop API. Fail if drop rewrote markdown / Yjs page bytes.
 4. **Outline not a wiki TOC**
    - **Given** home open.
    - **When** you compare tree vs outline.
    - **Then** outline testids stay `outline-block-preview-h1` / `h2`; M0 outline specs still pass.
    - **How:** `pnpm test:e2e` m0-outline + m4-tree. Fail if folders appear as outline items.
+5. **Delete hidden / rejected when children**
+   - **Given** `spec` still contains `home` (or a created page).
+   - **When** you inspect delete on `spec`.
+   - **Then** the control is absent / disabled. Invoking `__VENUS_deleteNode` (or the op) returns `node_not_empty`. After deleting a created leaf that was open, the editor/header show **home**. `spec` can be deleted only once empty (home must be moved out first — in M4 home stays in `spec`, so **do not** require deleting `spec` in e2e; assert `spec` stays undeletable while it has children).
+   - **How:** `e2e/m4-tree.spec.ts` + Vitest. Fail if cascade.
 
 ---
 
@@ -498,7 +519,10 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 3. If a page’s new `gitPath` ≠ path at last commit: `git2` `rename` / `git mv` the `.md` (and keep sidecar keyed by `docId` under `.venus/ids/<docId>.json`).
 4. Body unchanged + path changed → **no** `fromDoc`; still `git mv` + one autocomment commit.
 5. `commit_pins` writes every dirty page, not only home. `last_flushed` rows for those `doc_id`s (including catalog clock).
-6. Host Flush unchanged. `mount-editor` still ignorant.
+6. Rewrite `wiki/.venus/pages.yaml` every Flush: `pages:` from DB `page_identity`; `folders:` from catalog pin (Yjs id ↔ name ↔ folder `gitPath`). Never YAML → uuid. Never YAML → catalog. [page-identity](../datamodel/page-identity.md).
+7. If a page’s `page_identity` row is gone and HEAD still has that `.md`: **`git rm`** (and drop `.venus/ids/<docId>.json`). Do not `git rm` a folder’s files while children still exist in DB (delete already rejected).
+8. Autocomment: **one** dirty published page → M3 `snapshot: <first ATX H1>`; **several** pages or **catalog-only** → `snapshot:` (no name).
+9. Host Flush unchanged. `mount-editor` still ignorant.
 
 #### Do not
 
@@ -510,25 +534,35 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Test scenarios
 
 1. **Two files**
-   - **Given** seed catalog + both pages; empty or existing `wiki/`.
+   - **Given** seed catalog + a page **created** under `spec` (uuid.md); empty or existing `wiki/`.
    - **When** Flush (claim → cut → commit).
-   - **Then** `wiki/spec/home.md` and `wiki/spec/protocol.md` (Actual) exist; sidecars `.venus/ids/doc:home.json` and `.venus/ids/<protocol>.json`; autocomment commit.
-   - **How:** `cargo test -p venus-sidecar --test flush` (extend). Fail if protocol is skipped because `doc_id != PAGE_DOC_ID`.
-2. **Move then Flush**
-   - **Given** protocol committed at `spec/protocol.md`; catalog reparent to `design/protocol.md`.
+   - **Then** `wiki/spec/home.md` and `wiki/spec/<uuid>.md` exist; sidecars `.venus/ids/doc:home.json` and `.venus/ids/<uuid>.json`; YAML `pages:` maps both paths to DB uuids; YAML `folders:` lists `spec` with `id: folder:spec`; autocomment commit.
+   - **How:** `cargo test -p venus-sidecar --test flush` (extend). Fail if the created page is skipped because `doc_id != PAGE_DOC_ID`. Fail if YAML uuid ≠ DB.
+2. **Rename then Flush**
+   - **Given** that page committed at `spec/<uuid>.md`; tree rename to `protocol`.
    - **When** Flush.
-   - **Then** git log has a commit that **renames** (or deletes + adds with identical blob) to `design/protocol.md`; `spec/protocol.md` is gone; clone elsewhere shows `design/protocol.md`.
+   - **Then** git has `spec/protocol.md` and not `spec/<uuid>.md`; YAML key moved; **uuid unchanged**.
+   - **How:** sidecar + `e2e/m4-create-rename.spec.ts`. Fail if a new uuid was minted.
+3. **Move then Flush**
+   - **Given** page committed at `spec/protocol.md`; catalog reparent to `design/protocol.md`.
+   - **When** Flush.
+   - **Then** git log has a commit that **renames** to `design/protocol.md`; `spec/protocol.md` is gone; YAML / DB `git_path` match.
    - **How:** sidecar test + optional `e2e/m4-move.spec.ts`. Fail if both old and new files exist with copies.
-3. **Catalog-only no fromDoc**
-   - **Given** protocol body clock = `last_flushed`; only catalog dirty (path change).
+4. **Catalog-only no fromDoc**
+   - **Given** that page’s body clock = `last_flushed`; only catalog dirty (path change).
    - **When** Flush.
    - **Then** the markdown blob is byte-identical to HEAD’s old file (rename only). Convert is not invoked for that page (spy / no temp pin convert). Home not rewritten if not dirty.
    - **How:** sidecar test. Fail if a second dialect rewrite jittered the file.
-4. **Clone matches**
+5. **Clone matches**
    - **Given** after the move Flush.
    - **When** you read the clone without the hub.
-   - **Then** folders match catalog `gitPath`s. Order of siblings is **not** asserted from git.
+   - **Then** folders match catalog `gitPath`s. Order of siblings is **not** asserted from git. `pages.yaml` is present (pages + folders) but ignored as live identity.
    - **How:** same flush test / verify script.
+6. **Delete then Flush**
+   - **Given** a created page committed at `spec/<uuid>.md` (or renamed path).
+   - **When** you `deleteNode` that leaf, then Flush.
+   - **Then** git no longer has that `.md`; YAML / DB have no that uuid; home file remains.
+   - **How:** sidecar + `e2e/m4-create-rename.spec.ts` delete scenario. Fail if the file stayed or children were removed.
 
 ---
 
@@ -545,11 +579,11 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | **kind** | implement |
 | **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** a card from home to protocol that export and git can name. M2 synthetic `untitled` + `./workspace/…/doc:lease` is not enough once a catalog exists.
+**Adds:** a card from home to a **created** (then renamed) page that export and git can name. M2 synthetic `untitled` + `./workspace/…/doc:lease` is not enough once a catalog exists.
 
 #### Work
 
-1. Insert `affine:embed-linked-doc` with `pageId =` protocol `docId` (seed or e2e).
+1. Insert `affine:embed-linked-doc` with `pageId =` the created page’s uuid/`docId`.
 2. `fromDoc` post-process **rewrites** the adapter link (do not leave `./workspace/<ws>/<pageId>`). Link text = target catalog `name`; href = POSIX relative from the **current** file’s `gitPath` to the target `gitPath`; keep `<!-- venus:doc:<docId> -->`. Placement must not require `/${pageId}` in the href (M2 `urlMentionsPageId` breaks once the URL is `protocol.md`).
 3. After `git mv`, next Flush: markdown URL updates; comment id unchanged. WYSIWYG card still opens/resolves that `pageId` (BlockSuite, not path).
 4. Re-read [fromDoc-review S4](../M2/fromDoc-review.md): `pageId` allowlist still holds. Do not implement M6 `toDoc` → card.
@@ -564,20 +598,20 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Test scenarios
 
 1. **Card + comment**
-   - **Given** home contains `affine:embed-linked-doc` to protocol.
+   - **Given** home contains `affine:embed-linked-doc` to a created page (renamed `protocol` or still uuid).
    - **When** `fromDoc(home)`.
-   - **Then** markdown is `[<catalog name>](<relative>)` plus `<!-- venus:doc:doc:protocol -->` (or that page’s `docId`). Fail if git still has `./workspace/<uuid>/doc:protocol` or `untitled` only.
-   - **How:** Vitest mdgate + catalog fixture; `e2e/m4-link.spec.ts` for the card visible. Fail if export is still `./workspace/<uuid>/doc:protocol` with `untitled` only.
+   - **Then** markdown is `[<catalog name>](<relative>)` plus `<!-- venus:doc:<uuid> -->`. Fail if git still has `./workspace/<ws>/…` or `untitled` only.
+   - **How:** Vitest mdgate + catalog fixture; `e2e/m4-link.spec.ts` for the card visible.
 2. **Resolves after move**
-   - **Given** that card; reparent protocol; Flush.
+   - **Given** that card; reparent the created page; Flush.
    - **When** you open home (reload ok).
-   - **Then** the linked-doc card still targets the same `pageId`; git markdown comment still has that id; URL path matches new `gitPath`.
+   - **Then** the linked-doc card still targets the same `pageId` (uuid); git markdown comment still has that id; URL path matches new `gitPath`.
    - **How:** `e2e/m4-link.spec.ts` + sidecar markdown assert. Fail if the card is missing or points at a new space.
 3. **Export path from catalog**
-   - **Given** protocol at `design/protocol.md`.
+   - **Given** that page at `design/protocol.md` (after rename + reparent).
    - **When** Flush home (dirty because title middleware / link path).
-   - **Then** `wiki/spec/home.md` (or Actual) contains `design/protocol.md` (relative form Actual, e.g. `../design/protocol.md` if needed).
-   - **How:** sidecar / Vitest. Fail if the file still says `spec/protocol.md`.
+   - **Then** `wiki/spec/home.md` contains a relative path to `design/protocol.md` (e.g. `../design/protocol.md`).
+   - **How:** sidecar / Vitest. Fail if the file still says `spec/protocol.md` or `spec/<uuid>.md`.
 
 ---
 
@@ -642,19 +676,19 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 |---|---|
 | **n** | 9 |
 | **id** | `step-verify` |
-| **title** | Close-out: two pages, link, move, header undo |
+| **title** | Close-out: create, rename, link, move, header undo |
 | **dependsOn** | `step-shared-worker` |
 | **kind** | implement |
 | **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** board `done`. Person + clone + smoke. SharedWorker is an optimization; exit 1–10 must hold on the fallback path.
+**Adds:** board `done`. Person + clone + smoke. SharedWorker is an optimization; exit 1–12 must hold on the fallback path.
 
 #### Work
 
-1. Runbook: M4 close-out — two pages in the tree, link, drop to a folder, Flush, clone `wiki/`, header undo/redo vs keyboard. Note SharedWorker vs per-tab.
+1. Runbook: M4 close-out — create a page (uuid.md), rename in the tree, link, drop to a folder, delete a leaf (not home), Flush, clone `wiki/`, header undo/redo vs keyboard. Note SharedWorker vs per-tab. Map: [page-identity](../datamodel/page-identity.md).
 2. Person in Chrome or Firefox (Chrome has SharedWorker; if Firefox path is fallback-only, say so on the board).
-3. `pnpm test:e2e:m1`, M2 pane, M3 flush/live, new `m4-*.spec.ts` including `m4-shared-worker`.
-4. Mark [M4.state.yaml](./M4.state.yaml) steps 1–9 `done` with evidence.
+3. `pnpm test:e2e:m1`, M2 pane, M3 flush/live, new `m4-*.spec.ts` including **`m4-create-rename`** and `m4-shared-worker`.
+4. Mark [M4.state.yaml](./M4.state.yaml) steps 1–9 `done` with evidence. **Do not** mark `done` if `m4-create-rename` failed or was skipped.
 5. Re-read [fromDoc-review](../M2/fromDoc-review.md) S4/S5 note (dogfood starts after this); do not “close” S1–S7 here unless already green.
 
 #### Do not
@@ -663,21 +697,25 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 - Record remotes as required evidence (optional note only).
 - Close M4 if clone folders do not match the tree after Flush.
 - Close M4 if the app requires SharedWorker to open two pages.
+- Close M4 if the second page was only a recon-seeded `doc:protocol`.
 
 #### Test scenarios
 
-1. **Exit held**
+1. **Create → rename → map** (required DoD)
+   - **Given / When / Then:** [page-identity](../datamodel/page-identity.md) (create in `spec`, Flush → `uuid.md` + YAML `pages:`/`folders:` + DB; rename `protocol`; Flush → `git mv`; `foo/bar` → `foo_bar.md`; sibling `_1`; corrupt YAML → restore pages from DB and folders from catalog pin; **delete** non-empty folder rejected; leaf page deleted then Flush → file gone; home still hydrates).
+   - **How:** `e2e/m4-create-rename.spec.ts` under `pnpm test:e2e:m4`. Fail closed if skipped.
+2. **Exit held**
    - **Given** Compose `postgres` + `hub` + `web` + sidecar.
-   - **When** you create/open two pages, insert one linked-doc, move a page to another folder, Flush, clone `wiki/`.
-   - **Then** git tree matches catalog `gitPath`s; the link still resolves; header undo/redo matches keyboard on the open page.
+   - **When** you create a page, rename it, insert one linked-doc, move it to another folder, Flush, clone `wiki/`.
+   - **Then** git tree matches catalog `gitPath`s; YAML uuids match DB; the link still resolves; header undo/redo matches keyboard on the open page.
    - **How:** `pnpm test:e2e:m4` (or Actual) + clone script. Fail if any exit bullet is demo-only.
-2. **Smoke**
-   - **Then** `m4-tree`, `m4-header`, `m4-move`, `m4-link`, `m4-shared-worker` pass; `pnpm test:e2e:m1`, M2 pane, `pnpm test:e2e:m3` still pass.
+3. **Smoke**
+   - **Then** `m4-create-rename`, `m4-tree`, `m4-header`, `m4-move`, `m4-link`, `m4-shared-worker` pass; `pnpm test:e2e:m1`, M2 pane, `pnpm test:e2e:m3` still pass.
    - **How:** those commands.
-3. **Manual path**
-   - **Then** runbook M4 close-out holds (tree, drop, Flush, clone, undo button, outline still headings). Two tabs in one window still sync if SharedWorker is on.
+4. **Manual path**
+   - **Then** runbook M4 close-out holds (create, rename, tree, drop, Flush, clone, undo button, outline still headings). Two tabs in one window still sync if SharedWorker is on.
    - **How:** person + evidence on the board (date + browser).
-4. **Prior milestones green**
+5. **Prior milestones green**
    - **Then** memory `pnpm test:e2e` (m0 + m2) still passes with the new chrome (no worker).
    - **How:** `pnpm test` + `pnpm test:e2e`. Fail if the tree requires Docker in the default suite.
 
@@ -718,6 +756,7 @@ If M3 is still open, **stop**. Do not fake a second page as two git paths on one
 | Service Worker used as WS | Forbidden; detect `SharedWorker` |
 | Two Playwright **contexts** expected to share one worker | They must not; share assert is two pages, one context |
 | Tree reads `wiki/` | Step 5 data = catalog; step 6 git lags live |
+| Delete cascade / Finder-style reparent | Reject `node_not_empty`; UI hides; hub API errors |
 | `git mv` on every drop | Step 6 only on Flush |
 | `commit_pins` still home-only | Step 6 **Two files** |
 | Path as link identity | Step 7 `venus:doc:` + `pageId` |
@@ -726,7 +765,8 @@ If M3 is still open, **stop**. Do not fake a second page as two git paths on one
 | Catalog is an `affine:page` | Step 3 schema; hub stores a plain Y.Doc |
 | `toDoc` restores the card | Forbidden; M6 |
 | Remotes / AB5 as M4 DoD | After this exit |
-| S5 synced-doc inlining | Do not seed it; note in verify |
+| Pre-seeded `doc:protocol` as the second page | [page-identity](../datamodel/page-identity.md); verify **Create → rename → map** |
+| YAML treated as uuid truth | Flush restores YAML `pages:` from `page_identity`, `folders:` from catalog pin |
 
 ## Handoff to M5
 
@@ -740,12 +780,12 @@ M5 may assume:
 - Freeze / `store.readonly` / CodeMirror / lease holder chip are **new**.
 - Hub still has no convert and does not write `jobs`.
 
-M5 exit is: second user cannot type in WYSIWYG during the lease; they see who holds it. M4 exit is “two pages, one link, move, git matches, header undo.”
+M5 exit is: second user cannot type in WYSIWYG during the lease; they see who holds it. M4 exit is “create a page, rename it, one link, move, git matches, YAML pages+folders projection, header undo.”
 
 ## Invariants (M4 only)
 
-1. Path is not identity. `docId` is.
-2. Catalog CRDT is the live tree; git is the share layout after publish.
+1. Path is not identity. **uuid** / `docId` is. `gitPath` and `pages.yaml` are projections.
+2. Catalog CRDT is the live tree; git is the share layout after publish. **`page_identity` in Postgres is identity for pages**; catalog Yjs id is identity for folders. Flush restores YAML from those (never YAML → uuid / catalog).
 3. Moves do not rewrite page bodies. `git mv` on Flush, not on drop.
 4. One hub owner per `workspace_id`. Many `doc_id`s inside that room.
 5. Outline is headings. Tree is folders/pages.
@@ -755,3 +795,4 @@ M5 exit is: second user cannot type in WYSIWYG during the lease; they see who ho
 9. No lease, no comment-commit why, no remotes required.
 10. Memory default stays Docker-free for m0/m2 e2e.
 11. Hub wire is A. SharedWorker does not change URLs or frames.
+12. Second pages are **created**, not recon-seeded. First git file is `{uuid}.md`; tree rename changes path only.

@@ -13,13 +13,11 @@ Venus is the only writer of published commits in v1. Clones do not `git push` in
 ```text
 wiki/
   spec/
-    protocol.md
-    crdt/
-      lease.md
-  design/
-    overview.md
-  assets/                      ← blobs referenced by pages (dirty only on flush)
+    home.md
+    <uuid>.md                  ← first Flush after create; then git mv to protocol.md
+  assets/
   .venus/
+    pages.yaml                 ← pages + folders naming map; restore on Flush (pages from DB, folders from catalog pin)
     ids/
       <docId>.json             ← block-id sidecar; clock = pin / accept clock
     snapshots/                 ← optional M8: <docId>/<gitSha>.bin (Yjs bytes)
@@ -29,13 +27,14 @@ wiki/
 
 | Path | What | Source |
 |---|---|---|
-| `<gitPath>.md` | Projection of one published page | `fromDoc` on a **pin** (snapshot) or on published after comment-commit **accept** |
+| `<gitPath>.md` | Projection of one published page | `fromDoc` on a **pin** (snapshot) or on published after comment-commit **accept**. Create starts as `{uuid}.md`; rename `git mv`s; delete `git rm`s after `page_identity` is gone. |
+| `.venus/pages.yaml` | Full naming map: `pages:` + `folders:` | Flush: `pages:` from DB `page_identity`; `folders:` from catalog pin (Yjs id ↔ name ↔ folder `gitPath`). Not live identity. [page-identity](./page-identity.md) |
 | `.venus/ids/<docId>.json` | `{ docId, clock, blocks: [{ id, start, end }] }` | Same export. Ranges rebuilt every write; ids are CRDT ids |
 | `assets/` | Image (and other) bytes | Hub blob store → files on flush if dirty |
 | directories | Folder **nesting** | Catalog `gitPath`; `git mv` on publish when path changed |
 | git commit message | Why (or autocomment) | Snapshot vs comment-commit, below |
 
-Clone of `wiki/` is ordinary markdown. Sibling **order** lives on the [catalog CRDT](./crdt.md#catalog), not in git. Empty catalog folders are not in git unless a placeholder is added later.
+Clone of `wiki/` is ordinary markdown. Sibling **order** lives on the [catalog CRDT](./crdt.md#catalog), not in git. Empty catalog folders are usually absent as git directories; they **are** listed under YAML `folders:`.
 
 Do **not** commit hub/Postgres dumps as the share format. Optional `.venus/snapshots/*.bin` is a restore aid, not what agents edit.
 
@@ -45,7 +44,7 @@ Do not mix them. Pin **then** convert; do not `fromDoc` the live Store on the ho
 
 | Class | When | Message | Input |
 |---|---|---|---|
-| **Snapshot** | Idle 30–120s, Flush, flush-before-lease | Autocomment `snapshot: <title>` | Pin of dirty **published** pages + catalog `git mv` |
+| **Snapshot** | Idle 30–120s, Flush, flush-before-lease | One dirty page: `snapshot: <first ATX H1>` (home `snapshot: Venus`). Several pages or catalog-only: `snapshot:` | Pin of dirty **published** pages + catalog `git mv` |
 | **Comment-commit** | Lease **accept** of a review sequence | **Required** why | After ops on published; then same `fromDoc` + sidecar |
 
 Coalesce WYSIWYG: all typing since last SHA is **one** snapshot, not one commit per keystroke.
@@ -76,6 +75,7 @@ Used when markdown must **come back** ([apply.md](../MDGate/apply.md)): diff vs 
 | Lease, threads, hunk **records** | [Review session](./crdt.md#review-session) |
 | Before/After proposal trees (while in flight) | [Commit spaces](./crdt.md#commit-before-and-after) |
 | Catalog sibling order | Catalog CRDT |
+| Page uuid ↔ path (identity) | Postgres `page_identity` ([page-identity](./page-identity.md)); git YAML is a copy |
 | Agent private markdown buffer | Holder RAM until submit |
 | LifeIndexing gists / logical edges | Side index at git SHA ([LifeIndexing](../Agents/LifeIndexing.md)); not the spec |
 

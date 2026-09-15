@@ -13,7 +13,7 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 | Markdown projection | **M2 done** | [MDGate](./MDGate/README.md), [M2/plan.md](./M2/plan.md) |
 | **Venus hub** (replace keck) | **M3.0 done** (2026-09-13) | [M3.0](./M3.0/README.md), [hub](./components/backend/hub/), [hub HA](./M3.0/high-availability.md) |
 | Pin + git snapshotter | **M3 done** (2026-09-14) | [M3](./M3/README.md) ([plan](./M3/plan.md)), [LiveSnapshot](./LiveSnapshot/README.md) |
-| Catalog / header | **M4 not started** | [M4](./M4/README.md) ([plan](./M4/plan.md)). Tree: [CRDT tree](./components/frontend/crdt-tree/). **Gated on M3 closed.** |
+| Catalog / header | **M4 not started** | [M4](./M4/README.md) ([plan](./M4/plan.md)). Tree: [CRDT tree](./components/frontend/crdt-tree/). Page map: [page-identity](./datamodel/page-identity.md). **Gated on M3 closed.** |
 | Lease `T0` + freeze | **M5 not started** | [implementation plan — M5](./venus-implementation-plan.md#m5--lease--freeze-week), [lease-freeze-rationale.md](./lease-freeze-rationale.md) |
 | Comment-commit apply | **M6 not started** | [implementation plan — M6](./venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks), [MDGate apply](./MDGate/apply.md) |
 | Threads, alternatives, stacks | **M7 not started** | [implementation plan — M7](./venus-implementation-plan.md#m7--threads-alternatives-stacks-2-weeks) |

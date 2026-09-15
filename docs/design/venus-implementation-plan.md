@@ -93,7 +93,7 @@ When the wiki tree appears ([M4](./M4/README.md)), the host already needs a **la
 | In the header | How                                                                                                                                                    |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Undo / Redo   | `store.undo()` / `store.redo()`; **subscribe** to `store.history.canUndo$` / `canRedo$` (Preact signals). Do not poll `canUndo`. Same stack as ⌘Z / Ctrl+Z. |
-| Current page  | Catalog title / `gitPath` of the open doc                                                                                                              |
+| Current page  | Catalog **`name`** of the open doc (`venus-page-title`). Not `gitPath`, not affine page title. |
 
 
 Do **not** build a history timeline. `store.history.undoManager` is a Yjs transaction stack, not labeled “typed hello” / “inserted list.” AFFiNE does not ship that panel either.
