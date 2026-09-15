@@ -25,7 +25,16 @@ Pin: `@blocksuite/affine` **0.22.4** ([api-map.md](../api-map.md)). There is **n
 <!-- venus:doc:doc:lease -->
 ```
 
-**Actual (no catalog, Node):** `titleMiddleware` has no meta for a synthetic `pageId`, so the link text is `untitled`. `docLinkBaseURLMiddleware` in Node uses base `.` → URL `./workspace/<workspace.id>/<pageId>`. Venus appends `<!-- venus:doc:<pageId> -->` after that line. Import still resolves `venus:doc:` first, path second ([venus-design](../venus-design.md#cross-document-references)). Catalog titles/paths are [M4](../M4/README.md).
+**Actual (M2, no catalog):** `titleMiddleware` has no meta for a synthetic `pageId`, so the link text is `untitled`. `docLinkBaseURLMiddleware` in Node uses base `.` → URL `./workspace/<workspace.id>/<pageId>`. Venus appends `<!-- venus:doc:<pageId> -->` after that line. That form is the **oracle golden** (`rt-linked-doc.md`). It is **not** what `wiki/` stores after the catalog exists.
+
+**Actual (M4 git / product):** same two lines, but human path is catalog:
+
+```markdown
+[protocol](protocol.md)
+<!-- venus:doc:doc:protocol -->
+```
+
+Link text = target catalog `name`. Href = POSIX relative from the exporting file’s `gitPath` to the target `gitPath` (same dir → `protocol.md`; nested → `../design/protocol.md`). Comment `pageId` = live `affine:embed-linked-doc` `pageId` = catalog `docId` (guid). Import / restore: `venus:doc:` first, catalog `gitPath` second ([venus-design](../venus-design.md#cross-document-references)). A Flush that `git mv`s also rewrites hrefs in the same cut so that SHA’s clone links match the folders. Do not write `./workspace/<ws>/…` into git.
 
 ### Linked-doc export vs toDoc
 

@@ -92,7 +92,7 @@ When the wiki tree appears ([M4](./M4/README.md)), the host already needs a **la
 
 | In the header | How                                                                                                                                                    |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Undo / Redo   | `store.undo()` / `store.redo()`; disable from `store.canUndo` / `store.canRedo` (or `store.history.canUndo$` / `canRedo$`). Same stack as ⌘Z / Ctrl+Z. |
+| Undo / Redo   | `store.undo()` / `store.redo()`; **subscribe** to `store.history.canUndo$` / `canRedo$` (Preact signals). Do not poll `canUndo`. Same stack as ⌘Z / Ctrl+Z. |
 | Current page  | Catalog title / `gitPath` of the open doc                                                                                                              |
 
 
@@ -220,9 +220,9 @@ Until that suite is green: no alternatives/stacks; do not tell agents “edit th
 ### 4. Linked docs
 
 Insert `affine:embed-linked-doc` with `pageId = docId`.  
-Markdown: adapter + `docLinkBaseURLMiddleware`. Venus post-process adds `<!-- venus:doc:<id> -->` if the adapter does not preserve id.
+**Git** stores `[catalog name](posix-relative gitPath)` plus `<!-- venus:doc:<docId> -->`. Post-process **replaces** the M2 adapter URL `./workspace/<ws>/<pageId>` — that path is not a file in the clone. Identity is the comment (and the live `pageId`); the href is that commit’s folders.
 
-Resolve on import: id comment → catalog `docId` → path relative to the current file.
+Resolve on import: `venus:doc:` first → catalog `docId`; path second (LLM / missing comment). Recreating the card from markdown is M6 apply, not adapter `toDoc`.
 
 ### 5. Lease ↔ freeze
 

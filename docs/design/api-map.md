@@ -205,10 +205,10 @@ Fill Actual in [M4 `step-recon-catalog`](./M4/plan.md#1-step-recon-catalog). Do 
 | Catalog nodes | `Y.Map` `{ id, kind, name, parentId, order, docId?, gitPath }` | recon: | [datamodel](./datamodel/crdt.md#catalog). `gitPath` derived. |
 | Order | Fractional index among siblings | recon: | Recon locks helper / package. |
 | Tree host | `data-testid="venus-tree"` | **`@headless-tree/react@1.7.0`** + `@headless-tree/core@1.7.0`. `data-testid="venus-tree"`. | View over catalog Y.Doc. `dataLoader` reads nodes; drop → catalog ops. Not AFFiNE explorer. [CRDT tree](./components/frontend/crdt-tree/). |
-| Header | `data-testid="venus-header"`; undo/redo; `venus-page-title` | recon: | `store.undo()` / `store.redo()`; `canUndo` / `canRedo` (or Actual observables). Not `@affine/core`. |
+| Header | `data-testid="venus-header"`; undo/redo; `venus-page-title` | **`store.undo()` / `store.redo()`**; disable from **`store.history.canUndo$` / `canRedo$`** (Preact signals, BlockSuite 0.22.4). `data-testid="venus-header"` / `venus-undo` / `venus-redo` / `venus-page-title`. | Subscribe; do not poll `canUndo`. Switching the open Store unsubscribes the old `$` and subscribes the new. Same stack as ⌘Z / Ctrl+Z. Not `@affine/core`. Not a history list. |
 | `git mv` | Sidecar git2 rename when catalog `gitPath` ≠ last commit path | recon: | On Flush, not on drop. Catalog-only dirty skips `fromDoc`. |
 | SharedWorker | `typeof SharedWorker === 'function'` → worker holds A sockets; tab keeps `Y.Doc`; else per-tab A | recon: | Not `navigator.serviceWorker`. Not mux. Last M4 product step. Memory mode: no worker. |
-| Linked-doc export | `[title](relative.md)` + `<!-- venus:doc:<id> -->` | recon: | Title + path from catalog. `pageId = docId`. `toDoc` restoring the card is M6. |
+| Linked-doc export | `[title](relative.md)` + `<!-- venus:doc:<id> -->` | **Git / product:** `[catalog name](posix-relative gitPath)` + `<!-- venus:doc:<docId> -->`. Example (both under `spec/`): `[protocol](protocol.md)` then `<!-- venus:doc:doc:protocol -->`. | Live card: `pageId = docId` (guid, not SQL uuid). **Do not** write M2 `[untitled](./workspace/<ws>/<pageId>)` into `wiki/` once a catalog exists — that URL is not a clone file. Href = `path.posix.relative(dirname(source.gitPath), target.gitPath)`. Comment = identity (restore / apply). Href = that SHA’s folders (rewrite on the Flush that `git mv`s). Import: `venus:doc:` first, catalog `gitPath` second. `toDoc` restoring the card is M6. |
 
 ## Forbidden imports
 

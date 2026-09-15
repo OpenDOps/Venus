@@ -27,7 +27,7 @@ All of these must be true at once:
 1. **Two published pages** on the M0 wiki (seed `doc:home` plus one more, mint `space_id` once). Refresh / second tab hydrates both. Lease grain stays `workspace_id` (one live hub owner for the wiki).
 2. **Catalog CRDT** space `venus:catalog` (api-map Actual) on the hub: folders, docs, `parentId`, sibling `order`, derived `gitPath`. Moves = reparent + order. They do **not** rewrite page bodies.
 3. **Tree UI** reads only that catalog. Click opens the page in the editor. Drop reparents (live CRDT; other tab sees it without reload). Outline stays the **in-page heading TOC**, not a second wiki tree.
-4. **Product header** on the same slice: Undo / Redo on the **open** page’s `Store` (`store.undo()` / `store.redo()`, disabled from `canUndo` / `canRedo` or the matching observables). Shows the current catalog name / `gitPath`. Not `@affine/core`. Not a history list of Yjs transactions.
+4. **Product header** on the same slice: Undo / Redo on the **open** page’s `Store` (`store.undo()` / `store.redo()`, disabled by subscribing to `store.history.canUndo$` / `canRedo$`). Shows the current catalog name / `gitPath`. Not `@affine/core`. Not a history list of Yjs transactions.
 5. **Layout:** header top; folder tree left; page editor; outline right. Markdown pane may remain host chrome; it must not occupy the tree slot or become the wiki TOC.
 6. **Publish includes `git mv`.** Flush pins **catalog + dirty pages** in the same cut. If `gitPath` changed and the body clock did not, **`git mv` only** (no `fromDoc` of the unchanged page). Clone of `wiki/` shows the new folders. Sibling **order** is not in git.
 7. **`affine:embed-linked-doc`** with `pageId = docId` plus markdown round-trip of **export** form: catalog title, path relative to the current file, `<!-- venus:doc:<id> -->`. After a move, the card still resolves; the next snapshot’s markdown path matches the new `gitPath`. Recreating the card from markdown is still M6 apply, not adapter `toDoc`.
@@ -70,7 +70,7 @@ Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystrok
 9. **Pin then convert.** Catalog bytes ride in the **same MVCC cut** as dirty pages so `gitPath` matches the files you write ([LiveSnapshot](../LiveSnapshot/README.md)). Convert page bodies with the M3 Rust `fromDoc` (JS CLI oracle). Catalog-only dirty → `git mv` / write paths, **no** `fromDoc` of an unchanged body. Cut still released before `fromDoc`.
 10. **Dirty clocks.** Catalog persist upserts `dirty(workspace_id, catalog_sql_uuid, clock)` via the existing trigger. One `jobs` row per wiki still. Sidecar `commit_pins` must stop skipping every `doc_id` that is not home.
 11. **Tree data = catalog only.** Drop = catalog reparent. Do not scan `wiki/` for the live tree. Do not use AFFiNE explorer.
-12. **Header binds the open `Store`.** Switching pages rebinds undo/redo and the title. Same stack as ⌘Z / Ctrl+Z. No labeled history.
+12. **Header binds the open `Store`.** Switching pages rebinds undo/redo (new `$` subscribe) and the title. Same stack as ⌘Z / Ctrl+Z. No labeled history.
 13. **Pin `yjs` 13.6.32** and BlockSuite **0.22.4**. Headings stay `affine:paragraph` + `type` h1/h2.
 14. **Memory default.** Vitest and `pnpm test:e2e` stay green without Docker. Tree / header e2e may use memory (like M0/M2). Hub multi-doc and `git mv` need Compose. Unset sync env: no second space on the hub, no git write.
 15. **No `@affine/core`.** No nbstore. No convert in the hub. No lease UI.
@@ -161,8 +161,8 @@ Locked in [step-recon-catalog](#1-step-recon-catalog). If this section disagrees
 | Catalog | Plain Y.Doc, `Y.Map` nodes. Fields: `id`, `kind` (`folder` \| `doc`), `name`, `parentId`, `order`, `docId?`, `gitPath`. |
 | Order | Fractional index among siblings (recon locks the helper). |
 | Tree UI | **`@headless-tree/react@1.7.0`** view over the catalog Y.Doc. Data loader reads `Y.Map`; drop calls catalog `reparent` / `setOrder`. Not AFFiNE explorer. Design: [CRDT tree](../components/frontend/crdt-tree/). |
-| Header | Host chrome: `store.undo()` / `store.redo()`; `canUndo` / `canRedo` (or `store.history.canUndo$` / `canRedo$`). Title = catalog name / `gitPath`. |
-| Linked-doc | `affine:embed-linked-doc` `pageId = docId`. Export: `[title](relative.md)` + `<!-- venus:doc:<id> -->`. |
+| Header | Host chrome: `store.undo()` / `store.redo()`; **subscribe** to `store.history.canUndo$` / `canRedo$` (do not poll). Title = catalog name / `gitPath`. |
+| Linked-doc | `affine:embed-linked-doc` `pageId = docId`. **Git:** `[catalog name](posix-relative gitPath)` + `<!-- venus:doc:<docId> -->`. Never `./workspace/<ws>/…` in `wiki/`. |
 | Git | Same sidecar. `git2` `git mv` when catalog `gitPath` ≠ last committed path. Autocomment still `snapshot: <title>`. |
 | Tab sockets | Default: one TCP per **connected** Y.Doc in that tab (catalog + current page). `OctoBaseKeckProvider` `_gen` is **per session**, not global. |
 | SharedWorker | Last product step ([`step-shared-worker`](#8-step-shared-worker)): if `typeof SharedWorker === 'function'`, one worker per origin+workspace holds those **same A sockets**; tabs `postMessage` updates. `Y.Doc` + BlockSuite stay in the tab. Missing API → per-tab A (required fallback). **Not** a Service Worker. |
@@ -386,7 +386,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Work
 
 1. Layout: header top; **tree slot** left; editor; outline right. Flush / git-log chrome stay host controls (header or existing bar — Actual). Markdown pane does not take the tree slot.
-2. Header `data-testid="venus-header"`: Undo / Redo buttons (`venus-undo` / `venus-redo`) call `store.undo()` / `store.redo()` on the **open** Store; disabled when `canUndo` / `canRedo` (or Actual observables) are false.
+2. Header `data-testid="venus-header"`: Undo / Redo buttons (`venus-undo` / `venus-redo`) call `store.undo()` / `store.redo()` on the **open** Store; **subscribe** to `store.history.canUndo$` / `canRedo$` to disable (do not poll `canUndo`). Switching pages tears down the old subscribe.
 3. Current page: catalog `name` and/or `gitPath` (`venus-page-title`). Switching the open doc (test hook until step 5) rebinds header + editor + outline + md pane to that Store.
 4. Vitest: `mount-editor.js` has no header/catalog imports. No `@affine/core` in `@venus/web`.
 
@@ -401,7 +401,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 1. **Header undo**
    - **Given** the app with home open; type a unique word in the note.
    - **When** you click `[data-testid=venus-undo]`.
-   - **Then** the word is gone. Redo brings it back. After undo, the Undo button is disabled if `canUndo` is false (seed constructor history still reset). Keyboard ⌘Z / Ctrl+Z still matches.
+   - **Then** the word is gone. Redo brings it back. After undo, the Undo button is disabled because `canUndo$` went false (seed constructor history still reset). Keyboard ⌘Z / Ctrl+Z still matches. Fail if the button stays enabled until a later click/poll.
    - **How:** `e2e/m4-header.spec.ts` (memory ok). Fail if undo is a second stack.
 2. **Current page**
    - **Given** catalog seed (home + protocol).
@@ -550,7 +550,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 #### Work
 
 1. Insert `affine:embed-linked-doc` with `pageId =` protocol `docId` (seed or e2e).
-2. `fromDoc` post-process: link text = catalog title/name; URL = path relative to the **current** file’s `gitPath`; keep `<!-- venus:doc:<id> -->`. Do not drop the id comment.
+2. `fromDoc` post-process **rewrites** the adapter link (do not leave `./workspace/<ws>/<pageId>`). Link text = target catalog `name`; href = POSIX relative from the **current** file’s `gitPath` to the target `gitPath`; keep `<!-- venus:doc:<docId> -->`. Placement must not require `/${pageId}` in the href (M2 `urlMentionsPageId` breaks once the URL is `protocol.md`).
 3. After `git mv`, next Flush: markdown URL updates; comment id unchanged. WYSIWYG card still opens/resolves that `pageId` (BlockSuite, not path).
 4. Re-read [fromDoc-review S4](../M2/fromDoc-review.md): `pageId` allowlist still holds. Do not implement M6 `toDoc` → card.
 5. `titleMiddleware` should see `workspace.meta.docMetas` for real titles when available (Actual).
@@ -566,7 +566,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 1. **Card + comment**
    - **Given** home contains `affine:embed-linked-doc` to protocol.
    - **When** `fromDoc(home)`.
-   - **Then** markdown has the catalog title (or protocol page title), a relative path to `spec/protocol.md`, and `<!-- venus:doc:<protocolId> -->`.
+   - **Then** markdown is `[<catalog name>](<relative>)` plus `<!-- venus:doc:doc:protocol -->` (or that page’s `docId`). Fail if git still has `./workspace/<uuid>/doc:protocol` or `untitled` only.
    - **How:** Vitest mdgate + catalog fixture; `e2e/m4-link.spec.ts` for the card visible. Fail if export is still `./workspace/<uuid>/doc:protocol` with `untitled` only.
 2. **Resolves after move**
    - **Given** that card; reparent protocol; Flush.
