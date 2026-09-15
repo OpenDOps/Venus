@@ -47,7 +47,11 @@ fn api_map_chosen_backend_is_venus_hub() {
     );
     assert!(
         chosen.contains("/api/block/") && chosen.contains("/export"),
-        "Chosen backend must name the export curl"
+        "Chosen backend must name the export advertisement GET"
+    );
+    assert!(
+        chosen.contains("venus.hub.v1.Hub/ExportDoc"),
+        "Chosen backend must name gRPC ExportDoc"
     );
     assert!(
         chosen.contains("/api/blobs/") && chosen.contains(venus_hub::DEFAULT_WORKSPACE_ID),
@@ -64,6 +68,50 @@ fn api_map_chosen_backend_is_venus_hub() {
     assert!(
         !chosen.contains("keck SHA `276e0e94719a652483119c5fea16be13293ee21c`"),
         "M3.0 Chosen backend must not be the M1 keck SHA"
+    );
+}
+
+#[test]
+fn api_map_m4_wire_is_a1_sql_uuid() {
+    let map = include_str!("../../../docs/design/api-map.md");
+    let catalog = match map.split_once("## Names — catalog / tree / header") {
+        Some((_, rest)) => rest,
+        None => panic!("api-map.md missing catalog names"),
+    };
+    assert!(
+        catalog.contains("?doc=<sql uuid>")
+            && catalog.contains("A1+B+C1")
+            && catalog.contains("**400**")
+            && catalog.contains("4fe5c16e-4be3-5700-a456-ecc8e86cdf1a")
+            && catalog.contains("`venus:catalog`"),
+        "M4 wire Actual must be A1 SQL uuid, omit=home, C1 400, catalog guid locked"
+    );
+    assert!(
+        catalog.contains("venus.hub.v1.Hub/ExportDoc")
+            && catalog.contains("export_http_disabled")
+            && catalog.contains("@headless-tree/react@1.7.0"),
+        "M4 export Actual is gRPC ExportDoc; GET is advertisement; tree pin 1.7.0"
+    );
+}
+
+#[test]
+fn rpc_envelope_and_proto_exist() {
+    let rpc = include_str!("../../../docs/design/rpc.md");
+    assert!(
+        rpc.contains("If `error` is present")
+            && rpc.contains("advertisement")
+            && rpc.contains("ExportDoc"),
+        "rpc.md must define error / advertisement / gRPC export"
+    );
+    let hub_proto = include_str!("../../../proto/venus/hub/v1/hub.proto");
+    assert!(
+        hub_proto.contains("rpc ExportDoc") && hub_proto.contains("rpc ListDocs"),
+        "hub.proto must declare ListDocs and ExportDoc"
+    );
+    let err_proto = include_str!("../../../proto/venus/rpc/v1/error.proto");
+    assert!(
+        err_proto.contains("message Error") && err_proto.contains("message Advertisement"),
+        "error.proto must declare Error and Advertisement"
     );
 }
 

@@ -1,4 +1,5 @@
-//! One apply queue and one persist buffer per room (`workspace_id`), not per socket.
+//! One apply queue and one persist buffer per `doc_id` inside a room
+//! (`workspace_id`). Not per socket. M4: sockets name `doc_id` with `?doc=`.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::collections::HashMap;
@@ -174,11 +175,38 @@ impl std::fmt::Display for GetRoomError {
 
 impl std::error::Error for GetRoomError {}
 
+struct Client {
+    tx: Outbound,
+    doc_id: String,
+}
+
+struct ExtraSpace {
+    doc: RwLock<Doc>,
+    persist: Mutex<PersistBuf>,
+    trail_len: AtomicU64,
+    flush_mu: Mutex<()>,
+}
+
+impl ExtraSpace {
+    fn empty() -> Self {
+        Self {
+            doc: RwLock::new(Doc::default()),
+            persist: Mutex::new(PersistBuf {
+                bins: Vec::new(),
+                bytes: 0,
+                in_flight: 0,
+            }),
+            trail_len: AtomicU64::new(0),
+            flush_mu: Mutex::new(()),
+        }
+    }
+}
+
 pub struct Room {
     pub workspace_id: String,
     doc_id: String,
-    /// One `Doc` per room. Reads (hello, export, Step1) share; only `apply_v1`
-    /// takes a write (P10). Not a second doc or a snapshot cache.
+    /// Home (`PAGE_DOC_ID`). Reads (hello, export, Step1) share; only `apply_v1`
+    /// takes a write (P10). Other `doc_id`s live in `extra`.
     doc: RwLock<Doc>,
     /// Queued bins. `Bytes` so the L8 prefix clone is refcounts, not a copy (P15).
     persist: Mutex<PersistBuf>,
@@ -187,7 +215,8 @@ pub struct Room {
     /// One flush at a time so leftover drain does not INSERT the same prefix
     /// while a persist-task flush is in flight.
     flush_mu: Mutex<()>,
-    clients: Mutex<HashMap<ClientId, Outbound>>,
+    extra: Mutex<HashMap<String, Arc<ExtraSpace>>>,
+    clients: Mutex<HashMap<ClientId, Client>>,
     next_client: AtomicU64,
     trail_len: AtomicU64,
     stop: AtomicBool,
@@ -228,6 +257,7 @@ impl Room {
             persist_budget,
             outbound_budget,
             flush_mu: Mutex::new(()),
+            extra: Mutex::new(HashMap::new()),
             clients: Mutex::new(HashMap::new()),
             next_client: AtomicU64::new(1),
             trail_len: AtomicU64::new(trail_len),
@@ -254,11 +284,68 @@ impl Room {
     }
 
     pub async fn attach(&self, id: ClientId, tx: Outbound) -> Result<Vec<Vec<u8>>> {
-        let hello = Self::hello_frames(&*self.doc.read().await)?;
+        self.attach_doc(id, tx, PAGE_DOC_ID).await
+    }
+
+    pub async fn attach_doc(
+        &self,
+        id: ClientId,
+        tx: Outbound,
+        doc_id: &str,
+    ) -> Result<Vec<Vec<u8>>> {
+        let hello = if doc_id == PAGE_DOC_ID {
+            Self::hello_frames(&*self.doc.read().await)?
+        } else {
+            let space = self.extra_or_empty(doc_id).await;
+            let doc = space.doc.read().await;
+            Self::hello_frames(&*doc)?
+        };
         let mut clients = self.clients.lock().await;
-        clients.insert(id, tx);
+        clients.insert(
+            id,
+            Client {
+                tx,
+                doc_id: doc_id.to_string(),
+            },
+        );
         self.note_client_count(clients.len());
         Ok(hello)
+    }
+
+    async fn extra_or_empty(&self, doc_id: &str) -> Arc<ExtraSpace> {
+        let mut extra = self.extra.lock().await;
+        extra
+            .entry(doc_id.to_string())
+            .or_insert_with(|| Arc::new(ExtraSpace::empty()))
+            .clone()
+    }
+
+    /// Hydrate a non-home `doc_id` from SQL (empty trail is an empty `Doc`).
+    /// Home is loaded in `open_room`. Idempotent.
+    pub async fn ensure_doc(&self, pool: &PgPool, doc_id: &str) -> Result<()> {
+        if doc_id == PAGE_DOC_ID {
+            return Ok(());
+        }
+        {
+            if self.extra.lock().await.contains_key(doc_id) {
+                return Ok(());
+            }
+        }
+        let (doc, trail_len) = db::hydrate_with_trail_len(pool, &self.workspace_id, doc_id).await?;
+        let mut extra = self.extra.lock().await;
+        if let std::collections::hash_map::Entry::Vacant(v) = extra.entry(doc_id.to_string()) {
+            v.insert(Arc::new(ExtraSpace {
+                doc: RwLock::new(doc),
+                persist: Mutex::new(PersistBuf {
+                    bins: Vec::new(),
+                    bytes: 0,
+                    in_flight: 0,
+                }),
+                trail_len: AtomicU64::new(trail_len),
+                flush_mu: Mutex::new(()),
+            }));
+        }
+        Ok(())
     }
 
     fn hello_frames(doc: &Doc) -> Result<Vec<Vec<u8>>> {
@@ -304,6 +391,15 @@ impl Room {
                 return false;
             }
         }
+        {
+            let extra = self.extra.lock().await;
+            for space in extra.values() {
+                let p = space.persist.lock().await;
+                if !p.bins.is_empty() || p.in_flight > 0 {
+                    return false;
+                }
+            }
+        }
         match *self.last_empty.lock().unwrap_or_else(|e| e.into_inner()) {
             Some(t) => t.elapsed() >= ttl,
             None => false,
@@ -337,9 +433,7 @@ impl Room {
     async fn handle_msg(&self, from: ClientId, msg: SyncMessage) -> Result<()> {
         match msg {
             SyncMessage::Doc(DocMessage::Step1(sv)) => {
-                let doc = self.doc.read().await;
-                let update = encode_step2_for(&doc, &sv)?;
-                drop(doc);
+                let update = self.encode_step2(from, &sv).await?;
                 let frame = Bytes::from(encode_doc_step2(update)?);
                 self.send_to(from, frame).await;
             }
@@ -357,26 +451,69 @@ impl Room {
         Ok(())
     }
 
+    async fn client_doc_id(&self, from: ClientId) -> Option<String> {
+        self.clients
+            .lock()
+            .await
+            .get(&from)
+            .map(|c| c.doc_id.clone())
+    }
+
+    async fn encode_step2(&self, from: ClientId, sv: &[u8]) -> Result<Vec<u8>> {
+        let doc_id = self
+            .client_doc_id(from)
+            .await
+            .unwrap_or_else(|| PAGE_DOC_ID.into());
+        if doc_id == PAGE_DOC_ID {
+            let doc = self.doc.read().await;
+            encode_step2_for(&doc, sv)
+        } else {
+            let space = self.extra_or_empty(&doc_id).await;
+            let doc = space.doc.read().await;
+            encode_step2_for(&doc, sv)
+        }
+    }
+
     async fn apply_and_fanout(&self, from: ClientId, bin: Vec<u8>) -> Result<()> {
         if self.stopped() || is_noop_update(&bin) {
             return Ok(());
         }
-        // Frame first (L21): a framing error must not leave the update in RAM
-        // and the persist buffer with no peer told.
+        let doc_id = self
+            .client_doc_id(from)
+            .await
+            .unwrap_or_else(|| PAGE_DOC_ID.into());
         let frame = Bytes::from(encode_doc_update(bin.clone())?);
-        {
-            let mut doc = self.doc.write().await;
-            if self.stopped() {
-                return Ok(());
+        if doc_id == PAGE_DOC_ID {
+            {
+                let mut doc = self.doc.write().await;
+                if self.stopped() {
+                    return Ok(());
+                }
+                apply_v1(&mut doc, &bin)?;
             }
-            apply_v1(&mut doc, &bin)?;
-        }
-        {
-            let mut buf = self.persist.lock().await;
-            if self.stopped() {
-                return Ok(());
+            {
+                let mut buf = self.persist.lock().await;
+                if self.stopped() {
+                    return Ok(());
+                }
+                buf.push_capped(Bytes::from(bin), self.persist_budget, &self.workspace_id);
             }
-            buf.push_capped(Bytes::from(bin), self.persist_budget, &self.workspace_id);
+        } else {
+            let space = self.extra_or_empty(&doc_id).await;
+            {
+                let mut doc = space.doc.write().await;
+                if self.stopped() {
+                    return Ok(());
+                }
+                apply_v1(&mut doc, &bin)?;
+            }
+            {
+                let mut buf = space.persist.lock().await;
+                if self.stopped() {
+                    return Ok(());
+                }
+                buf.push_capped(Bytes::from(bin), self.persist_budget, &self.workspace_id);
+            }
         }
         if self.stopped() {
             return Ok(());
@@ -388,7 +525,7 @@ impl Room {
     async fn send_to(&self, id: ClientId, frame: Bytes) {
         let mut clients = self.clients.lock().await;
         let lagged = match clients.get(&id) {
-            Some(tx) => tx.try_send(frame).is_err(),
+            Some(c) => c.tx.try_send(frame).is_err(),
             None => false,
         };
         if lagged {
@@ -403,14 +540,18 @@ impl Room {
     }
 
     async fn broadcast_except(&self, from: ClientId, frame: Bytes) {
+        let from_doc = match self.client_doc_id(from).await {
+            Some(id) => id,
+            None => return,
+        };
         let mut dead = Vec::new();
         {
             let clients = self.clients.lock().await;
-            for (id, tx) in clients.iter() {
-                if *id == from {
+            for (id, c) in clients.iter() {
+                if *id == from || c.doc_id != from_doc {
                     continue;
                 }
-                if tx.try_send(frame.clone()).is_err() {
+                if c.tx.try_send(frame.clone()).is_err() {
                     dead.push(*id);
                 }
             }
@@ -435,37 +576,32 @@ impl Room {
     }
 
     pub async fn flush(&self, pool: &PgPool) -> Result<()> {
-        let _gate = self.flush_mu.lock().await;
-        let bins = {
-            let mut buf = self.persist.lock().await;
-            buf.snapshot()
-        };
-        if bins.is_empty() {
-            return Ok(());
-        }
-        let views: Vec<&[u8]> = bins.iter().map(|b| b.as_ref()).collect();
-        if let Err(e) = db::flush_updates(pool, &self.workspace_id, &self.doc_id, &views)
+        flush_persist(
+            pool,
+            &self.workspace_id,
+            &self.doc_id,
+            &self.persist,
+            &self.flush_mu,
+            &self.trail_len,
+        )
+        .await?;
+        let extras: Vec<(String, Arc<ExtraSpace>)> = self
+            .extra
+            .lock()
             .await
-            .context("persist flush")
-        {
-            self.persist.lock().await.abort_snapshot();
-            return Err(e);
-        }
-        {
-            let mut buf = self.persist.lock().await;
-            let n = bins.len();
-            if buf.bins.len() >= n && buf.bins[..n] == bins[..] {
-                buf.commit_prefix(n);
-            } else {
-                buf.abort_snapshot();
-                tracing::warn!(
-                    workspace = %self.workspace_id,
-                    expected = n,
-                    actual = buf.bins.len(),
-                    "persist prefix mismatch after flush; leaving buffer"
-                );
-            }
-            self.trail_len.fetch_add(n as u64, Ordering::SeqCst);
+            .iter()
+            .map(|(id, s)| (id.clone(), Arc::clone(s)))
+            .collect();
+        for (doc_id, space) in extras {
+            flush_persist(
+                pool,
+                &self.workspace_id,
+                &doc_id,
+                &space.persist,
+                &space.flush_mu,
+                &space.trail_len,
+            )
+            .await?;
         }
         Ok(())
     }
@@ -481,13 +617,31 @@ impl Room {
         if threshold < 1 {
             return Ok(false);
         }
-        if self.trail_len() < threshold as u64 {
-            return Ok(false);
+        let mut merged_any = false;
+        if self.trail_len() >= threshold as u64 {
+            let out = db::compact(pool, &self.workspace_id, &self.doc_id, threshold).await?;
+            self.trail_len
+                .store(out.trail_len.max(0) as u64, Ordering::SeqCst);
+            merged_any |= out.merged;
         }
-        let out = db::compact(pool, &self.workspace_id, &self.doc_id, threshold).await?;
-        self.trail_len
-            .store(out.trail_len.max(0) as u64, Ordering::SeqCst);
-        Ok(out.merged)
+        let extras: Vec<(String, Arc<ExtraSpace>)> = self
+            .extra
+            .lock()
+            .await
+            .iter()
+            .map(|(id, s)| (id.clone(), Arc::clone(s)))
+            .collect();
+        for (doc_id, space) in extras {
+            if space.trail_len.load(Ordering::SeqCst) < threshold as u64 {
+                continue;
+            }
+            let out = db::compact(pool, &self.workspace_id, &doc_id, threshold).await?;
+            space
+                .trail_len
+                .store(out.trail_len.max(0) as u64, Ordering::SeqCst);
+            merged_any |= out.merged;
+        }
+        Ok(merged_any)
     }
 
     pub fn request_stop(&self) {
@@ -521,8 +675,67 @@ impl Room {
 
     #[doc(hidden)]
     pub async fn persist_queued_bytes(&self) -> usize {
-        self.persist.lock().await.bytes
+        let mut n = self.persist.lock().await.bytes;
+        let extra = self.extra.lock().await;
+        for space in extra.values() {
+            n += space.persist.lock().await.bytes;
+        }
+        n
     }
+
+    #[doc(hidden)]
+    pub async fn encode_live_doc(&self, doc_id: &str) -> Result<Vec<u8>> {
+        if doc_id == PAGE_DOC_ID {
+            return self.encode_live().await;
+        }
+        let space = self.extra_or_empty(doc_id).await;
+        let doc = space.doc.read().await;
+        encode_v1(&doc)
+    }
+}
+
+async fn flush_persist(
+    pool: &PgPool,
+    workspace_id: &str,
+    doc_id: &str,
+    persist: &Mutex<PersistBuf>,
+    flush_mu: &Mutex<()>,
+    trail_len: &AtomicU64,
+) -> Result<()> {
+    let _gate = flush_mu.lock().await;
+    let bins = {
+        let mut buf = persist.lock().await;
+        buf.snapshot()
+    };
+    if bins.is_empty() {
+        return Ok(());
+    }
+    let views: Vec<&[u8]> = bins.iter().map(|b| b.as_ref()).collect();
+    if let Err(e) = db::flush_updates(pool, workspace_id, doc_id, &views)
+        .await
+        .context("persist flush")
+    {
+        persist.lock().await.abort_snapshot();
+        return Err(e);
+    }
+    {
+        let mut buf = persist.lock().await;
+        let n = bins.len();
+        if buf.bins.len() >= n && buf.bins[..n] == bins[..] {
+            buf.commit_prefix(n);
+        } else {
+            buf.abort_snapshot();
+            tracing::warn!(
+                workspace_id = %workspace_id,
+                doc_id = %doc_id,
+                expected = n,
+                actual = buf.bins.len(),
+                "persist prefix mismatch after flush; leaving buffer"
+            );
+        }
+        trail_len.fetch_add(n as u64, Ordering::SeqCst);
+    }
+    Ok(())
 }
 
 type RoomResult = Result<Arc<Room>, GetRoomError>;
@@ -1191,5 +1404,51 @@ mod p15 {
             cloned[..],
             "Bytes PartialEq is by content; L8 prefix check stays valid"
         );
+    }
+}
+
+#[cfg(test)]
+mod m4_wire {
+    use super::*;
+
+    const OTHER: &str = crate::CATALOG_DOC_ID;
+
+    fn spike_bin() -> Vec<u8> {
+        let d = Doc::default();
+        let mut map = d.get_or_create_map("spike").expect("map");
+        map.insert("k".to_string(), "v").expect("insert");
+        encode_v1(&d).expect("encode")
+    }
+
+    fn live_has_spike(bin: &[u8]) -> bool {
+        let mut d = Doc::default();
+        apply_v1(&mut d, bin).expect("apply live");
+        match d.get_map("spike") {
+            Ok(map) => format!("{:?}", map.get("k")).contains('v'),
+            Err(_) => false,
+        }
+    }
+
+    #[tokio::test]
+    async fn second_doc_does_not_apply_into_home() {
+        let room = Room::new("m4-a1".into(), Doc::default());
+        let (home_id, home_tx, _home_rx) = room.connect_client();
+        room.attach(home_id, home_tx).await.expect("home");
+        let (other_id, other_tx, _other_rx) = room.connect_client();
+        room.attach_doc(other_id, other_tx, OTHER)
+            .await
+            .expect("other");
+
+        room.apply_and_fanout(other_id, spike_bin())
+            .await
+            .expect("apply other");
+
+        let home = room.encode_live().await.expect("home");
+        assert!(
+            !live_has_spike(&home),
+            "C1: extra doc_id must not land in PAGE_DOC_ID"
+        );
+        let other = room.encode_live_doc(OTHER).await.expect("other live");
+        assert!(live_has_spike(&other), "second doc must hold the update");
     }
 }

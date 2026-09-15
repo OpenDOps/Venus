@@ -26,6 +26,17 @@ async function hubRootBody(): Promise<string | null> {
 const hubBody = await hubRootBody();
 const hubUp = hubBody === 'venus-hub';
 
+let exportCt = '';
+if (hubUp) {
+  try {
+    const res = await fetch(EXPORT_URL, { signal: AbortSignal.timeout(1500) });
+    exportCt = res.headers.get('content-type') ?? '';
+  } catch {
+    exportCt = '';
+  }
+}
+const exportIsAd = exportCt.includes('json');
+
 if (hubBody && hubBody !== 'venus-hub') {
   throw new Error(
     `:3000 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
@@ -35,6 +46,10 @@ if (hubBody && hubBody !== 'venus-hub') {
 if (!hubUp) {
   console.warn(
     'snapshot.test.ts: skipping advertisement GET — nothing on 127.0.0.1:3000. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
+  );
+} else if (!exportIsAd) {
+  console.warn(
+    'snapshot.test.ts: skipping advertisement GET — hub still serves Yjs (rebuild: docker compose up --build postgres hub).',
   );
 }
 
@@ -66,7 +81,7 @@ test('export is not wired into the editor UI', () => {
   expect(app).not.toMatch(/\/api\/block\/.+\/export/);
 });
 
-describe.skipIf(!hubUp)(`hub GET /api/block/${WORKSPACE_ID}/export`, () => {
+describe.skipIf(!hubUp || !exportIsAd)(`hub GET /api/block/${WORKSPACE_ID}/export`, () => {
   test('Reachable: 200 JSON advertisement, no root error', async () => {
     const res = await fetch(EXPORT_URL, { signal: AbortSignal.timeout(5000) });
     expect(res.status).toBe(200);

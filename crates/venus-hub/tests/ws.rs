@@ -24,7 +24,7 @@ use venus_hub::http::{router, AppState};
 use venus_hub::lease::Lease;
 use venus_hub::protocol::{apply_v1, decode_sync_messages, encode_doc_update, encode_v1};
 use venus_hub::room::{GetRoomError, Hub};
-use venus_hub::{PAGE_DOC_ID, SUBPROTOCOL};
+use venus_hub::{CATALOG_DOC_ID, PAGE_DOC_ID, SUBPROTOCOL};
 use y_octo::{Doc, DocMessage, SyncMessage};
 
 const YJS_SPIKE_KV_HEX: &str = "0101fc92c5bf0c002801057370696b65016b0177017600";
@@ -305,7 +305,7 @@ async fn get_protocol(app: axum::Router, workspace: &str) -> (StatusCode, String
     (status, String::from_utf8(bytes.to_vec()).expect("utf8"))
 }
 
-async fn get_export(app: axum::Router, workspace: &str) -> Vec<u8> {
+async fn get_export_ad(app: axum::Router, workspace: &str) -> serde_json::Value {
     let uri = ["/api/block/", workspace, "/export"].concat();
     let res = app
         .oneshot(
@@ -318,12 +318,19 @@ async fn get_export(app: axum::Router, workspace: &str) -> Vec<u8> {
         .await
         .expect("GET export");
     assert_eq!(res.status(), StatusCode::OK);
-    res.into_body()
+    let bytes = res
+        .into_body()
         .collect()
         .await
         .expect("export body")
-        .to_bytes()
-        .to_vec()
+        .to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).expect("export json");
+    assert!(
+        v.get("error").is_none(),
+        "bare GET export is advertisement, not an error: {v}"
+    );
+    assert_eq!(v["advertisement"]["http_export"], false);
+    v
 }
 
 async fn connect_affine(addr: SocketAddr, workspace: &str) -> Ws {
@@ -481,13 +488,31 @@ async fn live_export_uses_ram_get_room_does_not_wait_on_rooms_lock() {
     apply_v1(&mut from_export, &bytes).expect("apply export");
     assert!(
         map_has_v(&from_export),
-        "GET export must encode live RAM before persist tick"
+        "live_export must encode live RAM before persist tick"
     );
 
-    let http_bytes = get_export(live.app.clone(), &workspace).await;
-    let mut from_http = Doc::default();
-    apply_v1(&mut from_http, &http_bytes).expect("apply HTTP export");
-    assert!(map_has_v(&from_http), "HTTP export must match live RAM");
+    let ad = get_export_ad(live.app.clone(), &workspace).await;
+    assert_eq!(ad["advertisement"]["workspace_id"], workspace);
+    assert_eq!(ad["advertisement"]["grpc"]["service"], "venus.hub.v1.Hub");
+
+    let uri = format!("/api/block/{workspace}/export?doc={PAGE_DOC_ID}");
+    let res = live
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&uri)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("GET export?doc=");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = res.into_body().collect().await.expect("body").to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(v["error"]["code"], "export_http_disabled");
+    assert!(v.get("advertisement").is_some());
 
     let sql_doc = db::hydrate_doc(&pool, &workspace, PAGE_DOC_ID)
         .await
@@ -1065,5 +1090,115 @@ async fn ws_zero_ping_does_not_panic() {
     let mut doc = Doc::default();
     apply_v1(&mut doc, &update).expect("B applies with ping disabled");
     assert!(map_has_v(&doc), "B must see the Update with ping disabled");
+    stop_hub(live).await;
+}
+
+async fn connect_affine_doc(addr: SocketAddr, workspace: &str, doc: &str) -> Ws {
+    let host = addr.to_string();
+    let uri = format!("ws://{host}/collaboration/{workspace}?doc={doc}");
+    let mut req = uri.into_client_request().expect("ws request");
+    req.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        SUBPROTOCOL.parse().expect("AFFiNE"),
+    );
+    let (ws, _) = connect_async(req)
+        .await
+        .expect("AFFiNE websocket with ?doc=");
+    ws
+}
+
+async fn connect_affine_doc_http_status(
+    addr: SocketAddr,
+    workspace: &str,
+    query: &str,
+) -> (u16, String) {
+    let host = addr.to_string();
+    let uri = format!("ws://{host}/collaboration/{workspace}{query}");
+    let mut req = uri.into_client_request().expect("ws request");
+    req.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        SUBPROTOCOL.parse().expect("AFFiNE"),
+    );
+    let err = match connect_async(req).await {
+        Ok(_) => panic!("expected HTTP rejection, not a websocket"),
+        Err(e) => e,
+    };
+    let res = match err {
+        WsError::Http(res) => res,
+        other => panic!("expected HTTP rejection, got {other}"),
+    };
+    let status = res.status().as_u16();
+    let body = res
+        .body()
+        .as_ref()
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+    (status, body)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn doc_query_guid_is_400() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let live = spawn_hub(pool, ["owner-m4-c1-", &uuid_like()].concat()).await;
+    let app = live.app.clone();
+    let uri = format!("/collaboration/{workspace}?doc=doc:home");
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&uri)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("GET guid query");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let (status, body) =
+        connect_affine_doc_http_status(live.addr, &workspace, "?doc=venus:catalog").await;
+    assert_eq!(status, 400, "guid query must not upgrade: {body}");
+    let (empty_status, empty_body) =
+        connect_affine_doc_http_status(live.addr, &workspace, "?doc=").await;
+    assert_eq!(empty_status, 400, "empty doc= must 400: {empty_body}");
+    stop_hub(live).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn second_doc_query_does_not_mix_into_home() {
+    let pool = connect_pool().await;
+    let workspace = unique_workspace();
+    let live = spawn_hub(pool.clone(), ["owner-m4-a1-", &uuid_like()].concat()).await;
+    let other = CATALOG_DOC_ID;
+
+    let mut home = connect_affine(live.addr, &workspace).await;
+    let _ = drain_hello(&mut home).await;
+    let mut a = connect_affine_doc(live.addr, &workspace, other).await;
+    let _ = drain_hello(&mut a).await;
+    let mut b = connect_affine_doc(live.addr, &workspace, other).await;
+    let _ = drain_hello(&mut b).await;
+
+    send_update(&mut a, from_hex(YJS_SPIKE_KV_HEX)).await;
+    let update = recv_update(&mut b).await;
+    let mut other_doc = Doc::default();
+    apply_v1(&mut other_doc, &update).expect("B on ?doc=");
+    assert!(map_has_v(&other_doc), "second doc sockets share apply");
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let sql_other = db::hydrate_doc(&pool, &workspace, other)
+        .await
+        .expect("sql other");
+    assert!(map_has_v(&sql_other), "second doc_id persist");
+    let sql_home = db::hydrate_doc(&pool, &workspace, PAGE_DOC_ID)
+        .await
+        .expect("sql home");
+    assert!(
+        !map_has_v(&sql_home),
+        "home SQL must not receive the extra doc update"
+    );
+    assert_eq!(
+        lease_count(&pool, live.hub.lease.owner()).await,
+        1,
+        "one wiki owner"
+    );
     stop_hub(live).await;
 }
