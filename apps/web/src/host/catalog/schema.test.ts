@@ -35,6 +35,26 @@ test('childrenIndex is one scan; childrenOf reuses it', async () => {
   expect(hasChild(catalog, FOLDER_SPEC_ID)).toBe(true);
   expect(hasChild(catalog, crdt.id)).toBe(true);
   expect(hasChild(catalog, PAGE_DOC_ID)).toBe(false);
+  expect(hasChild(catalog, FOLDER_SPEC_ID, index)).toBe(true);
+  expect(hasChild(catalog, crdt.id, index)).toBe(true);
+  expect(hasChild(catalog, PAGE_DOC_ID, index)).toBe(false);
+  expect(hasChild(catalog, 'missing', index)).toBe(false);
+});
+
+test('childrenIndex skips gitPath join; getNode still joins', async () => {
+  const { workspace } = await createM0Workspace();
+  const catalog = new Y.Doc({ guid: 'venus:catalog' });
+  seedOnce(catalog, workspace);
+  const index = childrenIndex(catalog);
+  const home = childrenOf(catalog, FOLDER_SPEC_ID, index).find(
+    (n) => n.id === PAGE_DOC_ID,
+  );
+  expect(home?.gitName).toBe('home.md');
+  expect(home?.gitPath).toBe('home.md');
+  expect(getNode(catalog, PAGE_DOC_ID, { gitPath: false })?.gitPath).toBe(
+    'home.md',
+  );
+  expect(getNode(catalog, PAGE_DOC_ID)?.gitPath).toBe('spec/home.md');
 });
 
 test('childrenOf tie-breaks equal order by id (total order)', () => {

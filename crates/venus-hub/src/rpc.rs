@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use crate::{CATALOG_DOC_ID, PAGE_DOC_ID};
 
 pub const CODE_INVALID_WORKSPACE: &str = "invalid_workspace";
+pub const CODE_UNKNOWN_WORKSPACE: &str = "unknown_workspace";
 pub const CODE_INVALID_DOC: &str = "invalid_doc";
 pub const CODE_EXPORT_HTTP_DISABLED: &str = "export_http_disabled";
 pub const CODE_LEASE_HELD: &str = "lease_held";

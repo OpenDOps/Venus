@@ -9,9 +9,9 @@ keck stays under `deploy/octobase/` as M1 history; product Compose does not buil
 | Service | Image | Host port | Role |
 |---|---|---|---|
 | `postgres` | `postgres:16` | none | `crdt_*` + blob bytes. Volume `pg-venus-data`, database `venus`. Superuser `venus`. |
-| `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` (WS/HTTP), `127.0.0.1:3100` (gRPC `ExportDoc` / `ListDocs`) | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, advertisement GET `/export`. Connects as `venus_hub` (NOSUPERUSER). |
+| `hub` | `deploy/hub/Dockerfile` (`debian:bookworm-slim`, `USER venus`) | `127.0.0.1:3000` (WS/HTTP), `127.0.0.1:3100` (gRPC `ExportDoc` / `ListDocs`) | Yjs WS `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00`, blob HTTP, advertisement GET `/export`. Connects as `venus_hub` (NOSUPERUSER). `HUB_WORKSPACES` (default that uuid) is the only workspace the process opens; any other id is 404 / gRPC NotFound before a room or lease. |
 | `web` | `deploy/web/Dockerfile` (nginx + `apps/web/dist`) | `127.0.0.1:8080` | Host UI. Same-origin proxy: `/api` and `/collaboration` → `hub:3000`. |
-| `sidecar` | `deploy/sidecar/Dockerfile` (`node:22`, `USER venus`) | `127.0.0.1:3002` | Optional `--profile snapshot`. Observer + N workers on Venus `jobs` (`SKIP LOCKED`). Health `GET /`. `POST /flush` pulls `jobs.not_before` to now (does not pin). `GET /git/log?path=spec/home.md` → `{ subject, sha }[]`. Workers autoinit `WIKI_DIR` and git-commit. DSN required for the queue (`DATABASE_URL` / `POSTGRES_*`, same role as hub). Bind-mount `./wiki:/wiki`. |
+| `sidecar` | `deploy/sidecar/Dockerfile` (`node:22`, `USER venus`) | `127.0.0.1:3002` | Optional `--profile snapshot`. Observer + N workers on Venus `jobs` (`SKIP LOCKED`) for `WIKI_WORKSPACE_ID` only (default the M0 uuid). Health `GET /`. `POST /flush` pulls that workspace's `jobs.not_before` to now (does not pin); any other uuid is 404. `GET /git/log?path=spec/home.md` → `{ subject, sha }[]`. Workers autoinit `WIKI_DIR`, write `.venus/workspace`, and git-commit. DSN required for the queue (`DATABASE_URL` / `POSTGRES_*`, same role as hub). Bind-mount `./wiki:/wiki`. |
 
 Default `docker compose config --services` prints `postgres`, `hub`, `web` (plus `sidecar` / `hub-b` when those profiles are enabled). Hub and Postgres must not share a container.
 

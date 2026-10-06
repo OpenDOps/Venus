@@ -262,7 +262,7 @@ Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./A
 | M2 | [Markdown projection](#m2--markdown-projection-week) | done 2026-08-30 |
 | M3.0 | [Venus hub](#m30--venus-hub-replace-keck-week) | done 2026-09-13 |
 | M3 | [Git snapshotter](#m3--git-snapshotter-week) | done 2026-09-14 |
-| M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | in progress (step 1 done 2026-09-15) |
+| M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | in progress (step 5 done 2026-09-15) |
 | M5 | [Lease + freeze](#m5--lease--freeze-week) | not started |
 | M6 | [Comment-commit](#m6--comment-commit-markdown-only-2-weeks) | not started |
 | M7 | [Threads, alternatives, stacks](#m7--threads-alternatives-stacks-2-weeks) | not started |
@@ -329,17 +329,17 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 ### M4 — Folder tree + links + product header (1–2 weeks)
 
-**Status:** in progress — [step-catalog-crdt](./M4/plan.md#3-step-catalog-crdt) done 2026-09-15. Next [step-chrome](./M4/plan.md#4-step-chrome). Step-by-step: [M4/plan.md](./M4/plan.md). Board: [M4/M4.state.yaml](./M4/M4.state.yaml). **Gate:** [M3](./M3/README.md) **closed**.
+**Status:** in progress — [step-tree](./M4/plan.md#5-step-tree) done 2026-09-15. Next [step-git-mv](./M4/plan.md#6-step-git-mv). Step-by-step: [M4/plan.md](./M4/plan.md). Board: [M4/M4.state.yaml](./M4/M4.state.yaml). **Gate:** [M3](./M3/README.md) **closed**.
 
 - Catalog CRDT: folders, reorder, rename, `gitPath`.
 - Tree UI; drop to reparent (live CRDT).
 - **Product header** on the same chrome: Undo / Redo on the open page’s `Store`; show the current page name. Not `@affine/core`. Not a history list.
 - Layout: header top; folder tree left; page editor; in-page outline stays the heading TOC (not a second wiki tree).
 - Publish includes `git mv`.
-- `affine:embed-linked-doc` + markdown link round-trip (`docId` + path).
+- `affine:embed-linked-doc` + markdown link round-trip (`docId` + path). Flush **reverse index** `.venus/links.json` so rename/move `fromDoc`s index hits, not every page ([M4 step 7](./M4/plan.md#7-step-links)).
 - **Wire A:** N sockets on one hub Room; `?doc=<sql uuid>` on `/collaboration/:workspace_id`; bare path = home. Last step: **SharedWorker** in front of those sockets when `typeof SharedWorker === 'function'` (fallback: per-tab). Not a Service Worker. Not multiplexed frames.
 
-**Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves. Header undo/redo matches keyboard undo on the open page.
+**Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves, Flush used `.venus/links.json` (not `fromDoc` of every page). Header undo/redo matches keyboard undo on the open page.
 
 **After M4 (not this exit):** record the workspace’s **wiki remote + product remote@branch** (separate histories; submodules lean). Do **not** delay M5 for the analyzer. **Before AB5:** select CodeGraph CLI, Aider, or both ([code-bind — select](./Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). Design: [code-bind](./Agents/code-bind.md). AB5 / runner review: [agentic-binding — AB5](./Agents/agentic-binding.md#ab5--code-bind--aider), [product-plan](../product/product-plan.md#workspace-and-aider).
 

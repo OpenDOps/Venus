@@ -14,7 +14,7 @@ use crate::config::DEFAULT_CORS_ORIGINS;
 use crate::cut::GIT_PATH;
 use crate::git::{self, WikiConfig, DEFAULT_WIKI_DIR};
 use crate::queue;
-use crate::DEFAULT_WORKSPACE_ID;
+use crate::{workspace_id_ok, DEFAULT_WORKSPACE_ID};
 
 #[derive(Clone)]
 pub struct HttpState {
@@ -98,11 +98,12 @@ fn cors_layer(origins: &[String]) -> Option<CorsLayer> {
     )
 }
 
-pub fn flush_workspace(query: Option<String>) -> String {
+/// Explicit `?workspace=`, or `bound` when the query is omitted / blank.
+pub fn flush_workspace(query: Option<String>, bound: &str) -> String {
     query
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_WORKSPACE_ID.to_string())
+        .unwrap_or_else(|| bound.to_string())
 }
 
 async fn root() -> impl IntoResponse {
@@ -114,6 +115,30 @@ async fn root() -> impl IntoResponse {
 }
 
 async fn flush(State(state): State<HttpState>, Query(q): Query<FlushQuery>) -> Response {
+    let bound = state
+        .wiki
+        .workspace_id
+        .clone()
+        .unwrap_or_else(|| DEFAULT_WORKSPACE_ID.to_string());
+    let workspace = flush_workspace(q.workspace, &bound);
+    if !workspace_id_ok(&workspace) {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "invalid workspace\n",
+        )
+            .into_response();
+    }
+    let workspace = workspace.to_ascii_lowercase();
+    if state.wiki.workspace_id.is_some() && workspace != bound.to_ascii_lowercase() {
+        tracing::warn!(workspace_id = %workspace, "flush workspace is not bound to this wiki");
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "unknown workspace\n",
+        )
+            .into_response();
+    }
     let Some(pool) = state.pool.as_ref() else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -122,7 +147,6 @@ async fn flush(State(state): State<HttpState>, Query(q): Query<FlushQuery>) -> R
         )
             .into_response();
     };
-    let workspace = flush_workspace(q.workspace);
     match queue::flush_now(pool, &workspace).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {

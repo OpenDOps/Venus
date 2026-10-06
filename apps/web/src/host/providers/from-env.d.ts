@@ -16,3 +16,14 @@ export function blobSourcesFromEnv(env?: { VITE_SYNC_URL?: string }):
   | undefined;
 
 export function sidecarUrlFromEnv(env?: { VITE_SIDECAR_URL?: string }): string;
+
+export function flagFromEnv(env: Record<string, unknown>, key: string): boolean;
+
+export function debugFromEnv(env?: Record<string, unknown>): boolean;
+
+export function testidsFromEnv(env?: Record<string, unknown>): boolean;
+
+export function testidProps(
+  name: string,
+  env?: Record<string, unknown>,
+): Record<string, string>;

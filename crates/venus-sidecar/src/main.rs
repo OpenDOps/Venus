@@ -29,8 +29,9 @@ async fn main() -> Result<()> {
         let idle = cfg.queue.idle;
         let period = cfg.queue.observe;
         let pool_obs = pool.clone();
+        let workspace_id = cfg.wiki.workspace_id.clone().context("WIKI_WORKSPACE_ID")?;
         tokio::spawn(async move {
-            venus_sidecar::queue::run_observer(pool_obs, idle, period).await;
+            venus_sidecar::queue::run_observer(pool_obs, idle, period, workspace_id).await;
         });
         for i in 0..cfg.queue.workers {
             let pool_w = pool.clone();
@@ -46,6 +47,7 @@ async fn main() -> Result<()> {
             idle_ms = cfg.queue.idle.as_millis() as u64,
             observe_ms = cfg.queue.observe.as_millis() as u64,
             wiki_dir = %cfg.wiki.dir.display(),
+            workspace_id = cfg.wiki.workspace_id.as_deref().unwrap_or(""),
             "observer + workers running"
         );
         venus_sidecar::http::router_with_wiki_and_cors(

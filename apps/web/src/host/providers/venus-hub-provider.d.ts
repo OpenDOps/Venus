@@ -10,6 +10,6 @@ export class VenusHubProvider implements SyncProvider {
   constructor(url: string);
   connect(docId: string, ydoc: Doc): void;
   disconnect(docId: string): void;
-  whenReady(): Promise<void>;
+  whenReady(docId?: string): Promise<void>;
   on(event: 'sync', fn: () => void): () => void;
 }

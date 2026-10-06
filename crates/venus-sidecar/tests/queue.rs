@@ -159,15 +159,23 @@ async fn observer_enqueues_one_job() {
     let ws = unique_workspace();
     seed_dirty_wiki(&pool, &ws).await;
 
-    let n1 = observe_once(&pool, Duration::ZERO)
+    let other = unique_workspace();
+    seed_dirty_wiki(&pool, &other).await;
+
+    let n1 = observe_once(&pool, Duration::ZERO, &ws)
         .await
         .expect("observer 1");
-    let n2 = observe_once(&pool, Duration::ZERO)
+    let n2 = observe_once(&pool, Duration::ZERO, &ws)
         .await
         .expect("observer 2");
     assert_eq!(n1, 1, "first tick inserts one idle job");
     assert_eq!(n2, 0, "second tick must ON CONFLICT DO NOTHING");
     assert_eq!(job_count(&pool, &ws).await, 1);
+    assert_eq!(
+        job_count(&pool, &other).await,
+        0,
+        "observer must not enqueue a workspace this wiki is not bound to"
+    );
 
     let (reason, due): (String, bool) = sqlx::query_as(
         "SELECT reason, not_before <= now() FROM jobs WHERE workspace_id = $1::uuid",
@@ -187,7 +195,10 @@ async fn one_wiki_two_consumers_one_claim() {
     let ws = unique_workspace();
     insert_due_job(&pool, &ws).await;
 
-    let (a, b) = tokio::join!(claim_one(&pool, "worker-a"), claim_one(&pool, "worker-b"));
+    let (a, b) = tokio::join!(
+        claim_one(&pool, "worker-a", &ws),
+        claim_one(&pool, "worker-b", &ws)
+    );
     let a = a.expect("claim a");
     let b = b.expect("claim b");
     let mine: Vec<&str> = [a.as_ref(), b.as_ref()]
@@ -209,7 +220,9 @@ async fn one_wiki_two_consumers_one_claim() {
 
     // 4.2: claim itself does not fill the Map. (4.3 worker_turn cuts after claim.)
     let pins = PinMap::new();
-    let again = claim_one(&pool, "worker-c").await.expect("third claim");
+    let again = claim_one(&pool, "worker-c", &ws)
+        .await
+        .expect("third claim");
     assert!(
         again.as_ref().map(|c| c.workspace_id.as_str()) != Some(ws.as_str()),
         "inflight stays 1 while lease holds"
@@ -226,7 +239,7 @@ async fn two_wikis_two_consumers() {
     insert_due_job(&pool, &ws_a).await;
     insert_due_job(&pool, &ws_b).await;
 
-    let (a, b) = tokio::join!(claim_one(&pool, "w0"), claim_one(&pool, "w1"));
+    let (a, b) = tokio::join!(claim_one(&pool, "w0", &ws_a), claim_one(&pool, "w1", &ws_b));
     let a = a.expect("claim a").expect("wiki A leased");
     let b = b.expect("claim b").expect("wiki B leased");
     let mut ids = [a.workspace_id, b.workspace_id];

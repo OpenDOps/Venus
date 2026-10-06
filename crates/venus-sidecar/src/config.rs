@@ -10,6 +10,7 @@ use anyhow::{bail, Context, Result};
 
 use crate::convert::ConvertConfig;
 use crate::git::{WikiConfig, DEFAULT_AUTHOR_EMAIL, DEFAULT_AUTHOR_NAME, DEFAULT_WIKI_DIR};
+use crate::{workspace_id_ok, DEFAULT_WORKSPACE_ID};
 
 pub const DEFAULT_SNAPSHOT_IDLE_MS: u64 = 60_000;
 pub const DEFAULT_SNAPSHOT_OBSERVE_MS: u64 = 1_000;
@@ -85,11 +86,36 @@ fn wiki_from_env() -> Result<WikiConfig> {
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_AUTHOR_EMAIL.into());
+    let workspace_id = wiki_workspace_from_env()?;
     Ok(WikiConfig {
         dir,
         author_name,
         author_email,
+        workspace_id: Some(workspace_id),
     })
+}
+
+/// `WIKI_WORKSPACE_ID`. Unset → the M0 wiki. One sidecar process publishes one workspace.
+pub fn wiki_workspace_from_env() -> Result<String> {
+    let raw = env::var("WIKI_WORKSPACE_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    parse_wiki_workspace(raw.as_deref())
+}
+
+pub fn parse_wiki_workspace(raw: Option<&str>) -> Result<String> {
+    let id = raw
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_WORKSPACE_ID)
+        .to_ascii_lowercase();
+    if !workspace_id_ok(&id) {
+        bail!(
+            "WIKI_WORKSPACE_ID must be a hyphenated uuid (got {} bytes)",
+            id.len()
+        );
+    }
+    Ok(id)
 }
 
 fn cors_origins_from_env() -> Result<Vec<String>> {
@@ -240,6 +266,21 @@ fn required(name: &str) -> Result<String> {
         bail!("{name} is empty");
     }
     Ok(v)
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+
+    #[test]
+    fn wiki_workspace_defaults_to_m0_and_rejects_bad() {
+        assert_eq!(parse_wiki_workspace(None).unwrap(), DEFAULT_WORKSPACE_ID);
+        assert_eq!(
+            parse_wiki_workspace(Some("  77E4A2B1-8B40-5979-A73C-FD4477216D00  ")).unwrap(),
+            DEFAULT_WORKSPACE_ID
+        );
+        assert!(parse_wiki_workspace(Some("not-a-uuid")).is_err());
+    }
 }
 
 fn deny_sqlite(url: &str) -> Result<()> {

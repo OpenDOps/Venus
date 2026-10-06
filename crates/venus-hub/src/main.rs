@@ -33,6 +33,7 @@ async fn main() -> Result<()> {
         db_acquire_timeout_secs = cfg.db_acquire_timeout.as_secs(),
         db_work_mem = %cfg.db_work_mem,
         cors_origins = cfg.cors_origins.len(),
+        workspaces = cfg.workspaces.len(),
         "venus-hub starting"
     );
 
@@ -49,7 +50,13 @@ async fn main() -> Result<()> {
     db::migrate(&pool).await?;
 
     let lease = Lease::new(pool.clone(), cfg.owner.clone(), cfg.lease_ttl);
-    let hub = Hub::new(pool, lease, cfg.persist_interval, cfg.compact_after);
+    let hub = Hub::with_allowlist(
+        pool,
+        lease,
+        cfg.persist_interval,
+        cfg.compact_after,
+        Some(cfg.workspaces.clone()),
+    );
 
     let grpc_addr = cfg.grpc_listen;
     let grpc_listener = TcpListener::bind(grpc_addr)

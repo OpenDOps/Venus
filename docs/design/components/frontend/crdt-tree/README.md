@@ -2,7 +2,7 @@
 
 Collaborative **wiki folder tree**: folders and docs that several tabs (and later users) can rename, reorder, and reparent **at the same time**. The tree is a **Yjs document**, not a React list and not git directories.
 
-**Status:** catalog ops in `apps/web/src/host/catalog/` ([M4](../../../M4/README.md) `step-catalog-crdt`). CatalogTree UI is `step-tree`. Data shape: [datamodel catalog](../../../datamodel/crdt.md#catalog). **Page uuid / docname / filename:** [page-identity](../../../datamodel/page-identity.md) (hub SQL: [hub page-identity](../../backend/hub/page-identity.md)). Hub process: [backend hub](../../backend/hub/). Wire: [CRDT](../../../CRDT/README.md).
+**Status:** catalog ops in `apps/web/src/host/catalog/` ([M4](../../../M4/README.md) `step-catalog-crdt`). CatalogTree UI (`CatalogTree.tsx`) is [step-tree](../../../M4/plan.md#5-step-tree) **done**. Data shape: [datamodel catalog](../../../datamodel/crdt.md#catalog). **Page uuid / docname / filename:** [page-identity](../../../datamodel/page-identity.md) (hub SQL: [hub page-identity](../../backend/hub/page-identity.md)). Hub process: [backend hub](../../backend/hub/). Wire: [CRDT](../../../CRDT/README.md).
 
 Git folders are the **share** layout after Flush (`git mv`). This CRDT is the **live** tree. Sibling order lives here, not in git.
 

@@ -71,10 +71,27 @@ pub struct BlockTree {
     pub blocks: HashMap<String, Block>,
     pub page_id: String,
     pub workspace_id: String,
+    pub catalog: Option<CatalogLinkCtx>,
+}
+
+/// Catalog names/paths for linked-doc rewrite. `pages` is docId → (name, gitPath).
+#[derive(Debug, Clone)]
+pub struct CatalogLinkCtx {
+    pub source_git_path: String,
+    pub pages: HashMap<String, (String, String)>,
 }
 
 impl BlockTree {
+    #[allow(dead_code)]
     pub fn load(doc: &Doc, workspace_id: &str) -> Result<Self> {
+        Self::load_with(doc, workspace_id, None)
+    }
+
+    pub fn load_with(
+        doc: &Doc,
+        workspace_id: &str,
+        catalog: Option<CatalogLinkCtx>,
+    ) -> Result<Self> {
         let map = doc
             .get_map("blocks")
             .map_err(|e| anyhow!("y-octo blocks map: {e}"))?;
@@ -95,6 +112,7 @@ impl BlockTree {
             blocks,
             page_id,
             workspace_id: workspace_id.to_string(),
+            catalog,
         })
     }
 

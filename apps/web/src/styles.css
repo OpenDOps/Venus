@@ -54,19 +54,36 @@ body,
   color: var(--affine-text-secondary-color, #8e8d91);
 }
 
+.tree-host {
+  flex: 0 0 240px;
+  width: 240px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--affine-border-color, #e3e2e4);
+}
+
+.editor-stack {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .editor-host {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
   overflow: auto;
 }
 
 .md-pane-host {
-  flex: 0 0 400px;
-  width: 400px;
-  height: 100%;
+  flex: 0 0 180px;
+  height: 180px;
+  min-height: 0;
   overflow: auto;
-  border-right: 1px solid var(--affine-border-color, #e3e2e4);
+  border-top: 1px solid var(--affine-border-color, #e3e2e4);
 }
 
 .md-pane-host pre {

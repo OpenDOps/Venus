@@ -192,7 +192,48 @@ function urlMentionsPageId(url, pageId) {
   return path === pageId || path.endsWith(`/${pageId}`);
 }
 
-function findLinkedDocInsert(markdown, pageId, from) {
+/** POSIX relative from the exporting file to the target file. Browser-safe. */
+export function posixRelativeFromFiles(fromFile, toFile) {
+  const fromDir = fromFile.includes('/')
+    ? fromFile.slice(0, fromFile.lastIndexOf('/'))
+    : '';
+  const fromParts = fromDir ? fromDir.split('/').filter(Boolean) : [];
+  const toParts = String(toFile).split('/').filter(Boolean);
+  let i = 0;
+  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) {
+    i += 1;
+  }
+  const rel = [
+    ...Array.from({ length: fromParts.length - i }, () => '..'),
+    ...toParts.slice(i),
+  ];
+  return rel.join('/') || String(toFile);
+}
+
+function escapeLinkText(name) {
+  return String(name).replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+/**
+ * Catalog git form: `[name](posix-relative)` — not `./workspace/<ws>/<pageId>`.
+ *
+ * @param {string} pageId
+ * @param {{ sourceGitPath: string, pages: Record<string, { name: string, gitPath: string }> }} catalogLinks
+ * @returns {{ link: string, href: string } | null}
+ */
+export function catalogLinkedDocLink(pageId, catalogLinks) {
+  if (!catalogLinks?.pages || !isSafePageId(pageId)) return null;
+  const page = catalogLinks.pages[pageId];
+  if (!page?.gitPath) return null;
+  const name = page.name || pageId;
+  const href = posixRelativeFromFiles(
+    catalogLinks.sourceGitPath || 'spec/home.md',
+    page.gitPath,
+  );
+  return { link: `[${escapeLinkText(name)}](${href})`, href };
+}
+
+function findLinkedDocInsert(markdown, pageId, from, expectedHref) {
   let search = from;
   while (search < markdown.length) {
     const open = markdown.indexOf('](', search);
@@ -200,7 +241,7 @@ function findLinkedDocInsert(markdown, pageId, from) {
     const close = markdown.indexOf(')', open + 2);
     if (close === -1) return null;
     const url = markdown.slice(open + 2, close);
-    if (urlMentionsPageId(url, pageId)) {
+    if (urlMentionsPageId(url, pageId) || (expectedHref && url === expectedHref)) {
       const nl = markdown.indexOf('\n', close);
       return {
         at: nl === -1 ? markdown.length : nl + 1,
@@ -220,7 +261,7 @@ function withVenusLinkedDocComment(slice, pageId) {
   return `${core}\n${comment}\n`;
 }
 
-function injectVenusLinkedDocComments(markdown, models) {
+function injectVenusLinkedDocComments(markdown, models, catalogLinks) {
   const inserts = [];
   let searchFrom = 0;
   for (const { model } of models) {
@@ -233,7 +274,8 @@ function injectVenusLinkedDocComments(markdown, models) {
       searchFrom = existing + comment.length;
       continue;
     }
-    const loc = findLinkedDocInsert(markdown, pageId, searchFrom);
+    const href = catalogLinkedDocLink(pageId, catalogLinks)?.href;
+    const loc = findLinkedDocInsert(markdown, pageId, searchFrom, href);
     if (!loc) continue;
     inserts.push({ ...loc, comment });
     searchFrom = loc.at;
@@ -251,11 +293,27 @@ function injectVenusLinkedDocComments(markdown, models) {
   return chunks.join('');
 }
 
+function rewriteAdapterLinkedDocs(markdown, models, catalogLinks) {
+  if (!catalogLinks?.pages) return markdown;
+  let out = markdown;
+  for (const { model } of models) {
+    if (model.flavour !== 'affine:embed-linked-doc') continue;
+    const pageId = model.props?.pageId;
+    const rewritten = catalogLinkedDocLink(pageId, catalogLinks);
+    if (!rewritten) continue;
+    const m2 = new RegExp(
+      `\\[[^\\]]*\\]\\(\\.\\/workspace\\/[^\\s)]+\\/${escapeRegExp(pageId)}\\)`,
+    );
+    out = out.replace(m2, rewritten.link);
+  }
+  return out;
+}
+
 /**
  * Own markdown for one block: nested ranged children are exported as their
  * own sidecar rows, so they must not appear in the parent slice.
  */
-async function ownMarkdownFromSnapshot(adapter, snapshot) {
+async function ownMarkdownFromSnapshot(adapter, snapshot, catalogLinks) {
   if (!snapshot) return '';
   const own = {
     ...snapshot,
@@ -269,14 +327,19 @@ async function ownMarkdownFromSnapshot(adapter, snapshot) {
   });
   const file = result?.file ?? '';
   if (snapshot.flavour === 'affine:embed-linked-doc') {
-    return withVenusLinkedDocComment(file, snapshot.props?.pageId);
+    const pageId = snapshot.props?.pageId;
+    const rewritten = catalogLinkedDocLink(pageId, catalogLinks);
+    if (rewritten) {
+      return withVenusLinkedDocComment(`${rewritten.link}\n`, pageId);
+    }
+    return withVenusLinkedDocComment(file, pageId);
   }
   return file;
 }
 
-async function ownMarkdown(adapter, model) {
+async function ownMarkdown(adapter, model, catalogLinks) {
   const snapshot = adapter.job.blockToSnapshot(model);
-  return ownMarkdownFromSnapshot(adapter, snapshot);
+  return ownMarkdownFromSnapshot(adapter, snapshot, catalogLinks);
 }
 
 function placePageTitle(pageSnap, markdown) {
@@ -371,8 +434,8 @@ export function collectRangedBlocks(root) {
  * Adapter markdown for one ranged block, nested ranged children stripped,
  * list indent applied. Used by full `fromDoc` placement and by RAM splice.
  */
-export async function blockMarkdownSlice(adapter, model, listDepth) {
-  const slice = await ownMarkdown(adapter, model);
+export async function blockMarkdownSlice(adapter, model, listDepth, catalogLinks) {
+  const slice = await ownMarkdown(adapter, model, catalogLinks);
   return indentSlice(slice, listDepth);
 }
 
@@ -386,8 +449,10 @@ export function encodeSidecarClock(ydoc) {
  * the adapter). Page title `# …` maps to `affine:page`. Extra blank lines
  * between note blocks are not in any range. Linked-doc cards get
  * `<!-- venus:doc:<pageId> -->` after the adapter link (post-process).
+ * With `catalogLinks`, the adapter `./workspace/<ws>/<pageId>` URL is
+ * rewritten to `[catalog name](posix-relative gitPath)`.
  */
-export async function fromDoc(store, workspace) {
+export async function fromDoc(store, workspace, catalogLinks) {
   const adapter = markdownAdapterFor(store, workspace);
   const docSnapshot = adapter.job.docToSnapshot(store);
   if (!docSnapshot?.blocks) {
@@ -405,14 +470,19 @@ export async function fromDoc(store, workspace) {
     throw new Error('MarkdownAdapter.fromDocSnapshot returned undefined');
   }
 
-  const markdown = injectVenusLinkedDocComments(result.file, models);
+  const withComments = injectVenusLinkedDocComments(
+    result.file,
+    models,
+    catalogLinks,
+  );
+  const markdown = rewriteAdapterLinkedDocs(withComments, models, catalogLinks);
   const titleRange = placePageTitle(docSnapshot.blocks, markdown);
 
   const items = await Promise.all(
     models.map(async ({ model, listDepth }) => {
       const slice = isEmptyTextParagraphSnapshot(model)
         ? ''
-        : await ownMarkdownFromSnapshot(adapter, model);
+        : await ownMarkdownFromSnapshot(adapter, model, catalogLinks);
       return { model, listDepth, slice };
     }),
   );

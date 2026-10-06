@@ -8,7 +8,7 @@
 | **Encoding** | Headings + tables ([venus-plan.md](../../drafts/pre-design/venus-plan.md) option B) |
 | **Board** | [M4.state.yaml](./M4.state.yaml) |
 
-Parent design: [venus-design.md](../venus-design.md) ([folder tree](../venus-design.md#folder-tree-table-of-contents), [cross-document references](../venus-design.md#cross-document-references)). Catalog: [datamodel catalog](../datamodel/crdt.md#catalog). Tree: [CRDT tree](../components/frontend/crdt-tree/). Git: [datamodel git](../datamodel/git.md). Pin + `git mv`: [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Create / `{uuid}.md` / rename / DB map: [page-identity](../datamodel/page-identity.md) ([hub](../components/backend/hub/page-identity.md)). Header: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree). Hub: [M3.0](../M3.0/README.md), [M3.0 HA](../M3.0/high-availability.md), [backend hub](../components/backend/hub/). Snapshotter: [M3](../M3/README.md). Dataflow: [architecture.md](../architecture.md). Envelope: [rpc.md](../rpc.md). Words: [glossary.md](../glossary.md). Installed symbols: [api-map.md](../api-map.md).
+Parent design: [venus-design.md](../venus-design.md) ([folder tree](../venus-design.md#folder-tree-table-of-contents), [cross-document references](../venus-design.md#cross-document-references)). Catalog: [datamodel catalog](../datamodel/crdt.md#catalog). Tree: [CRDT tree](../components/frontend/crdt-tree/). Git: [datamodel git](../datamodel/git.md) (`.venus/links.json`). Pin + `git mv`: [LiveSnapshot](../LiveSnapshot/README.md). Linked-doc export: [MDGate subset](../MDGate/subset.md#linked-doc-stable-form). Create / `{uuid}.md` / rename / DB map: [page-identity](../datamodel/page-identity.md) ([hub](../components/backend/hub/page-identity.md)). Header: [implementation plan — product header](../venus-implementation-plan.md#product-header--venus-chrome-with-the-folder-tree). Hub: [M3.0](../M3.0/README.md), [M3.0 HA](../M3.0/high-availability.md), [backend hub](../components/backend/hub/). Snapshotter: [M3](../M3/README.md). Dataflow: [architecture.md](../architecture.md). Envelope: [rpc.md](../rpc.md). Words: [glossary.md](../glossary.md). Installed symbols: [api-map.md](../api-map.md).
 
 This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built yet. DoD scenarios below are the accept rules for the code; they are not a leased wiki page.
 
@@ -16,7 +16,7 @@ This is a **design-folder plan**. The spec-wiki lease/DoD runner is not built ye
 
 ## Story
 
-As an implementer I need **more than one page** in the wiki: a live **catalog CRDT** (folders, order, names, `gitPath`), a **tree** I can drop to reparent, and a **thin product header** (undo / redo / current page) on that same chrome. Publish must **`git mv`** when the catalog path changed. An **`affine:embed-linked-doc`** keys by `docId`, so a move does not break the card; markdown export uses catalog title + relative path + `<!-- venus:doc:… -->`. Venus still has no lease freeze or comment-commit why.
+As an implementer I need **more than one page** in the wiki: a live **catalog CRDT** (folders, order, names, `gitPath`), a **tree** I can drop to reparent, and a **thin product header** (undo / redo / current page) on that same chrome. Publish must **`git mv`** when the catalog path changed. An **`affine:embed-linked-doc`** keys by `docId`, so a move does not break the card; markdown export uses catalog title + relative path + `<!-- venus:doc:… -->`. Flush keeps a **direct reverse index** (`.venus/links.json`) so a rename/move `fromDoc`s index hits, not every page. Venus still has no lease freeze or comment-commit why.
 
 If path is identity, every rename is a broken link. If the tree is a docs-framework TOC, two people cannot move folders. If undo lives only on the keyboard, managers never find it. If git does not `git mv`, clone folders lie.
 
@@ -29,8 +29,8 @@ All of these must be true at once:
 3. **Tree UI** reads only that catalog. Click opens the page in the editor. Drop reparents (live CRDT; other tab sees it without reload). Outline stays the **in-page heading TOC**, not a second wiki tree.
 4. **Product header** on the same slice: Undo / Redo on the **open** page’s `Store` (`store.undo()` / `store.redo()`, disabled by subscribing to `store.history.canUndo$` / `canRedo$`). **`venus-page-title` = catalog `name`** of the open node. Not `@affine/core`. Not a history list of Yjs transactions.
 5. **Layout:** header top; folder tree left; page editor; outline right. Markdown pane may remain host chrome; it must not occupy the tree slot or become the wiki TOC.
-6. **Publish includes `git mv`.** Flush pins **catalog + dirty pages** in the same cut. If `gitPath` changed and the body clock did not, **`git mv` only** (no `fromDoc` of the unchanged page). Clone of `wiki/` shows the new folders. Sibling **order** is not in git. Flush always rewrites `wiki/.venus/pages.yaml` from the **catalog pin** (`pages:` + `folders:`) and replaces `page_identity` from that same decode (YAML is not identity).
-7. **`affine:embed-linked-doc`** with `pageId = docId` plus markdown round-trip of **export** form: catalog title, path relative to the current file, `<!-- venus:doc:<id> -->`. After a move, the card still resolves; the next snapshot’s markdown path matches the new `gitPath`. Recreating the card from markdown is still M6 apply, not adapter `toDoc`.
+6. **Publish includes `git mv`.** Flush pins **catalog + dirty pages** in the same cut. If `gitPath` changed and the body clock did not, **`git mv` only** for that page (no `fromDoc` of the unchanged body). Clone of `wiki/` shows the new folders. Sibling **order** is not in git. Flush always rewrites `wiki/.venus/pages.yaml` from the **catalog pin** (`pages:` + `folders:`) and replaces `page_identity` from that same decode (YAML is not identity).
+7. **`affine:embed-linked-doc`** with `pageId = docId` plus markdown round-trip of **export** form: catalog title, path relative to the current file, `<!-- venus:doc:<id> -->`. After a move, the card still resolves; the next snapshot’s markdown path matches the new `gitPath`. **Flush does not `fromDoc` every page:** [step 7](#7-step-links) ships a **direct reverse index** (`.venus/links.json`) and converts only body-dirty pages plus index hits (inbound to a renamed/moved id; outbound from a page whose `gitPath` dirname changed). Recreating the card from markdown is still M6 apply, not adapter `toDoc`.
 8. Header undo/redo matches keyboard undo (⌘Z / Ctrl+Z) on the open page.
 9. [api-map.md](../api-map.md) Actual column is filled for every catalog / tree / header / `git mv` / linked-doc name the code uses.
 10. Existing **M1 Playwright**, M2 export / pane, and M3 Flush / live-during-flush stay green. `mount-editor` still imports neither catalog nor git.
@@ -68,7 +68,7 @@ Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystrok
 6. **Catalog is not an `affine:page`.** It is a small Y.Doc (`Y.Map` of nodes). Do not hang folders on the published block schema.
 7. **One apply queue per `docId`**, one persist buffer per `docId`, inside the **one** room for the wiki. Not per socket. **One persist tick per Room** (~1s, today’s hub loop) drains every non-empty buffer; each `INSERT` keeps its `doc_id`. Do not spawn a persist task per doc. Catalog vs page is that `doc_id` (not decoding update bytes). Hub persist stays opaque; **Rust sidecar** walks the catalog pin at Flush.
 8. **M1 default collab path stays.** `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with no `?doc=` still hydrates `doc:home`. Second docs (catalog, created pages) use `?doc=<sql uuid>` on **that same path**. **Doc export is gRPC** (`Hub.ExportDoc`, omit `doc_id` = home). GET `/api/block/:workspace/export` is advertisement JSON (no Yjs). Envelope: [rpc.md](../rpc.md).
-9. **Pin then convert.** Catalog bytes ride in the **same MVCC cut** as dirty pages so `gitPath` matches the files you write ([LiveSnapshot](../LiveSnapshot/README.md)). Convert **page** bodies with the M3 Rust `fromDoc` (JS CLI oracle). Catalog pin: **Rust y-octo hydrate + walk `nodes`** in `venus-sidecar` — YAML, `page_identity`, `gitPath` / `git mv`. **Do not** `fromDoc` the catalog. Catalog-only dirty → walk + `git mv` / YAML / SQL, **no** `fromDoc` of an unchanged body. Cut still released before convert.
+9. **Pin then convert.** Catalog bytes ride in the **same MVCC cut** as dirty pages so `gitPath` matches the files you write ([LiveSnapshot](../LiveSnapshot/README.md)). Convert **page** bodies with the M3 Rust `fromDoc` (JS CLI oracle). Catalog pin: **Rust y-octo hydrate + walk `nodes`** in `venus-sidecar` — YAML, `page_identity`, `gitPath` / `git mv`. **Do not** `fromDoc` the catalog. Catalog-only dirty → walk + `git mv` / YAML / SQL; **href rewrite** of other files uses [`.venus/links.json`](#7-step-links) (do **not** `fromDoc` every page). Cut still released before convert.
 10. **Dirty clocks.** Catalog persist upserts `dirty(workspace_id, catalog_sql_uuid, clock)` via the existing trigger. One `jobs` row per wiki still. Sidecar `commit_pins` must stop skipping every `doc_id` that is not home.
 11. **Tree data = catalog only.** Drop = catalog reparent. Do not scan `wiki/` for the live tree. Do not use AFFiNE explorer.
 12. **Header binds the open `Store`.** Switching pages rebinds undo/redo (new `$` subscribe) and the title. Same stack as ⌘Z / Ctrl+Z. No labeled history.
@@ -77,6 +77,7 @@ Do not treat outline as the wiki tree. Do not `git mv` on every catalog keystrok
 15. **No `@affine/core`.** No nbstore. No convert in the hub. No lease UI.
 16. If this plan disagrees with [api-map.md](../api-map.md) after recon, **the map wins**. If it disagrees with [M3.0 HA](../M3.0/high-availability.md) on owner grain, **HA wins**.
 17. **SharedWorker is step 8 only.** Steps 2–7 ship per-tab A sockets. The worker holds those same URLs; it does not become a mux. `Y.Doc` stays in the tab. Memory mode has no worker.
+18. **Reverse index is Flush, not live SoT.** `.venus/links.json` is inbound/outbound **`docId`** edges derived from `<!-- venus:doc:… -->` at convert (same cut as the `.md`). Not `workspace.meta.docMetas`. Not catalog node fields. Not a second live graph. Not [LifeIndexing](../Agents/LifeIndexing.md) gists / heading binds (AB1 still after SHA). Missing file → one rebuild from HEAD markdown, then persist. Convert set = body-dirty ∪ inbound[path- or name-changed] ∪ `{ dirname-changed | outbound nonempty }`. Extra convert-set pages join the **same RR pin Map** (SELECT their `crdt_*`) before COMMIT; do not `fromDoc` the live Store; do not `fromDoc` every page.
 
 ## Target tree
 
@@ -86,7 +87,7 @@ Only create what M4 needs. Do **not** add `packages/review`, lease types, or app
 Venus/
   proto/venus/                      # envelope + Hub.ExportDoc / ListDocs (internal gRPC)
   crates/venus-hub/                 # Room: Map<doc_id, Doc>; ExportDoc per doc; GET /export = advertisement
-  crates/venus-sidecar/             # y-octo: page fromDoc + catalog nodes walk; git2 mv
+  crates/venus-sidecar/             # y-octo: page fromDoc + catalog nodes walk; git2 mv; links.json
   apps/web/
     src/host/
       catalog/                      # Y.Map schema + ops; not mount-editor
@@ -97,6 +98,8 @@ Venus/
       chrome/                       # header undo/redo + current page
         mount-header.js
       mdgate/from-doc.js            # linked-doc post-process uses catalog title/path
+      mdgate/link-index.js          # 7.1 unit: inbound/outbound from venus:doc comments
+      mdgate/link-index.test.ts
       providers/
         venus-hub-provider.js       # N sessions; ?doc=; _gen per session
         hub-shared-worker.js        # SharedWorker script (step 8); holds A sockets
@@ -108,6 +111,7 @@ Venus/
       m4-link.spec.ts
       m4-create-rename.spec.ts      # required DoD; datamodel/page-identity.md
       m4-shared-worker.spec.ts      # step 8; skip if no SharedWorker
+  wiki/.venus/links.json            # 7.1 Flush: inbound/outbound docId edges (not live SoT)
   docs/design/api-map.md            # catalog Actuals in step 1
   docs/design/datamodel/page-identity.md
   docs/design/components/backend/hub/page-identity.md
@@ -138,12 +142,14 @@ Postgres  crdt_* / dirty  (home, created pages, catalog)
 
 Flush / idle
         │  claim → MVCC cut of S (dirty pages ∪ catalog)
-        │  fromDoc dirty page pins; git mv if gitPath changed
+        │  convert set = body-dirty ∪ links.json hits (not every page)
+        │  fromDoc that set; git mv if gitPath changed; rewrite links.json
         ▼
 wiki/  spec/home.md
        spec/<uuid>.md     → after tree rename e.g. spec/protocol.md
        .venus/pages.yaml  ← pages + folders from catalog pin (same decode as page_identity)
        .venus/ids/<docId>.json
+       .venus/links.json  ← inbound/outbound docId (same cut; derived from export comments)
 ```
 
 Ids (Intent; catalog Actual locked; second page is create-API, not seed):
@@ -167,8 +173,8 @@ Locked in [step-recon-catalog](#1-step-recon-catalog). If this section disagrees
 | Order | Fractional index **string** on each catalog node. **Not git.** Helper pin is step 3 (`ops.js`). |
 | Tree UI | **`@headless-tree/react@1.7.0`** view over the catalog Y.Doc. Data loader reads `Y.Map`; drop calls catalog `reparent` / `setOrder`. Not AFFiNE explorer. Design: [CRDT tree](../components/frontend/crdt-tree/). |
 | Header | Host chrome: `store.undo()` / `store.redo()`; **subscribe** to `store.history.canUndo$` / `canRedo$` (do not poll). **`venus-page-title` = catalog `name`**. |
-| Linked-doc | `affine:embed-linked-doc` `pageId = docId`. **Git:** `[catalog name](posix-relative gitPath)` + `<!-- venus:doc:<docId> -->`. **Live card:** `docMetas.title` = catalog `name` on create/rename/seed. Never `./workspace/<ws>/…` in `wiki/`. |
-| Git | Same sidecar. `git2` `git mv` when catalog `gitPath` ≠ last committed path. Autocomment: one dirty page → `snapshot: <H1>` (M3); several / catalog-only → `snapshot:`. **Catalog pin:** Rust y-octo walk in `venus-sidecar` → YAML + `page_identity` + `gitPath`. Page pins: M3 `fromDoc`. Do not `fromDoc` the catalog. |
+| Linked-doc | `affine:embed-linked-doc` `pageId = docId`. **Git:** `[catalog name](posix-relative gitPath)` + `<!-- venus:doc:<docId> -->`. **Live card:** `docMetas.title` = catalog `name` on create/rename/seed. Never `./workspace/<ws>/…` in `wiki/`. **Flush reverse index:** `.venus/links.json` (docId inbound/outbound). Not `docMetas`. Not catalog node fields. Not a second live graph. |
+| Git | Same sidecar. `git2` `git mv` when catalog `gitPath` ≠ last committed path. Autocomment: one dirty page → `snapshot: <H1>` (M3); several / catalog-only → `snapshot:`. **Catalog pin:** Rust y-octo walk in `venus-sidecar` → YAML + `page_identity` + `gitPath`. Page pins: M3 `fromDoc`. Do not `fromDoc` the catalog. **Href rewrite:** `fromDoc` only the convert set from [step 7](#7-step-links). |
 | Tab sockets | Default: one TCP per **connected** Y.Doc in that tab (catalog + current page). `VenusHubProvider` `_gen` is **per session**, not global. |
 | SharedWorker | Last product step ([`step-shared-worker`](#8-step-shared-worker)): if `typeof SharedWorker === 'function'`, one worker per origin+workspace holds those **same A sockets**; tabs `postMessage` updates. `Y.Doc` + BlockSuite stay in the tab. Missing API → per-tab A (required fallback). **Not** a Service Worker. |
 | Out of scope | Lease UI, remotes, `@affine/core`, convert in hub, `toDoc` restoring the card, y-protocols envelope (C) |
@@ -192,10 +198,12 @@ What each step **adds** to the product (not how to test it — that is under eac
 | [1](#1-step-recon-catalog) | [`step-recon-catalog`](#1-step-recon-catalog) | ✅ **done.** Gate + map: wire **A** (`?doc=`), catalog schema, tree/header symbols, `git mv`, linked-doc Actuals; spike two docs. |
 | [2](#2-step-spaces) | [`step-spaces`](#2-step-spaces) | ✅ **done.** Hub + host: many pages per wiki; bare path still home; `?doc=` bind; gRPC `ExportDoc` per doc. Per-tab sockets. |
 | [3](#3-step-catalog-crdt) | [`step-catalog-crdt`](#3-step-catalog-crdt) | ✅ **done.** Catalog Y.Doc ops: seed, reparent, `gitPath`, `deleteNode` (reject if children). Two tabs see moves. No tree chrome yet. |
-| [4](#4-step-chrome) | [`step-chrome`](#4-step-chrome) | Layout slots + product header (undo/redo, current page) on the open Store. |
-| [5](#5-step-tree) | [`step-tree`](#5-step-tree) | Tree UI; click opens; drop reparents. Outline stays headings. |
-| [6](#6-step-git-mv) | [`step-git-mv`](#6-step-git-mv) | Sidecar: catalog in the cut; two files; `git mv` on Flush when path changed. |
-| [7](#7-step-links) | [`step-links`](#7-step-links) | `embed-linked-doc` + export title/path/`venus:doc`; still resolves after a move. |
+| [4](#4-step-chrome) | [`step-chrome`](#4-step-chrome) | ✅ **done.** Layout slots + product header (undo/redo, current page) on the open Store. |
+| [5](#5-step-tree) | [`step-tree`](#5-step-tree) | ✅ **done.** Tree UI; click opens; drop reparents. Outline stays headings. |
+| [6](#6-step-git-mv) | [`step-git-mv`](#6-step-git-mv) | ✅ **done.** Sidecar: catalog in the cut; two files; `git mv` on Flush when path changed. |
+| [7](#7-step-links) | [`step-links`](#7-step-links) | ✅ **done.** Reverse index + embed-linked-doc; Flush converts index hits, not the whole wiki. |
+| [7.1](#71-step-link-index) | [`step-link-index`](#71-step-link-index) | ✅ **done.** `.venus/links.json`: inbound/outbound `docId`; rebuild from HEAD if missing; lookup without scanning every page. |
+| [7.2](#72-step-link-export) | [`step-link-export`](#72-step-link-export) | ✅ **done.** Card + export rewrite; Flush convert set = body-dirty ∪ index hits; still resolves after a move. |
 | [8](#8-step-shared-worker) | [`step-shared-worker`](#8-step-shared-worker) | Optional **SharedWorker** in front of A. Feature-detect; fallback per-tab. Not Service Worker. Not mux. |
 | [9](#9-step-verify) | [`step-verify`](#9-step-verify) | Close-out: person + Playwright; board `done`. |
 
@@ -407,7 +415,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | **title** | Layout + product header: undo/redo, current page |
 | **dependsOn** | `step-catalog-crdt` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
 
 **Adds:** the slice the tree will sit in. Header works on the open page even if the tree is still a stub slot.
 
@@ -464,7 +472,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | **title** | Folder tree: click opens, drop reparents |
 | **dependsOn** | `step-chrome` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
 
 **Adds:** the wiki TOC people use. Data = catalog. Drop = `reparent`.
 
@@ -528,16 +536,16 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | **title** | Flush pins catalog; git mv when gitPath changed |
 | **dependsOn** | `step-tree` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** cloneable folders that match the catalog after publish. Sidecar today writes only `spec/home.md` and skips other `doc_id`s.
+**Adds:** cloneable folders that match the catalog after publish. Sidecar pins catalog in the cut, writes every dirty page, `git mv` / `git rm` on Flush, rewrites `pages.yaml` and `page_identity` from the Rust walk.
 
 #### Work
 
 1. Cut: include catalog `doc_id` in S when its `dirty.clock` > `last_flushed` **or** any page is dirty (so `gitPath` is consistent). Pin catalog Yjs bytes like a page. COMMIT before `fromDoc`.
 2. Convert: `fromDoc` each **page** pin whose body clock moved (M3 Rust). Hydrate the **catalog pin** with **y-octo** in the same sidecar process; walk `nodes`; read `gitPath` (same filename rules as host ops). Do not `fromDoc` the catalog. Do not walk the tree in hub JS or `from-doc.js`.
 3. If a page’s new `gitPath` ≠ path at last commit: `git2` `rename` / `git mv` the `.md` (and keep sidecar keyed by `docId` under `.venus/ids/<docId>.json`).
-4. Body unchanged + path changed → **no** `fromDoc`; still `git mv` + one autocomment commit.
+4. Body unchanged + path changed → **no** `fromDoc` **of that page**; still `git mv` + one autocomment commit. **Do not** `fromDoc` inbound pages here — href rewrite of other files is [7.2](#72-step-link-export) (index convert set).
 5. `commit_pins` writes every dirty page, not only home. `last_flushed` rows for those `doc_id`s (including catalog clock).
 6. Rewrite `wiki/.venus/pages.yaml` every Flush from that **Rust catalog walk** (`pages:` + `folders:`). Same walk **replaces** `page_identity`. Never YAML → uuid. Never YAML → catalog. [page-identity](../datamodel/page-identity.md).
 7. If the catalog pin has no that doc and HEAD still has that `.md`: **`git rm`** (and drop `.venus/ids/<docId>.json`). Do not `git rm` a folder’s files while children still exist in the catalog (delete already rejected).
@@ -551,6 +559,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 - Convert inside the hub.
 - `fromDoc` / `MarkdownAdapter` / `from-doc.js` on the catalog pin.
 - Encode sibling order as git file names (`01-home.md`).
+- Scan / `fromDoc` every page to fix hrefs (step 7).
 
 #### Test scenarios
 
@@ -572,7 +581,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 4. **Catalog-only no fromDoc**
    - **Given** that page’s body clock = `last_flushed`; only catalog dirty (path change).
    - **When** Flush.
-   - **Then** the markdown blob is byte-identical to HEAD’s old file (rename only). Convert is not invoked for that page (spy / no temp pin convert). Home not rewritten if not dirty.
+   - **Then** the markdown blob is byte-identical to HEAD’s old file (rename only). Convert is not invoked for **that** page (spy / no temp pin convert). Home not rewritten **in this step** if not dirty (inbound href rewrite is 7.2).
    - **How:** sidecar test. Fail if a second dialect rewrite jittered the file.
 5. **Clone matches**
    - **Given** after the move Flush.
@@ -591,40 +600,149 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 
 ### 7. step-links
 
-[Steps summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · **7** · [8](#8-step-shared-worker) · [9](#9-step-verify)
+[Steps summary](#steps-summary). Steps: [1](#1-step-recon-catalog) · [2](#2-step-spaces) · [3](#3-step-catalog-crdt) · [4](#4-step-chrome) · [5](#5-step-tree) · [6](#6-step-git-mv) · **7** ([7.1](#71-step-link-index) · [7.2](#72-step-link-export)) · [8](#8-step-shared-worker) · [9](#9-step-verify)
 
 | | |
 |---|---|
 | **n** | 7 |
 | **id** | `step-links` |
-| **title** | embed-linked-doc + markdown path; survives git mv |
+| **title** | Reverse index + embed-linked-doc; Flush convert set, not the wiki |
 | **dependsOn** | `step-git-mv` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
 
-**Adds:** a card from home to a **created** (then renamed) page that export and git can name. M2 synthetic `untitled` + `./workspace/…/doc:lease` is not enough once a catalog exists.
+**Adds:** a card from home to a **created** (then renamed) page that export and git can name, plus a **stored reverse index** so Flush rewrites hrefs without `fromDoc` of every page. M2 synthetic `untitled` + `./workspace/…/doc:lease` is not enough once a catalog exists. Board `step-links` is **done** only when **7.1–7.2** are done.
 
-#### Work
+Work is under the sub-steps, not this heading: [7.1](#71-step-link-index) → [7.2](#72-step-link-export). Do not defer the index to [LifeIndexing](../Agents/LifeIndexing.md) / AB1.
+
+#### Convert set (both sub-steps)
+
+```text
+pathChanged    = catalog gitPath ≠ last committed path
+nameChanged    = catalog name ≠ last committed name (pages.yaml)
+dirnameChanged = posix dirname(gitPath) ≠ last dirname
+
+needFromDoc = bodyDirty
+  ∪ inbound[pathChanged ∪ nameChanged]
+  ∪ { id ∈ dirnameChanged | outbound[id] nonempty }
+```
+
+`inbound[t]` = source `docId`s whose export embeds `t`. `outbound[s]` = target `docId`s `s` embeds. Filename-only move (same dirname, no outbound) → **`git mv` only** for that page; still `fromDoc` inbound sources. Extra `needFromDoc` pages that were not body-dirty are **pinned in the same RR cut** (SELECT their `crdt_*` into the Map) before COMMIT.
+
+---
+
+<a id="71-step-link-index"></a>
+
+#### 7.1 step-link-index
+
+[Back to 7](#7-step-links). Sub-steps: **7.1** · [7.2](#72-step-link-export)
+
+| | |
+|---|---|
+| **n** | 7.1 |
+| **id** | `step-link-index` |
+| **title** | `.venus/links.json` inbound/outbound; rebuild; lookup |
+| **dependsOn** | `step-git-mv` |
+| **kind** | implement |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
+
+**Adds:** the Flush sidecar graph and tests that prove lookup does not scan the wiki. No embed-linked-doc UI yet. No href rewrite of inbound files yet (7.2).
+
+##### Work
+
+1. File: `wiki/.venus/links.json` (same Flush as `.md` / `pages.yaml`). Shape:
+
+   ```json
+   {
+     "inbound":  { "<targetDocId>": ["<sourceDocId>", "..."] },
+     "outbound": { "<sourceDocId>": ["<targetDocId>", "..."] }
+   }
+   ```
+
+   Keys are catalog `docId` (`doc:home` or create uuid). Lists unique, sorted. Omit empty keys. Edges = `<!-- venus:doc:<docId> -->` in that source’s committed markdown (same comments `fromDoc` already writes). Skip self-links. Do **not** index ordinary markdown URLs that lack the comment.
+
+2. Host helper (Vitest, memory): parse comments → merge inbound/outbound; query `inbound[t]` / `outbound[s]`. Path under `apps/web/src/host/mdgate/link-index.js` (or Actual). Sidecar owns the git write; the helper is the dialect oracle for tests.
+
+3. Persist: after `fromDoc` of a source, replace that source’s **outbound** row and rebuild inbound for those targets (drop stale edges from this source). Delete of a leaf (step 6 `git rm`): drop that id from both maps.
+
+4. Missing / corrupt `links.json`: **one** rebuild from HEAD `wiki/**/*.md` comments + path→`docId` via `pages.yaml` / catalog pin. Then persist. Do not leave “`fromDoc` every page” as the only path.
+
+5. [api-map.md](../api-map.md) **Link reverse index** Actual. [datamodel git](../datamodel/git.md) lists the file.
+
+##### Do not
+
+- Store edges on `workspace.meta.docMetas` or catalog `Y.Map` nodes.
+- Treat the JSON as live SoT (cards still use `pageId`; catalog is still the tree).
+- Heading-grained / LLM / gist graphs ([LifeIndexing](../Agents/LifeIndexing.md) still after SHA).
+- Wire the convert set into Flush yet (7.2).
+- `fromDoc` the catalog.
+
+##### Test scenarios
+
+1. **Build + query**
+   - **Given** markdown fixtures: home comments `venus:doc:<uuid>`; a second page comments `venus:doc:<uuid>` too; a third page has no comment.
+   - **When** you build the index.
+   - **Then** `inbound[uuid] = [doc:home, <second>]` (sorted); `outbound[doc:home]` includes uuid; third id absent from both maps.
+   - **How:** `pnpm --filter @venus/web exec vitest run` `src/host/mdgate/link-index.test.ts` (or Actual). Fail if query walks every fixture file on each lookup after build.
+2. **Merge + delete**
+   - **Given** an index where home → uuid; then home’s comments become empty; then uuid is deleted.
+   - **When** you upsert home, then drop uuid.
+   - **Then** `inbound[uuid]` no longer lists home; after drop, neither map has uuid.
+   - **How:** same Vitest. Fail if stale inbound remains.
+3. **Rebuild from HEAD**
+   - **Given** a fixture `wiki/` with two `.md` files and comments; `links.json` missing or `{`.
+   - **When** rebuild.
+   - **Then** the written JSON matches scenario 1; a second rebuild is a no-op (same bytes).
+   - **How:** Vitest fixture and/or `cargo test -p venus-sidecar --test links`. Fail if rebuild requires hydrating every Yjs pin.
+4. **Not in metas / catalog**
+   - **Given** host catalog ops + `docMetas` helpers.
+   - **When** you search for writing inbound/outbound into `docMetas` or catalog node fields.
+   - **Then** none.
+   - **How:** same Vitest / grep in `apps/web/src/host/catalog` and `ops.js`. Fail if the graph is dual-written onto the live CRDT.
+
+---
+
+<a id="72-step-link-export"></a>
+
+#### 7.2 step-link-export
+
+[Back to 7](#7-step-links). Sub-steps: [7.1](#71-step-link-index) · **7.2**
+
+| | |
+|---|---|
+| **n** | 7.2 |
+| **id** | `step-link-export` |
+| **title** | Card + export rewrite; Flush uses the index convert set |
+| **dependsOn** | `step-link-index` |
+| **kind** | implement |
+| **status** | **done** ([board](./M4.state.yaml); breakpoint `human`) |
+
+**Adds:** the product card and git hrefs that survive `git mv`, using 7.1 to choose `fromDoc` pages.
+
+##### Work
 
 1. Insert `affine:embed-linked-doc` with `pageId =` the created page’s uuid/`docId`.
 2. `fromDoc` post-process **rewrites** the adapter link (do not leave `./workspace/<ws>/<pageId>`). Link text = target catalog `name`; href = POSIX relative from the **current** file’s `gitPath` to the target `gitPath`; keep `<!-- venus:doc:<docId> -->`. Placement must not require `/${pageId}` in the href (M2 `urlMentionsPageId` breaks once the URL is `protocol.md`).
-3. After `git mv`, next Flush: markdown URL updates; comment id unchanged. WYSIWYG card still opens/resolves that `pageId` (BlockSuite, not path).
+3. Flush: compute **convert set** from the catalog pin vs last committed paths/names **and** `links.json` (rebuild first if missing). Pin extra convert-set `doc_id`s in the **same RR cut**. `fromDoc` only that set. `git mv` still applies to path-changed pages even when they are not in the convert set (step 6 catalog-only). Write `links.json` in that same git commit. After `git mv`, inbound markdown URL updates; comment id unchanged. WYSIWYG card still opens/resolves that `pageId` (BlockSuite, not path).
 4. Re-read [fromDoc-review S4](../M2/fromDoc-review.md): `pageId` allowlist still holds. Do not implement M6 `toDoc` → card.
 5. On create / rename / seed: set `workspace.meta.docMetas[docId].title` = catalog `name`. Live card reads that. Git / `fromDoc` post-process still uses catalog `name` for link text, not affine `affine:page` title. Do not change home `# Venus` (`titleMiddleware` of the page file; M3 autocomment).
+6. [subset.md](../MDGate/subset.md#linked-doc-stable-form): Flush href rewrite uses the index convert set.
 
-#### Do not
+##### Do not
 
 - Path-only identity.
 - Whole-file `toDoc` onto the live doc.
 - Synced-doc transclusion as a product surface (S5 still open; do not seed `embed-synced-doc`).
+- `fromDoc` every page on rename/move.
+- String-replace hrefs in HEAD markdown without a pin/`fromDoc` of that source.
 
-#### Test scenarios
+##### Test scenarios
 
 1. **Card + comment**
    - **Given** home contains `affine:embed-linked-doc` to a created page (renamed `protocol` or still uuid).
    - **When** `fromDoc(home)`.
-   - **Then** markdown is `[<catalog name>](<relative>)` plus `<!-- venus:doc:<uuid> -->`. Live card title is that catalog `name` (`docMetas`), not `untitled`. Fail if git still has `./workspace/<ws>/…` or `untitled` only.
-   - **How:** Vitest mdgate + catalog fixture; `e2e/m4-link.spec.ts` for the card visible.
+   - **Then** markdown is `[<catalog name>](<relative>)` plus `<!-- venus:doc:<uuid> -->`. Live card title is that catalog `name` (`docMetas`), not `untitled`. Fail if git still has `./workspace/<ws>/…` or `untitled` only. `links.json` `inbound[uuid]` includes `doc:home`.
+   - **How:** Vitest mdgate + catalog fixture; `e2e/m4-link.spec.ts` for the card visible; sidecar flush assert on `links.json`.
 2. **Resolves after move**
    - **Given** that card; reparent the created page; Flush.
    - **When** you open home (reload ok).
@@ -632,9 +750,24 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
    - **How:** `e2e/m4-link.spec.ts` + sidecar markdown assert. Fail if the card is missing or points at a new space.
 3. **Export path from catalog**
    - **Given** that page at `design/protocol.md` (after rename + reparent).
-   - **When** Flush home (dirty because title middleware / link path).
+   - **When** Flush (home may be index-hit, not body-dirty).
    - **Then** `wiki/spec/home.md` contains a relative path to `design/protocol.md` (e.g. `../design/protocol.md`).
    - **How:** sidecar / Vitest. Fail if the file still says `spec/protocol.md` or `spec/<uuid>.md`.
+4. **Index-guided convert (not the wiki)**
+   - **Given** three committed pages: home embeds uuid; uuid has no outbound; **unrelated** third page has no embeds and is not body-dirty; uuid reparented (dirname changed).
+   - **When** Flush.
+   - **Then** `fromDoc` runs for **home** (inbound); **not** for the third page; **not** for uuid if it has no outbound (git mv only, step 6 blob identical). `links.json` inbound still lists home after the move.
+   - **How:** sidecar spy / convert invocation log (`cargo test -p venus-sidecar --test flush` or `--test links`). Fail if convert ran for the third page or for every `page_identity` row.
+5. **Outbound when dirname changes**
+   - **Given** uuid embeds a fourth page; uuid reparented to another folder; uuid body clock = `last_flushed`.
+   - **When** Flush.
+   - **Then** uuid **is** `fromDoc`’d (outbound relatives); fourth page is not unless inbound/body-dirty.
+   - **How:** same sidecar spy. Fail if uuid was git-mv-only and its hrefs still point at the old relative.
+6. **Name change, link text**
+   - **Given** home embeds uuid named `protocol`; tree rename to `lease` (new `gitPath` and catalog `name`).
+   - **When** Flush.
+   - **Then** home is in the convert set; git link **text** is `lease`.
+   - **How:** sidecar + Vitest. Fail if home was skipped and git still has `[protocol]`.
 
 ---
 
@@ -765,7 +898,7 @@ Hub `Room` today is one `Doc` (`PAGE_DOC_ID`). SQL already keys `(workspace_id, 
 | Day 3 | [3 `step-catalog-crdt`](#3-step-catalog-crdt) |
 | Day 4 | [4 `step-chrome`](#4-step-chrome) → [5 `step-tree`](#5-step-tree) |
 | Day 5 | [6 `step-git-mv`](#6-step-git-mv) |
-| Day 6 | [7 `step-links`](#7-step-links) |
+| Day 6 | [7.1 `step-link-index`](#71-step-link-index) → [7.2 `step-link-export`](#72-step-link-export) |
 | Day 7 | [8 `step-shared-worker`](#8-step-shared-worker) → [9 `step-verify`](#9-step-verify) |
 
 If M3 is still open, **stop**. Do not fake a second page as two git paths on one Y.Doc.
@@ -787,6 +920,9 @@ If M3 is still open, **stop**. Do not fake a second page as two git paths on one
 | `git mv` on every drop | Step 6 only on Flush |
 | `commit_pins` still home-only | Step 6 **Two files** |
 | Path as link identity | Step 7 `venus:doc:` + `pageId` |
+| Flush `fromDoc` of every page on rename | [7.1](#71-step-link-index) index + [7.2](#72-step-link-export) convert-set spy |
+| Reverse index on `docMetas` / catalog Yjs | Forbidden; `.venus/links.json` derived at convert |
+| LifeIndexing as the Flush convert set | AB1 stays after SHA; M4 ships the page-level index |
 | `@affine/core` header | Step 4 **Seam holds** |
 | Outline replaced by folders | Step 5 **Outline not a wiki TOC** |
 | Catalog is an `affine:page` | Step 3 schema; hub stores a plain Y.Doc |
@@ -803,6 +939,7 @@ M5 may assume:
 - Tree + header exist; current page is visible; undo/redo is host chrome.
 - Per-tab A sockets work; SharedWorker is an optional host fan-in of those sockets.
 - Flush `git mv`s; clone folders match catalog after publish.
+- `.venus/links.json` exists; Flush convert set is index-guided (not every page).
 - Linked-doc export has stable `docId` comments.
 - Freeze / `store.readonly` / CodeMirror / lease holder chip are **new**.
 - Hub still has no convert and does not write `jobs`.
@@ -818,8 +955,9 @@ M5 exit is: second user cannot type in WYSIWYG during the lease; they see who ho
 5. Outline is headings. Tree is folders/pages.
 6. Header undo is the open Store’s Yjs undo stack, not a timeline, not `@affine/core`.
 7. Linked-doc keys by `docId`; markdown also carries path for humans/agents.
-8. `mount-editor` stays unaware of catalog, tree, header, and git.
-9. No lease, no comment-commit why, no remotes required.
-10. Memory default stays Docker-free for m0/m2 e2e.
+8. **`.venus/links.json` is derived at Flush**, not live SoT. Convert set follows the index; do not `fromDoc` the wiki.
+9. `mount-editor` stays unaware of catalog, tree, header, and git.
+10. No lease, no comment-commit why, no remotes required.
+11. Memory default stays Docker-free for m0/m2 e2e.
 11. Hub wire is A. SharedWorker does not change URLs or frames.
 12. Second pages are **created**, not recon-seeded. First git file is `{uuid}.md`; tree rename changes path only.

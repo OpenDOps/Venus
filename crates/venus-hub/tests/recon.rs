@@ -189,6 +189,12 @@ fn api_map_m4_catalog_actuals() {
         "SharedWorker detect is SharedWorker, not serviceWorker"
     );
     assert!(
+        catalog.contains(".venus/links.json")
+            && catalog.contains("inbound")
+            && catalog.contains("LifeIndexing"),
+        "M4 reverse index Actual is links.json, not LifeIndexing"
+    );
+    assert!(
         catalog.contains("One persist tick per Room"),
         "persist Actual is one tick per Room, not a task per doc"
     );

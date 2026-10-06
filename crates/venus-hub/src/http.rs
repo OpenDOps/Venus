@@ -262,8 +262,15 @@ struct ProtocolBody {
     protocol: &'static str,
 }
 
-async fn collaboration_post(Path(workspace_id): Path<String>) -> Response {
-    if let Err(r) = take_workspace_id(workspace_id) {
+async fn collaboration_post(
+    Path(workspace_id): Path<String>,
+    State(st): State<AppState>,
+) -> Response {
+    let workspace_id = match take_workspace_id(workspace_id) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
         return r;
     }
     Json(ProtocolBody {
@@ -302,6 +309,9 @@ async fn collaboration_get(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
+        return r;
+    }
     let doc_id = match take_doc_id(q.doc) {
         Ok(id) => id,
         Err(r) => return r,
@@ -343,10 +353,28 @@ async fn collaboration_get(
             );
             rpc::error_lease_held(&workspace_id)
         }
+        Err(GetRoomError::Unknown) => unknown_workspace(),
         Err(GetRoomError::Store(e)) => {
             tracing::error!(workspace_id = %workspace_id, error = %e, "get_room store");
             rpc::error_store_failed(&workspace_id)
         }
+    }
+}
+
+fn unknown_workspace() -> Response {
+    rpc::error_response(
+        StatusCode::NOT_FOUND,
+        rpc::CODE_UNKNOWN_WORKSPACE,
+        "unknown workspace",
+    )
+}
+
+fn gate_workspace(st: &AppState, id: &str) -> Result<(), Response> {
+    if st.hub.permits_workspace(id) {
+        Ok(())
+    } else {
+        tracing::warn!(workspace_id = %id, "workspace not in HUB_WORKSPACES");
+        Err(unknown_workspace())
     }
 }
 
@@ -468,11 +496,18 @@ fn ws_ping_interval(ping: Duration) -> Option<tokio::time::Interval> {
 }
 
 /// Advertisement only. Yjs bytes are gRPC `Hub.ExportDoc` (see `rpc`).
-async fn export_doc(Path(workspace_id): Path<String>, Query(q): Query<CollabQuery>) -> Response {
+async fn export_doc(
+    Path(workspace_id): Path<String>,
+    Query(q): Query<CollabQuery>,
+    State(st): State<AppState>,
+) -> Response {
     let workspace_id = match take_workspace_id(workspace_id) {
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
+        return r;
+    }
     let advertisement = rpc::export_advertisement(&workspace_id);
     match q.doc {
         None => rpc::advertisement_response(advertisement),
@@ -510,6 +545,9 @@ async fn blob_post(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
+        return r;
+    }
     let id = blob_hash(&body);
     match db::put_blob(&st.hub.pool, &workspace_id, &id, &body).await {
         Ok(exists) => Json(BlobPosted { id, exists }).into_response(),
@@ -529,6 +567,9 @@ async fn blob_get(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
+        return r;
+    }
     if etag_matches(&headers, &hash) {
         return match db::blob_len(&st.hub.pool, &workspace_id, &hash).await {
             Ok(Some(_)) => blob_not_modified(&hash),
@@ -563,6 +604,9 @@ async fn blob_head(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
+        return r;
+    }
     if etag_matches(&headers, &hash) {
         return match db::blob_len(&st.hub.pool, &workspace_id, &hash).await {
             Ok(Some(_)) => blob_not_modified(&hash),
@@ -598,6 +642,9 @@ async fn blob_delete(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = gate_workspace(&st, &workspace_id) {
+        return r;
+    }
     match db::delete_blob(&st.hub.pool, &workspace_id, &hash).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => StatusCode::NOT_FOUND.into_response(),

@@ -76,6 +76,9 @@ test('createDoc then rename: uuid.md then protocol.md; slash and sibling _1', as
   expect(created.gitPath).toBe(`spec/${created.id}.md`);
   expect(workspace.docs.size).toBe(2);
   expect(workspace.meta.getDocMeta?.(created.id)?.title).toBe(created.id);
+  expect(workspace.getDoc?.(created.id)?.getStore()?.root?.flavour).toBe(
+    'affine:page',
+  );
 
   const renamed = rename(catalog, workspace, created.id, 'protocol');
   expect(renamed.id).toBe(created.id);
@@ -132,6 +135,7 @@ test('rename empty / whitespace keeps the previous name', async () => {
   const homeBefore = getNode(catalog, PAGE_DOC_ID);
   expect(rename(catalog, workspace, PAGE_DOC_ID, '').name).toBe('home');
   expect(getNode(catalog, PAGE_DOC_ID)).toEqual(homeBefore);
+  expect(rename(catalog, workspace, PAGE_DOC_ID, 'home')).toEqual(homeBefore);
 });
 
 test('reparent moves gitPath not page body bytes', async () => {

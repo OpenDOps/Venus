@@ -53,9 +53,23 @@ export default defineConfig({
           env: {
             VITE_SYNC_URL: syncUrl,
             VITE_SIDECAR_URL: sidecarUrl,
+            VITE_DEBUG: '1',
           },
         }
-      : isM1 || isM4
+      : isM4
+        ? {
+            command: 'vite --host 127.0.0.1 --port 5174 --strictPort',
+            url: 'http://127.0.0.1:5174',
+            reuseExistingServer: false,
+            timeout: 180_000,
+            env: {
+              VITE_SYNC_URL: syncUrl,
+              VITE_SIDECAR_URL: sidecarUrl,
+              VITE_DEBUG: '1',
+              VITE_TESTIDS: '1',
+            },
+          }
+        : isM1
         ? {
             command: 'vite --host 127.0.0.1 --port 5174 --strictPort',
             url: 'http://127.0.0.1:5174',

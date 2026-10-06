@@ -50,7 +50,16 @@ export class VenusHubProvider {
     return () => this._syncListeners.delete(fn);
   }
 
-  whenReady() {
+  whenReady(docId) {
+    if (docId != null) {
+      const session = this._sessions.get(docId);
+      if (!session) {
+        return Promise.reject(
+          new Error('hub websocket disconnected before sync'),
+        );
+      }
+      return session.ready.then(() => {});
+    }
     const sessions = [...this._sessions.values()];
     if (sessions.length === 0) return Promise.resolve();
     return Promise.all(sessions.map((s) => s.ready)).then(() => {});

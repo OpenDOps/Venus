@@ -7,6 +7,10 @@ interface ImportMetaEnv {
   readonly VITE_SYNC_URL?: string;
   /** Sidecar origin for Flush + git log (`http://127.0.0.1:3002`). Unset hides chrome. */
   readonly VITE_SIDECAR_URL?: string;
+  /** Show Flush / git-log debug bar (with `VITE_SIDECAR_URL`). Playwright m3/m4. */
+  readonly VITE_DEBUG?: string;
+  /** Emit catalog/header `data-testid`s. Playwright m4. */
+  readonly VITE_TESTIDS?: string;
 }
 
 interface ImportMeta {
@@ -54,7 +58,16 @@ declare global {
         id: string,
         parentId: string | null,
       ) => { gitPath: string; parentId: string | null };
+      drop: (
+        id: string,
+        parentId: string | null,
+      ) => { ok: boolean; gitPath: string | null; parentId: string | null };
+      canDrop: (id: string, parentId: string | null) => boolean;
       deleteNode: (id: string) => void;
     };
+    /** Open a catalog doc in this tab (home if missing). */
+    __VENUS_OPEN_DOC__?: (docId: string) => void;
+    __VENUS_OPEN_DOC_ID__?: string;
+    __VENUS_INSERT_LINKED_DOC__?: (pageId: string) => string;
   }
 }

@@ -197,7 +197,9 @@ async fn lease_this_wiki(pool: &PgPool, workspace: &str) {
 
 async fn claim_and_cut(pool: &PgPool, workspace: &str, pins: &mut PinMap) {
     lease_this_wiki(pool, workspace).await;
-    cut_workspace(pool, workspace, pins).await.expect("cut");
+    cut_workspace(pool, workspace, pins, None)
+        .await
+        .expect("cut");
 }
 
 #[test]

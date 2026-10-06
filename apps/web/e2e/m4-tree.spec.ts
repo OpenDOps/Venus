@@ -35,6 +35,15 @@ async function waitForCatalog(page: Page) {
     );
   });
   await page.locator(NOTE).first().waitFor({ timeout: 30_000 });
+  await page.getByTestId('venus-tree').waitFor({ timeout: 30_000 });
+}
+
+async function expectOpenDoc(page: Page, docId: string) {
+  await expect
+    .poll(() => page.evaluate(() => window.__VENUS_OPEN_DOC_ID__ ?? ''), {
+      timeout: 30_000,
+    })
+    .toBe(docId);
 }
 
 function collectHubSockets(page: Page) {
@@ -205,3 +214,185 @@ test('A createDoc appears on B catalog without reload', async ({
     window.__VENUS_CATALOG_OPS__?.deleteNode(folderId);
   }, dest.id);
 });
+
+test('tree lists spec and home; outline stays Why Venus', async ({ page }) => {
+  await waitForCatalog(page);
+  const tree = page.getByTestId('venus-tree');
+  await expect(tree).toBeVisible();
+  await expect(tree).toContainText('spec');
+  await expect(page.getByTestId('venus-tree-home')).toContainText('home');
+  await expect(tree).not.toContainText('Why Venus');
+  await expect(
+    page.locator('[data-testid="outline-block-preview-h1"]'),
+  ).toContainText('Why Venus');
+
+  const created = await page.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    return ops.createDoc('folder:spec');
+  });
+  await expect(page.locator(`[data-catalog-id="${created.id}"]`)).toBeVisible();
+  await page.evaluate((id) => {
+    window.__VENUS_CATALOG_OPS__?.deleteNode(id);
+  }, created.id);
+});
+
+test('left-click spec selects without collapsing children', async ({ page }) => {
+  await waitForCatalog(page);
+  const created = await page.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    return ops.createDoc('folder:spec');
+  });
+  await expect(page.locator(`[data-catalog-id="${created.id}"]`)).toBeVisible();
+  await page.locator('[data-catalog-id="folder:spec"]').click();
+  await expect(page.locator(`[data-catalog-id="${created.id}"]`)).toBeVisible();
+  await expect(page.getByTestId('venus-delete-node')).toHaveCount(0);
+  await page.locator('[data-catalog-expand="folder:spec"]').click();
+  await expect(page.locator(`[data-catalog-id="${created.id}"]`)).toHaveCount(0);
+  await page.locator('[data-catalog-expand="folder:spec"]').click();
+  await expect(page.locator(`[data-catalog-id="${created.id}"]`)).toBeVisible();
+  await page.evaluate((id) => {
+    window.__VENUS_CATALOG_OPS__?.deleteNode(id);
+  }, created.id);
+});
+
+test('click a created page opens that Store', async ({ page }) => {
+  await waitForCatalog(page);
+  const created = await page.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    return ops.createDoc('folder:spec');
+  });
+  await page.locator(`[data-catalog-id="${created.id}"]`).click();
+  await expectOpenDoc(page, created.id);
+  await expect(page.getByTestId('venus-page-title')).toHaveValue(created.id);
+  await expect(
+    page.locator('[data-testid="outline-block-preview-h1"]'),
+  ).toHaveCount(0);
+  await page.getByTestId('venus-tree-home').click();
+  await expectOpenDoc(page, PAGE_DOC_ID);
+  await page.evaluate((id) => {
+    window.__VENUS_CATALOG_OPS__?.deleteNode(id);
+  }, created.id);
+});
+
+test('drop reparents via published drop API; home stays under spec', async ({
+  page,
+  context,
+}) => {
+  const pageA = page;
+  await waitForCatalog(pageA);
+  const pageB = await context.newPage();
+  await waitForCatalog(pageB);
+
+  const created = await pageA.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    const folder = ops.createFolder(null, `design-${Date.now()}`);
+    const doc = ops.createDoc('folder:spec');
+    return {
+      folderId: folder.id,
+      folderGitPath: folder.gitPath,
+      docId: doc.id,
+    };
+  });
+
+  const dropped = await pageA.evaluate(
+    ({ docId, folderId }) => {
+      const ops = window.__VENUS_CATALOG_OPS__;
+      if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+      return ops.drop(docId, folderId);
+    },
+    { docId: created.docId, folderId: created.folderId },
+  );
+  expect(dropped.ok).toBe(true);
+  expect(dropped.parentId).toBe(created.folderId);
+  expect(dropped.gitPath).toBe(`${created.folderGitPath}/${created.docId}.md`);
+
+  await expect
+    .poll(async () => {
+      return pageB.evaluate((id) => {
+        const node = window.__VENUS_CATALOG_OPS__?.getNode(id);
+        return node ? { gitPath: node.gitPath, parentId: node.parentId } : null;
+      }, created.docId);
+    })
+    .toEqual({ gitPath: dropped.gitPath, parentId: created.folderId });
+
+  const homeDrop = await pageA.evaluate((folderId) => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    return {
+      can: ops.canDrop('doc:home', folderId),
+      drop: ops.drop('doc:home', folderId),
+    };
+  }, created.folderId);
+  expect(homeDrop.can).toBe(false);
+  expect(homeDrop.drop.ok).toBe(false);
+  expect(homeDrop.drop.parentId).toBe('folder:spec');
+  await expect(pageA.getByTestId('venus-tree-home')).toBeVisible();
+
+  await pageA.evaluate(
+    ({ pageId, folderId }) => {
+      window.__VENUS_CATALOG_OPS__?.deleteNode(pageId);
+      window.__VENUS_CATALOG_OPS__?.deleteNode(folderId);
+    },
+    { pageId: created.docId, folderId: created.folderId },
+  );
+});
+
+test('delete is hidden on spec; deleting an open leaf switches to home', async ({
+  page,
+  context,
+}) => {
+  await waitForCatalog(page);
+  await page.locator('[data-catalog-id="folder:spec"]').click({ button: 'right' });
+  await expect(page.getByTestId('venus-delete-node')).toHaveCount(0);
+
+  const created = await page.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    return ops.createDoc('folder:spec');
+  });
+  await expect(page.locator(`[data-catalog-id="${created.id}"]`)).toBeVisible();
+  await page.locator(`[data-catalog-id="${created.id}"]`).click();
+  await expectOpenDoc(page, created.id);
+  await expect(page.getByTestId('venus-delete-node')).toBeVisible();
+
+  const pageB = await context.newPage();
+  await waitForCatalog(pageB);
+  await pageB.evaluate((id) => {
+    window.__VENUS_OPEN_DOC__?.(id);
+  }, created.id);
+  await expectOpenDoc(pageB, created.id);
+
+  await page.getByTestId('venus-delete-node').click();
+  await expectOpenDoc(page, PAGE_DOC_ID);
+  await expect(page.getByTestId('venus-page-title')).toHaveValue('home');
+  await expectOpenDoc(pageB, PAGE_DOC_ID);
+  await expect(pageB.getByTestId('venus-page-title')).toHaveValue('home');
+
+  await page.evaluate((id) => {
+    window.__VENUS_OPEN_DOC__?.(id);
+  }, created.id);
+  await expectOpenDoc(page, PAGE_DOC_ID);
+
+  const specBlocked = await page.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    try {
+      ops.deleteNode('folder:spec');
+      return { threw: false, code: null };
+    } catch (err) {
+      return {
+        threw: true,
+        code:
+          err && typeof err === 'object' && 'code' in err
+            ? String((err as { code: unknown }).code)
+            : null,
+      };
+    }
+  });
+  expect(specBlocked).toEqual({ threw: true, code: 'node_not_empty' });
+});
+

@@ -11,7 +11,8 @@ export interface SyncProvider {
   readonly synced: boolean;
   connect(docId: string, ydoc: Doc): void;
   disconnect(docId: string): void;
-  whenReady(): Promise<void>;
+  /** Omit `docId` = every session (boot). Pass `docId` so a page open does not wait on catalog. */
+  whenReady(docId?: string): Promise<void>;
   on?(event: 'sync', fn: () => void): () => void;
 }
 
@@ -20,6 +21,6 @@ export class MemoryNoopProvider implements SyncProvider {
   readonly synced: boolean;
   connect(docId: string, ydoc: Doc): void;
   disconnect(docId: string): void;
-  whenReady(): Promise<void>;
+  whenReady(docId?: string): Promise<void>;
   on(event: 'sync', fn: () => void): () => void;
 }

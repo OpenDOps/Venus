@@ -15,8 +15,8 @@ use crate::db;
 use crate::http::{bind_doc_id, workspace_id_ok};
 use crate::room::Hub;
 use crate::rpc::{
-    CODE_INVALID_DOC, CODE_INVALID_WORKSPACE, CODE_STORE_FAILED, GRPC_LISTEN_DEFAULT,
-    GRPC_LISTEN_ENV, GRPC_SERVICE,
+    CODE_INVALID_DOC, CODE_INVALID_WORKSPACE, CODE_STORE_FAILED, CODE_UNKNOWN_WORKSPACE,
+    GRPC_LISTEN_DEFAULT, GRPC_LISTEN_ENV, GRPC_SERVICE,
 };
 use crate::{CATALOG_DOC_ID, PAGE_DOC_ID};
 
@@ -57,6 +57,14 @@ impl HubRpc for HubGrpc {
     ) -> Result<Response<ExportDocResponse>, Status> {
         let req = request.into_inner();
         let workspace_id = parse_workspace(&req.workspace_id)?;
+        if !self.hub.permits_workspace(&workspace_id) {
+            return Err(status_error(
+                Code::NotFound,
+                CODE_UNKNOWN_WORKSPACE,
+                "unknown workspace",
+                &workspace_id,
+            ));
+        }
         let doc_id = parse_export_doc_id(req.doc_id.as_deref())?;
         match self.hub.live_export_doc(&workspace_id, &doc_id).await {
             Ok(bin) => Ok(Response::new(ExportDocResponse {
@@ -73,6 +81,14 @@ impl HubRpc for HubGrpc {
     ) -> Result<Response<ListDocsResponse>, Status> {
         let req = request.into_inner();
         let workspace_id = parse_workspace(&req.workspace_id)?;
+        if !self.hub.permits_workspace(&workspace_id) {
+            return Err(status_error(
+                Code::NotFound,
+                CODE_UNKNOWN_WORKSPACE,
+                "unknown workspace",
+                &workspace_id,
+            ));
+        }
         let mut docs = vec![home_ref(), catalog_ref()];
         match db::list_created_pages(&self.hub.pool, &workspace_id).await {
             Ok(rows) => {

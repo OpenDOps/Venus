@@ -3,8 +3,9 @@
 
 mod common;
 
+use venus_sidecar::catalog::{CatalogPage, CatalogWalk};
 use venus_sidecar::from_doc;
-use venus_sidecar::PAGE_DOC_ID;
+use venus_sidecar::{PAGE_DOC_ID, PAGE_DOC_UUID};
 
 use crate::common::{
     assert_identity, convert_cfg, first_byte_diff, load_fixture, LARGE_PARAGRAPH_COUNT,
@@ -189,4 +190,67 @@ async fn large_file_identical_to_js_cli() {
         .expect("JS CLI large fromDoc");
     assert_identity("large-home", &rust, &js);
     assert_eq!(js.markdown.len(), rust.markdown.len());
+}
+
+#[test]
+fn catalog_walk_rewrites_linked_doc_not_workspace_url() {
+    let pin = load_fixture("rt-linked-doc.yjs");
+    let walk = CatalogWalk {
+        pages: vec![
+            CatalogPage {
+                sql_uuid: PAGE_DOC_UUID.into(),
+                doc_id: PAGE_DOC_ID.into(),
+                name: "home".into(),
+                git_path: "spec/home.md".into(),
+            },
+            CatalogPage {
+                sql_uuid: "00000000-0000-4000-8000-000000000001".into(),
+                doc_id: "doc:lease".into(),
+                name: "protocol".into(),
+                git_path: "spec/protocol.md".into(),
+            },
+        ],
+        folders: vec![],
+    };
+    let rust = from_doc::from_pinned_bytes_catalog(
+        &pin,
+        venus_sidecar::DEFAULT_WORKSPACE_ID,
+        PAGE_DOC_ID,
+        Some(&walk),
+    )
+    .expect("catalog fromDoc");
+    assert!(
+        rust.markdown.contains("[protocol](protocol.md)"),
+        "{}",
+        rust.markdown
+    );
+    assert!(rust.markdown.contains("<!-- venus:doc:doc:lease -->"));
+    assert!(!rust.markdown.contains("./workspace/"));
+    assert!(!rust.markdown.contains("[untitled]"));
+    assert!(rust.markdown.starts_with("# Venus\n"));
+
+    let nested = CatalogWalk {
+        pages: vec![
+            walk.pages[0].clone(),
+            CatalogPage {
+                sql_uuid: "00000000-0000-4000-8000-000000000001".into(),
+                doc_id: "doc:lease".into(),
+                name: "protocol".into(),
+                git_path: "design/protocol.md".into(),
+            },
+        ],
+        folders: vec![],
+    };
+    let moved = from_doc::from_pinned_bytes_catalog(
+        &pin,
+        venus_sidecar::DEFAULT_WORKSPACE_ID,
+        PAGE_DOC_ID,
+        Some(&nested),
+    )
+    .expect("nested fromDoc");
+    assert!(
+        moved.markdown.contains("[protocol](../design/protocol.md)"),
+        "{}",
+        moved.markdown
+    );
 }

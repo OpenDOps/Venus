@@ -1,0 +1,165 @@
+.venus-tree-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.venus-tree-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--affine-border-color, #e3e2e4);
+}
+
+.venus-tree-toolbar button {
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.venus-tree {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 12px;
+}
+
+.venus-tree-row {
+  display: flex;
+  align-items: center;
+  width: calc(100% - 8px);
+  margin: 0 4px;
+  padding-inline-start: calc(var(--level, 0) * 16px);
+}
+
+.venus-tree-row[data-level="0"] { --level: 0; }
+.venus-tree-row[data-level="1"] { --level: 1; }
+.venus-tree-row[data-level="2"] { --level: 2; }
+.venus-tree-row[data-level="3"] { --level: 3; }
+.venus-tree-row[data-level="4"] { --level: 4; }
+.venus-tree-row[data-level="5"] { --level: 5; }
+.venus-tree-row[data-level="6"] { --level: 6; }
+.venus-tree-row[data-level="7"] { --level: 7; }
+.venus-tree-row[data-level="8"] { --level: 8; }
+.venus-tree-row[data-level="9"] { --level: 9; }
+.venus-tree-row[data-level="10"] { --level: 10; }
+.venus-tree-row[data-level="11"] { --level: 11; }
+.venus-tree-row[data-level="12"] { --level: 12; }
+
+.venus-tree-chevron,
+.venus-tree-chevron-spacer {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.venus-tree-chevron-spacer {
+  cursor: default;
+  pointer-events: none;
+}
+
+.venus-tree-chevron::before {
+  content: "▸";
+}
+
+.venus-tree-chevron[aria-expanded="true"]::before {
+  content: "▾";
+}
+
+.venus-tree-item {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.venus-tree-item:hover {
+  background: var(--affine-hover-color, rgba(0, 0, 0, 0.04));
+}
+
+.venus-tree-item.is-selected {
+  background: var(--affine-hover-color, rgba(0, 0, 0, 0.08));
+}
+
+.venus-tree-item.is-open {
+  outline: 1px solid var(--affine-primary-color, #1e96eb);
+}
+
+.venus-tree-item.is-home {
+  font-weight: 600;
+}
+
+.venus-tree-item.is-folder {
+  color: var(--affine-text-secondary-color, #5c5b60);
+}
+
+.venus-tree-item.is-drop {
+  background: var(--affine-hover-color, rgba(30, 150, 235, 0.12));
+}
+
+.venus-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venus-tree-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: 0 0 0 2px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--affine-text-secondary-color, #5c5b60);
+}
+
+.venus-tree-edit:hover {
+  background: var(--affine-hover-color, rgba(0, 0, 0, 0.08));
+}
+
+.venus-tree-edit-icon {
+  display: block;
+}
+
+.venus-tree-rename {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.venus-tree-drag-line {
+  pointer-events: none;
+}

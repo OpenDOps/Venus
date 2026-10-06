@@ -74,28 +74,122 @@ steps:
         evidence: "2026-09-15 pnpm test:e2e:m4 — m4-tree.spec.ts 1 passed (A createDoc + reparent on B without reload; catalog WS ?doc=4fe5c16e-…); catalog-sync.test.ts hub skip-or-run on :3000. pnpm --filter @venus/web test — 108 passed. tsc --noEmit clean."
   step-chrome: # 4
     n: 4
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Header undo
+        status: pass
+        evidence: "2026-09-15 pnpm test:e2e:m4 — m4-header.spec.ts header undo/redo binds the open Store via canUndo$ (type unique word, venus-undo clears it, redo restores, undo disabled after canUndo$ false). Keyboard ⌘Z still the same Store."
+      - name: Current page
+        status: pass
+        evidence: "2026-09-15 m4-header.spec.ts venus-page-title is catalog name of the open node — home then created uuid, not gitPath / not hard-coded Venus. Header subscribe: chrome.test.ts VenusHeader.tsx canUndo$.subscribe (no setInterval / store.canUndo poll)."
+      - name: Layout
+        status: pass
+        evidence: "2026-09-15 m4-header layout + m4-tree lists nodes — venus-header, venus-tree, outline-block-preview-h1 Why Venus; tree is not the heading list. md-pane under editor-stack, not the tree slot. Debug bar VITE_DEBUG + sidecar (playwright m3/m4)."
+      - name: Seam holds
+        status: pass
+        evidence: "2026-09-15 chrome.test.ts + sync-provider.test.ts — mount-editor.js / editor-container.js / boot.js have no catalog / CatalogTree / VenusHeader / git imports. pnpm --filter @venus/web test — 133 passed. tsc --noEmit clean."
   step-tree: # 5
     n: 5
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Lists nodes
+        status: pass
+        evidence: "2026-09-15 pnpm test:e2e:m4 — m4-tree lists spec + venus-tree-home; created uuid row after createDoc; outline H1 Why Venus, tree does not contain Why Venus."
+      - name: Click opens
+        status: pass
+        evidence: "2026-09-15 m4-tree click a created page opens that Store — header title = catalog name; outline H1 gone; click home returns. createDoc still does not open a page WS (existing A→B spec)."
+      - name: Drop reparents
+        status: pass
+        evidence: "2026-09-15 m4-tree drop via published ops.drop (same applyCatalogDrop as onDrop); B sees new parent without reload. Home drop canDrop false / ok false; venus-tree-home stays under spec. drop.test.ts canCatalogDrop + applyCatalogDrop. CatalogTree.tsx does not import createOnDropHandler."
+      - name: Outline not a wiki TOC
+        status: pass
+        evidence: "2026-09-15 m4-tree + m4-header layout — outline-block-preview-h1 Why Venus; tree shows spec/home. M0 outline specs unchanged (headings)."
+      - name: Delete hidden / rejected when children
+        status: pass
+        evidence: "2026-09-15 m4-tree delete — venus-delete-node absent on spec (right-click); leaf delete auto-switches this tab and B to home; opening the uuid again stays home; deleteNode(spec) still node_not_empty. pnpm test:e2e:m4 — 8 passed."
+
   step-git-mv: # 6
     n: 6
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
-  step-links: # 7
+    dodResults:
+      - name: Two files
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-sidecar --test flush two_files_yaml_and_identity — spec/home.md + spec/<uuid>.md, sidecars, YAML pages+folders (folder:spec), page_identity rows, catalog last_flushed."
+      - name: Rename then Flush
+        status: pass
+        evidence: "2026-10-06 flush rename_then_flush_git_mv_same_uuid — spec/protocol.md, uuid unchanged, catalog-only blob identical, autocomment snapshot:. pnpm test:e2e:m4 m4-create-rename — create/Flush/rename/Flush, uuid unchanged, spec/protocol-<stem>.md."
+      - name: Move then Flush
+        status: pass
+        evidence: "2026-10-06 flush move_then_flush_renames_not_copy — git find_similar rename spec/protocol.md → design/protocol.md, not a copy; clone of wiki/ matches; YAML/DB git_path updated."
+      - name: Catalog-only no fromDoc
+        status: pass
+        evidence: "2026-10-06 flush rename_then_flush_git_mv_same_uuid + convert_pins_skips_catalog + catalog_walk_is_rust_not_from_doc — markdown bytes unchanged; catalog skipped in convert_pins; y-octo walk in catalog.rs, git_mv in git.rs, no from_doc/MarkdownAdapter."
+      - name: Clone matches
+        status: pass
+        evidence: "2026-10-06 move_then_flush_renames_not_copy git clone of the flushed wiki has design/protocol.md and not spec/protocol.md; pages.yaml present."
+      - name: Delete then Flush
+        status: pass
+        evidence: "2026-10-06 flush delete_then_flush_git_rm + catalog::deleted_page_is_absent_from_walk — .md and sidecar gone, YAML/DB drop uuid, home remains. pnpm test:e2e:m4 — 10 passed including m4-create-rename delete/Flush."
+  step-links: # 7 umbrella; done when 7.1–7.2 done
     n: 7
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: 7.1 reverse index
+        status: pass
+        evidence: "2026-10-06 Vitest link-index.test.ts + cargo test -p venus-sidecar --lib --test links — inbound/outbound, rebuild, lookup is map get, not in docMetas/catalog."
+      - name: 7.2 card + convert set
+        status: pass
+        evidence: "2026-10-06 Vitest from-doc.test.ts catalog rewrite; cargo test -p venus-sidecar --test from_doc catalog_walk_rewrites + --test flush link_move/outbound_dirname/name_change (16 passed); pnpm test:e2e:m4 m4-link.spec.ts 1 passed."
+  step-link-index: # 7.1
+    n: 7.1
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Build + query
+        status: pass
+        evidence: "2026-10-06 pnpm --filter @venus/web exec vitest run src/host/mdgate/link-index.test.ts — inbound[uuid]=[doc:home, second] sorted; outbound[doc:home] includes uuid; third absent; lookup is map get (inbound/outbound toString has no readFile/readdir)."
+      - name: Merge + delete
+        status: pass
+        evidence: "2026-10-06 same Vitest merge + delete — upsert home empty comments drops home from inbound[uuid]; drop uuid removes it from both maps. cargo test -p venus-sidecar --test links persist_upsert_then_drop_clears_stale_inbound + persist_drop_deleted_source_id."
+      - name: Rebuild from HEAD
+        status: pass
+        evidence: "2026-10-06 Vitest rebuild from missing/corrupt `{` + cargo test -p venus-sidecar --test links (7 passed) — JSON matches scenario 1; second persist same bytes; links.rs has no hydrate_v1/from_doc/y_octo."
+      - name: Not in metas / catalog
+        status: pass
+        evidence: "2026-10-06 Vitest grep apps/web/src/host/catalog + ops.js — no inbound/outbound/links.json; ops.js does not write docMetas graph."
+  step-link-export: # 7.2
+    n: 7.2
+    state: done
+    breakpoint: human
+    pr: null
+    dodResults:
+      - name: Card + comment
+        status: pass
+        evidence: "2026-10-06 Vitest from-doc.test.ts catalog fromDoc — [protocol](protocol.md) + <!-- venus:doc:<uuid> -->, no ./workspace/, docMetas.title=protocol, # Venus. cargo test --test flush link_move first commit inbound[uuid] includes doc:home. e2e m4-link.spec.ts card affine-embed-linked-doc-block visible."
+      - name: Resolves after move
+        status: pass
+        evidence: "2026-10-06 e2e m4-link.spec.ts — reparent + Flush + reload; card pageId still the created uuid; wiki comment id unchanged. flush link_move_converts_inbound_not_unrelated comment + gitPath."
+      - name: Export path from catalog
+        status: pass
+        evidence: "2026-10-06 Vitest nested [protocol](../design/protocol.md); cargo test --test from_doc catalog_walk_rewrites_linked_doc_not_workspace_url; flush home.md ../design/protocol.md after reparent."
+      - name: Index-guided convert
+        status: pass
+        evidence: "2026-10-06 cargo test --test flush link_move_converts_inbound_not_unrelated — converted_ids has home SQL uuid, not CREATED (git mv only, blob identical), not THIRD. --lib convert_set_inbound_not_unrelated_or_git_mv_only."
+      - name: Outbound when dirname changes
+        status: pass
+        evidence: "2026-10-06 cargo test --test flush outbound_dirname_converts_source_not_target — CREATED fromDoc'd to [fourth](../spec/fourth.md); FOURTH not in converted_ids. --lib convert_set_outbound_when_dirname_changes."
+      - name: Name change, link text
+        status: pass
+        evidence: "2026-10-06 cargo test --test flush name_change_converts_inbound_link_text — home in convert set, git [lease](lease.md). Vitest rename lease, not [protocol]."
   step-shared-worker: # 8
     n: 8
     state: pending

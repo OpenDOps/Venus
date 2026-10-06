@@ -96,10 +96,12 @@ function withGitPath(catalog, node, memo, visiting) {
 /**
  * @param {import('yjs').Doc} catalog
  * @param {string} id
+ * @param {{ gitPath?: boolean }} [opts] `gitPath: false` skips ancestor join (tree loader).
  */
-export function getNode(catalog, id) {
+export function getNode(catalog, id, opts) {
   const node = readNode(nodesMap(catalog).get(id));
   if (!node) return null;
+  if (opts?.gitPath === false) return node;
   return withGitPath(catalog, node);
 }
 
@@ -133,8 +135,9 @@ export function compareNodes(a, b) {
 }
 
 /**
- * One scan of `nodes`, grouped by `parentId`. Reuse for sibling lists and
- * subtree walks instead of filtering the whole map per parent.
+ * One scan of `nodes`, grouped by `parentId`, sorted. Does not join
+ * `gitPath` — tree and sibling lists need `order` / `id` / `name` / `kind`.
+ * Use `getNode` / `listNodes` when Flush or tests need the joined path.
  *
  * @param {import('yjs').Doc} catalog
  * @returns {Map<string | null, NonNullable<ReturnType<typeof readNode>>[]>}
@@ -153,12 +156,7 @@ export function childrenIndex(catalog) {
     }
     bucket.push(node);
   });
-  const memo = new Map();
-  const visiting = new Set();
   for (const bucket of byParent.values()) {
-    for (const node of bucket) {
-      withGitPath(catalog, node, memo, visiting);
-    }
     bucket.sort(compareNodes);
   }
   return byParent;
@@ -175,12 +173,15 @@ export function childrenOf(catalog, parentId, index) {
 }
 
 /**
- * True if any node has `parentId === id`. Stops at the first hit.
+ * True if any node has `parentId === id`. Pass the rebuild `childrenIndex`
+ * to skip a second map scan (toolbar). Without `index`, stops at the first hit.
  *
  * @param {import('yjs').Doc} catalog
  * @param {string | null} parentId
+ * @param {Map<string | null, NonNullable<ReturnType<typeof readNode>>[]>} [index]
  */
-export function hasChild(catalog, parentId) {
+export function hasChild(catalog, parentId, index) {
+  if (index) return (index.get(parentId)?.length ?? 0) > 0;
   for (const value of nodesMap(catalog).values()) {
     if (readNode(value)?.parentId === parentId) return true;
   }

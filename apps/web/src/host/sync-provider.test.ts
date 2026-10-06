@@ -230,3 +230,67 @@ test('venus hub _gen is per session; disconnect one keeps the other socket', () 
     globalThis.WebSocket = Ws;
   }
 });
+
+test('whenReady(docId) does not fail when another session closes', async () => {
+  const sockets: Array<{
+    closed: boolean;
+    listeners: Record<string, Array<() => void>>;
+    close: () => void;
+  }> = [];
+  class StubWs {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+    readyState = 1;
+    binaryType = '';
+    closed = false;
+    listeners: Record<string, Array<() => void>> = {};
+    constructor(..._args: unknown[]) {
+      sockets.push(this);
+    }
+    addEventListener(type: string, fn: () => void) {
+      (this.listeners[type] ??= []).push(fn);
+    }
+    close() {
+      this.readyState = 3;
+      this.closed = true;
+      for (const fn of this.listeners.close ?? []) fn();
+    }
+  }
+  const Ws = globalThis.WebSocket;
+  // @ts-expect-error stub
+  globalThis.WebSocket = StubWs;
+  try {
+    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const provider = new VenusHubProvider(url);
+    const homeDoc = { on() {}, off() {} } as unknown as Doc;
+    const pageDoc = { on() {}, off() {} } as unknown as Doc;
+    const page = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    provider.connect(PAGE_DOC_ID, homeDoc);
+    provider.connect(page, pageDoc);
+    const pageReady = provider.whenReady(page);
+    const allReady = provider.whenReady();
+    sockets[0]?.close();
+    await expect(allReady).rejects.toMatchObject({
+      message: 'hub websocket closed before sync',
+    });
+    let pageSettled = false;
+    void pageReady.then(
+      () => {
+        pageSettled = true;
+      },
+      () => {
+        pageSettled = true;
+      },
+    );
+    await Promise.resolve();
+    expect(pageSettled).toBe(false);
+    sockets[1]?.close();
+    await expect(pageReady).rejects.toMatchObject({
+      message: 'hub websocket closed before sync',
+    });
+  } finally {
+    globalThis.WebSocket = Ws;
+  }
+});

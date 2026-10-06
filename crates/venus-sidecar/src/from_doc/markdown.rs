@@ -202,6 +202,12 @@ fn linked_doc_inline(tree: &BlockTree, block: &Block) -> String {
     if page_id.is_empty() {
         return String::new();
     }
+    if let Some(cat) = &tree.catalog {
+        if let Some((name, git_path)) = cat.pages.get(page_id) {
+            let href = crate::links::posix_relative(&cat.source_git_path, git_path);
+            return format!("[{}]({href})", escape_text(name));
+        }
+    }
     let url = format!("./workspace/{}/{page_id}", tree.workspace_id);
     "[untitled]({url})".replace("{url}", &url)
 }
@@ -396,7 +402,9 @@ fn inject_venus_linked_doc_comments(markdown: &str, tree: &BlockTree) -> Result<
             search_from += existing + comment.len();
             continue;
         }
-        if let Some((at, missing_nl)) = find_linked_doc_insert(markdown, page_id, search_from) {
+        if let Some((at, missing_nl)) =
+            find_linked_doc_insert(markdown, page_id, search_from, expected_href(tree, page_id))
+        {
             inserts.push((at, missing_nl, comment));
             search_from = at;
         }
@@ -419,7 +427,18 @@ fn inject_venus_linked_doc_comments(markdown: &str, tree: &BlockTree) -> Result<
     Ok(chunks)
 }
 
-fn find_linked_doc_insert(markdown: &str, page_id: &str, from: usize) -> Option<(usize, bool)> {
+fn expected_href<'a>(tree: &'a BlockTree, page_id: &str) -> Option<String> {
+    let cat = tree.catalog.as_ref()?;
+    let (_, git_path) = cat.pages.get(page_id)?;
+    Some(crate::links::posix_relative(&cat.source_git_path, git_path))
+}
+
+fn find_linked_doc_insert(
+    markdown: &str,
+    page_id: &str,
+    from: usize,
+    expected_href: Option<String>,
+) -> Option<(usize, bool)> {
     let mut search = from;
     while search < markdown.len() {
         let Some(open) = markdown[search..].find("](") else {
@@ -431,7 +450,8 @@ fn find_linked_doc_insert(markdown: &str, page_id: &str, from: usize) -> Option<
         };
         let close = open + 2 + rel_close;
         let url = &markdown[open + 2..close];
-        if url_mentions_page_id(url, page_id) {
+        if url_mentions_page_id(url, page_id) || expected_href.as_deref().is_some_and(|h| url == h)
+        {
             return match markdown[close..].find('\n') {
                 Some(nl) => Some((close + nl + 1, false)),
                 None => Some((markdown.len(), true)),

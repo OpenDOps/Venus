@@ -79,3 +79,45 @@ export function sidecarUrlFromEnv(env = import.meta.env) {
     typeof env.VITE_SIDECAR_URL === 'string' ? env.VITE_SIDECAR_URL.trim() : '';
   return raw.replace(/\/$/, '');
 }
+
+/**
+ * Truthy Vite flag (`1` / `true` / `yes`). Used for `VITE_DEBUG` and
+ * `VITE_TESTIDS`.
+ *
+ * @param {Record<string, unknown>} env
+ * @param {string} key
+ */
+export function flagFromEnv(env, key) {
+  const raw = env?.[key];
+  if (raw === true || raw === 1) return true;
+  if (typeof raw !== 'string') return false;
+  const v = raw.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+/**
+ * Debug bar (Flush / git-log). Playwright m3/m4 sets this. Not a hub env.
+ *
+ * @param {Record<string, unknown>} [env]
+ */
+export function debugFromEnv(env = import.meta.env) {
+  return flagFromEnv(env, 'VITE_DEBUG');
+}
+
+/**
+ * Product `data-testid`s (header / tree). Playwright m4 sets this.
+ *
+ * @param {Record<string, unknown>} [env]
+ */
+export function testidsFromEnv(env = import.meta.env) {
+  return flagFromEnv(env, 'VITE_TESTIDS');
+}
+
+/**
+ * @param {string} name
+ * @param {Record<string, unknown>} [env]
+ * @returns {Record<string, string>}
+ */
+export function testidProps(name, env = import.meta.env) {
+  return testidsFromEnv(env) ? { 'data-testid': name } : {};
+}

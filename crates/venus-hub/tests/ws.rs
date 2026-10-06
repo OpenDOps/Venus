@@ -442,6 +442,7 @@ async fn ws_upgrade_closed_pool_is_not_503() {
             workspace_id,
             owner,
         }) => panic!("closed pool must be Store, not Held ({workspace_id}, owner={owner:?})"),
+        Err(GetRoomError::Unknown) => panic!("closed pool must be Store, not Unknown"),
         Ok(_) => panic!("closed pool must not open a room"),
     }
 
@@ -673,6 +674,7 @@ async fn second_hub_ws_is_503_while_lease_held() {
             assert_eq!(workspace_id, workspace);
         }
         Err(GetRoomError::Store(e)) => panic!("live lease must be Held, not Store: {e:#}"),
+        Err(GetRoomError::Unknown) => panic!("live lease must be Held, not Unknown"),
         Ok(_) => panic!("second hub must not open a RAM doc for the same wiki"),
     }
 
@@ -728,6 +730,7 @@ async fn heartbeat_miss_sheds_room_no_further_insert() {
             assert_eq!(workspace_id, workspace);
         }
         Err(GetRoomError::Store(e)) => panic!("stolen lease must be Held, not Store: {e:#}"),
+        Err(GetRoomError::Unknown) => panic!("stolen lease must be Held, not Unknown"),
         Ok(_) => panic!("old hub must not keep or re-open the room after a steal"),
     }
 
@@ -1272,6 +1275,7 @@ async fn minted_page_persists_and_home_still_hydrates() {
             assert_eq!(workspace_id, workspace);
         }
         Err(GetRoomError::Store(e)) => panic!("second page must not mint a second owner: {e:#}"),
+        Err(GetRoomError::Unknown) => panic!("second page must not mint Unknown"),
         Ok(_) => panic!("second hub must not open a RAM doc for the same wiki"),
     }
     let (status, _) =

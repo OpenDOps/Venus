@@ -21,7 +21,7 @@
 | [M2](./M2/README.md) | Markdown projection (done 2026-08-30) |
 | [M3.0](./M3.0/README.md) | Venus hub replace keck (**done** 2026-09-13). Plan: [M3.0/plan.md](./M3.0/plan.md). Process: [hub](./components/backend/hub/). Wire: [CRDT](./CRDT/README.md). HA: [M3.0/high-availability.md](./M3.0/high-availability.md). |
 | [M3](./M3/README.md) | Git snapshotter (**done** 2026-09-14). Plan: [M3/plan.md](./M3/plan.md). Pin: [LiveSnapshot](./LiveSnapshot/README.md). |
-| [M4](./M4/README.md) | Folder tree + links + product header (**not started**; gated on [M3](./M3/README.md) closed). Plan: [M4/plan.md](./M4/plan.md). |
+| [M4](./M4/README.md) | Folder tree + links + product header (**in progress** — [step-tree](./M4/plan.md#5-step-tree) done 2026-09-15; next [step-git-mv](./M4/plan.md#6-step-git-mv)). Plan: [M4/plan.md](./M4/plan.md). |
 | [M5](./venus-implementation-plan.md#m5--lease--freeze-week) | Lease + freeze (**not started**) |
 | [M6](./venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks) | Comment-commit, markdown apply (**not started**). Apply: [MDGate apply](./MDGate/apply.md) |
 | [M7](./venus-implementation-plan.md#m7--threads-alternatives-stacks-2-weeks) | Threads, alternatives, stacks (**not started**) |

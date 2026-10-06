@@ -7,6 +7,9 @@ import { MemoryNoopProvider } from '../sync-provider.js';
 import { PAGE_DOC_ID, WORKSPACE_ID } from '../ids.js';
 import { createM0Workspace } from '../workspace.js';
 import { fromDoc } from './from-doc.js';
+import { createDoc, createFolder, rename, reparent, seedOnce } from '../catalog/ops.js';
+import { FOLDER_SPEC_ID, listNodes } from '../catalog/schema.js';
+import * as Y from 'yjs';
 import {
   addEmbedLinkedDoc,
   addListItem,
@@ -247,4 +250,62 @@ test('linked-doc comment injects at the adapter URL, not a prose substring', asy
       `\\[untitled\\]\\(\\.\\/workspace\\/${WORKSPACE_ID}\\/doc:lease\\)\\n<!-- venus:doc:doc:lease -->`,
     ),
   );
+});
+
+test('catalog fromDoc is catalog name + relative path, not workspace URL', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const catalog = new Y.Doc({ guid: 'venus:catalog' });
+  seedOnce(catalog, session.workspace);
+  const created = createDoc(catalog, session.workspace, { createAt: FOLDER_SPEC_ID });
+  rename(catalog, session.workspace, created.id, 'protocol');
+  const note = noteOf(session.store);
+  addEmbedLinkedDoc(session.store, note.id, created.id);
+
+  const pages: Record<string, { name: string; gitPath: string }> = {};
+  for (const n of listNodes(catalog)) {
+    if (n.kind !== 'doc') continue;
+    pages[n.docId ?? n.id] = { name: n.name, gitPath: n.gitPath };
+  }
+  const { markdown, sidecar } = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages,
+  });
+  expect(markdown.startsWith('# Venus\n')).toBe(true);
+  expect(markdown).toContain('[protocol](protocol.md)');
+  expect(markdown).toContain(`<!-- venus:doc:${created.id} -->`);
+  expect(markdown).not.toContain('./workspace/');
+  expect(markdown).not.toMatch(/\[untitled\]/);
+  expect(session.workspace.meta.getDocMeta?.(created.id)?.title).toBe('protocol');
+  const embedRange = sidecar.blocks.find((b) => {
+    const slice = markdown.slice(b.start, b.end);
+    return slice.includes(`venus:doc:${created.id}`);
+  });
+  expect(embedRange, 'placement must find rewritten href without pageId in URL').toBeDefined();
+
+  const designFolder = createFolder(catalog, { createAt: null, name: 'design' });
+  reparent(catalog, created.id, { parentId: designFolder.id });
+  const pages2: Record<string, { name: string; gitPath: string }> = {};
+  for (const n of listNodes(catalog)) {
+    if (n.kind !== 'doc') continue;
+    pages2[n.docId ?? n.id] = { name: n.name, gitPath: n.gitPath };
+  }
+  const moved = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages: pages2,
+  });
+  expect(moved.markdown).toContain('[protocol](../design/protocol.md)');
+
+  rename(catalog, session.workspace, created.id, 'lease');
+  const pages3: Record<string, { name: string; gitPath: string }> = {};
+  for (const n of listNodes(catalog)) {
+    if (n.kind !== 'doc') continue;
+    pages3[n.docId ?? n.id] = { name: n.name, gitPath: n.gitPath };
+  }
+  const leased = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages: pages3,
+  });
+  expect(leased.markdown).toContain('[lease](');
+  expect(leased.markdown).not.toContain('[protocol]');
+  expect(session.workspace.meta.getDocMeta?.(created.id)?.title).toBe('lease');
 });

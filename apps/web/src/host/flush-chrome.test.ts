@@ -9,17 +9,23 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 test('Flush chrome is host App, not mount-editor; no store.readonly', () => {
   const app = readFileSync(join(here, '../App.tsx'), 'utf8');
+  const bar = readFileSync(join(here, 'chrome/VenusDebugBar.tsx'), 'utf8');
   const editor = readFileSync(join(here, 'mount-editor.js'), 'utf8');
   const container = readFileSync(join(here, 'editor-container.js'), 'utf8');
   const boot = readFileSync(join(here, 'boot.js'), 'utf8');
 
-  expect(app).toMatch(/data-testid=["']venus-flush["']/);
-  expect(app).toMatch(/data-testid=["']venus-git-log["']/);
-  expect(app).toMatch(/SIDECAR_URL.*\/flush/);
-  expect(app).toMatch(/\/git\/log\?path=/);
-  expect(app).toMatch(/void fetch\(`\$\{SIDECAR_URL\}\/flush`/);
-  expect(app).not.toMatch(/async function onFlush/);
-  expect(app).not.toMatch(/await fetch/);
+  expect(app).toMatch(/VenusDebugBar/);
+  expect(app).toMatch(/SHOW_DEBUG/);
+  expect(app).toMatch(/debugFromEnv/);
+  expect(app).not.toMatch(/data-testid=["']venus-flush["']/);
+  expect(app).not.toMatch(/\/git\/log/);
+  expect(bar).toMatch(/data-testid=["']venus-flush["']/);
+  expect(bar).toMatch(/data-testid=["']venus-git-log["']/);
+  expect(bar).toMatch(/sidecarUrl.*\/flush/);
+  expect(bar).toMatch(/\/git\/log\?path=/);
+  expect(bar).toMatch(/void fetch\(`\$\{sidecarUrl\}\/flush`/);
+  expect(bar).not.toMatch(/async function onFlush/);
+  expect(bar).not.toMatch(/await fetch/);
   expect(app).not.toMatch(/store\.readonly/);
   expect(app).not.toMatch(/store\.history/);
   expect(app).not.toMatch(/readonly\s*=\s*true/);

@@ -36,6 +36,8 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     /// Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default [`crate::rpc::GRPC_LISTEN_DEFAULT`].
     pub grpc_listen: SocketAddr,
+    /// Workspaces this process will open. Unset `HUB_WORKSPACES` → the M0 wiki only.
+    pub workspaces: Vec<String>,
 }
 
 /// Compose default. Private-network Postgres; operators targeting managed Postgres set `require`.
@@ -78,6 +80,7 @@ impl Config {
         validate_pool_sizes(db_max_connections, db_min_connections)?;
         let cors_origins = cors_origins_from_env()?;
         let grpc_listen = grpc_listen_from_env()?;
+        let workspaces = workspaces_from_env()?;
         let (database_url, pg_sslmode) = dsn_from_env()?;
 
         Ok(Self {
@@ -95,8 +98,51 @@ impl Config {
             db_work_mem,
             cors_origins,
             grpc_listen,
+            workspaces,
         })
     }
+}
+
+/// `HUB_WORKSPACES`. Unset → the M0 wiki. Empty is an error. Entries are lowercased uuids.
+pub fn workspaces_from_env() -> Result<Vec<String>> {
+    match env::var("HUB_WORKSPACES") {
+        Err(_) => parse_hub_workspaces(None),
+        Ok(raw) => parse_hub_workspaces(Some(raw.as_str())),
+    }
+}
+
+pub fn parse_hub_workspaces(raw: Option<&str>) -> Result<Vec<String>> {
+    let Some(raw) = raw else {
+        return Ok(vec![crate::DEFAULT_WORKSPACE_ID.to_string()]);
+    };
+    let mut out = Vec::new();
+    for part in raw.split(',') {
+        let id = part.trim().to_ascii_lowercase();
+        if id.is_empty() {
+            continue;
+        }
+        if !hyphenated_uuid(&id) {
+            bail!("HUB_WORKSPACES entry is not a hyphenated uuid");
+        }
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    if out.is_empty() {
+        bail!("HUB_WORKSPACES is empty");
+    }
+    Ok(out)
+}
+
+fn hyphenated_uuid(id: &str) -> bool {
+    let b = id.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    b.iter().enumerate().all(|(i, c)| match i {
+        8 | 13 | 18 | 23 => *c == b'-',
+        _ => c.is_ascii_hexdigit(),
+    })
 }
 
 /// Vite `:5173`/`:5174` and Compose `:8080`, both `localhost` and `127.0.0.1`.
@@ -696,5 +742,24 @@ mod tests {
             parse_cors_origin("https://example.com").unwrap(),
             "https://example.com"
         );
+    }
+
+    #[test]
+    fn hub_workspaces_default_one_and_reject_bad() {
+        let m0 = parse_hub_workspaces(None).unwrap();
+        assert_eq!(m0, vec![crate::DEFAULT_WORKSPACE_ID.to_string()]);
+        let mixed = parse_hub_workspaces(Some(
+            "77E4A2B1-8B40-5979-A73C-FD4477216D00, 11111111-1111-4111-a111-111111111111",
+        ))
+        .unwrap();
+        assert_eq!(
+            mixed,
+            vec![
+                crate::DEFAULT_WORKSPACE_ID.to_string(),
+                "11111111-1111-4111-a111-111111111111".to_string(),
+            ]
+        );
+        assert!(parse_hub_workspaces(Some("")).is_err());
+        assert!(parse_hub_workspaces(Some("not-a-uuid")).is_err());
     }
 }

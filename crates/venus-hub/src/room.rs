@@ -2,7 +2,7 @@
 //! (`workspace_id`). Not per socket. M4: sockets name `doc_id` with `?doc=`.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
@@ -139,6 +139,8 @@ pub enum GetRoomError {
         workspace_id: String,
         owner: Option<String>,
     },
+    /// `workspace_id` is well-shaped but not in `HUB_WORKSPACES`.
+    Unknown,
     Store(Arc<anyhow::Error>),
 }
 
@@ -168,6 +170,7 @@ impl std::fmt::Display for GetRoomError {
                 workspace_id,
                 owner: None,
             } => write!(f, "workspace {workspace_id} owned by another hub"),
+            GetRoomError::Unknown => write!(f, "unknown workspace"),
             GetRoomError::Store(e) => write!(f, "{:#}", e.as_ref()),
         }
     }
@@ -758,6 +761,8 @@ pub struct Hub {
     hydrate_attempts: AtomicU64,
     export_sql_attempts: AtomicU64,
     stopping: AtomicBool,
+    /// `None` permits every well-shaped id (tests). Product sets the allowlist.
+    allowed_workspaces: Option<Arc<HashSet<String>>>,
 }
 
 impl Hub {
@@ -767,6 +772,24 @@ impl Hub {
         persist_interval: Duration,
         compact_after: i64,
     ) -> Arc<Self> {
+        Self::with_allowlist(pool, lease, persist_interval, compact_after, None)
+    }
+
+    /// `Some` list is the only workspaces this process will open. Ids are lowercased.
+    pub fn with_allowlist(
+        pool: PgPool,
+        lease: Lease,
+        persist_interval: Duration,
+        compact_after: i64,
+        workspaces: Option<Vec<String>>,
+    ) -> Arc<Self> {
+        let allowed_workspaces = workspaces.map(|ids| {
+            Arc::new(
+                ids.into_iter()
+                    .map(|id| id.to_ascii_lowercase())
+                    .collect::<HashSet<_>>(),
+            )
+        });
         Arc::new(Self {
             pool,
             lease,
@@ -778,7 +801,16 @@ impl Hub {
             hydrate_attempts: AtomicU64::new(0),
             export_sql_attempts: AtomicU64::new(0),
             stopping: AtomicBool::new(false),
+            allowed_workspaces,
         })
+    }
+
+    /// `None` allowlist permits every id. A set permits only its members.
+    pub fn permits_workspace(&self, workspace_id: &str) -> bool {
+        match &self.allowed_workspaces {
+            None => true,
+            Some(set) => set.contains(&workspace_id.to_ascii_lowercase()),
+        }
     }
 
     fn shutting_down_err() -> GetRoomError {
@@ -786,6 +818,9 @@ impl Hub {
     }
 
     pub async fn get_room(self: &Arc<Self>, workspace_id: &str) -> Result<Arc<Room>, GetRoomError> {
+        if !self.permits_workspace(workspace_id) {
+            return Err(GetRoomError::Unknown);
+        }
         if self.stopping.load(Ordering::SeqCst) {
             return Err(Self::shutting_down_err());
         }

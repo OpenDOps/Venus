@@ -43,9 +43,9 @@ Flush is still pin-then-convert ([README — pin then convert](../LiveSnapshot/R
                  ∪ blobs
 2. Pin           copy Yjs bytes (+ catalog) — live never waits
 3. Convert       fromDoc on the pin; sidecar ranges
-4. Commit        wiki/<gitPath>.md + .venus/ids
+4. Commit        wiki/<gitPath>.md + .venus/ids + .venus/links.json (M4 convert reverse index)
                  autocomment or required why (lease accept)
-4b. Direct graph parse of dirty .md (no LLM; optional same commit)
+4b. Direct graph parse of dirty .md (no LLM; optional same commit; heading-grained AB1)
 5. Release       last_flushed; drop pins (keep if T0)
 6. Enqueue       LifeIndexing { wikiSha, dirtyDocIds, reason }
                  gist + tags + logical graph (LLM, async)
@@ -53,7 +53,9 @@ Flush is still pin-then-convert ([README — pin then convert](../LiveSnapshot/R
 
 `reason` is the snapshotter’s `idle` | `flush` | `lease` ([HA — queue](../LiveSnapshot/high-availability.md#queue)). A lease flush may kick the indexer so `T0` packing is not missing the pages just committed; it still **must not** sit on the cut or on `fromDoc`.
 
-Catalog-only `git mv` (body clock unchanged): update `path` on existing index rows; do not re-gist the body; rewrite direct edges whose URLs changed.
+**M4** writes `.venus/links.json` (page-level inbound/outbound) **on Flush** so href rewrite does not `fromDoc` every page ([M4 step 7](../M4/plan.md#7-step-links)). AB1 heading `links-to` may read that file. Flush must **not** wait on AB1 or treat LifeIndexing as the convert set.
+
+Catalog-only `git mv` (body clock unchanged): update `path` on existing index rows; do not re-gist the body; rewrite direct edges whose URLs changed. Convert of inbound markdown is M4 `links.json` convert set, not a full wiki `fromDoc`.
 
 Poison page: fail that `docId`’s index row; do not fail the flush or the fleet ([HA — high availability](../LiveSnapshot/high-availability.md#high-availability)).
 
@@ -137,6 +139,8 @@ A nightly timer is a **safety net**, not the steady state. The snapshotter dirty
 
 Deterministic. Precision over recall. Rebuild outbound for dirty `.md` only; maintain a reverse index for inbound.
 
+**Page-level inbound/outbound** for Flush convert lives in **`.venus/links.json`** ([M4 step 7](../M4/plan.md#7-step-links)). The table below is **heading-grained** AB1 (may reuse those page edges). Do not replace the Flush file with this graph; do not delay `last_flushed` for it.
+
 | Edge | From |
 |---|---|
 | `contains` | Catalog folder → page; heading → child blocks (outline) |
@@ -144,7 +148,7 @@ Deterministic. Precision over recall. Rebuild outbound for dirty `.md` only; mai
 | `transcludes` | `affine:embed-synced-doc` when present |
 | `same-page` | Prev/next heading (sequence) |
 
-May run in the convert worker **after** `.md` is written and the cut is released. Cheap enough for the **same** snapshot commit if stored under `.venus/` (optional cache). Always re-derivable from clone of `wiki/` + sidecar. Do not ask the model to invent these.
+May run in the convert worker **after** `.md` is written and the cut is released. Cheap enough for the **same** snapshot commit if stored under `.venus/` (optional heading cache). Always re-derivable from clone of `wiki/` + sidecar. Do not ask the model to invent these. **Do not** conflate this with M4 `.venus/links.json` (required Flush convert set).
 
 ### Logical (LLM) — background
 

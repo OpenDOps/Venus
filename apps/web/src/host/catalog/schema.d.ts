@@ -27,13 +27,17 @@ export function gitPathOf(
   memo?: Map<string, string>,
   visiting?: Set<string>,
 ): string;
-export function getNode(catalog: Doc, id: string): CatalogNode | null;
+export function getNode(
+  catalog: Doc,
+  id: string,
+  opts?: { gitPath?: boolean },
+): CatalogNode | null;
 export function listNodes(catalog: Doc): CatalogNode[];
 export function compareNodes(
   a: { order: string; id: string },
   b: { order: string; id: string },
 ): number;
-/** parentId → children sorted by order, then id. Built in one scan of `nodes`. */
+/** parentId → children sorted by order, then id. Built in one scan; no gitPath join. */
 export type ChildrenIndex = Map<string | null, CatalogNode[]>;
 export function childrenIndex(catalog: Doc): ChildrenIndex;
 export function childrenOf(
@@ -41,7 +45,11 @@ export function childrenOf(
   parentId: string | null,
   index?: ChildrenIndex,
 ): CatalogNode[];
-export function hasChild(catalog: Doc, parentId: string | null): boolean;
+export function hasChild(
+  catalog: Doc,
+  parentId: string | null,
+  index?: ChildrenIndex,
+): boolean;
 export function isHome(
   nodeOrId: string | { id?: string; docId?: string } | null | undefined,
 ): boolean;

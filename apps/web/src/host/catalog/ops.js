@@ -1,5 +1,6 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import { PAGE_DOC_ID } from '../ids.js';
+import { seedEmptyPageIfNeeded } from '../workspace.js';
 import {
   filenameFromDocname,
   gitNameFromStem,
@@ -48,7 +49,9 @@ function hasWorkspaceDoc(workspace, id) {
  */
 function ensureWorkspaceDoc(workspace, uuid) {
   if (hasWorkspaceDoc(workspace, uuid)) return;
-  workspace?.createDoc?.(uuid);
+  const doc = workspace?.createDoc?.(uuid);
+  const store = doc?.getStore?.();
+  if (store) seedEmptyPageIfNeeded(store);
 }
 
 /**
@@ -291,6 +294,7 @@ export function rename(catalog, workspace, id, name) {
   if (!node) throw new CatalogError('invalid_parent', `unknown node ${id}`);
   const nextName = sanitizeDocname(name);
   if (nextName === '') return node;
+  if (nextName === node.name) return node;
   const index = childrenIndex(catalog);
   const filename = filenameFromDocname(nextName, {
     fallback: node.kind === KIND_DOC ? (node.docId ?? node.id) : node.id.replace(/^folder:/, ''),

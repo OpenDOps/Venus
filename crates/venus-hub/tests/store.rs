@@ -2218,6 +2218,7 @@ async fn get_room_after_shutdown_is_store_and_does_not_acquire() {
         }
         Ok(_) => panic!("get_room after shutdown must not open a room"),
         Err(GetRoomError::Held { .. }) => panic!("shutting down is Store, not Held"),
+        Err(GetRoomError::Unknown) => panic!("shutting down is Store, not Unknown"),
     }
     let (n,): (i64,) =
         sqlx::query_as("SELECT COUNT(*)::bigint FROM workspace_lease WHERE owner = $1")

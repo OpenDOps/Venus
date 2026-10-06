@@ -3,6 +3,11 @@ import { CATALOG_GUID } from '../ids.js';
 import { waitUntilSynced } from '../workspace.js';
 import { getNode, listNodes } from './schema.js';
 import {
+  applyCatalogDrop,
+  canCatalogDrop,
+  destFromDrop,
+} from './drop.js';
+import {
   createDoc,
   createFolder,
   deleteNode,
@@ -51,7 +56,7 @@ export async function openCatalog(provider, workspace, options = {}) {
   }
   try {
     if (!alreadyConnected) {
-      await waitUntilSynced(provider, options.signal);
+      await waitUntilSynced(provider, options.signal, CATALOG_GUID);
     }
     if (options.signal?.aborted) {
       const err = new Error('workspace create aborted');
@@ -94,6 +99,17 @@ export function attachCatalogTestHooks(catalog, workspace) {
       const node = reparent(catalog, id, { parentId });
       return { gitPath: node.gitPath, parentId: node.parentId };
     },
+    drop: (id, parentId) => {
+      const dest = destFromDrop(catalog, [id], { parentId });
+      const ok = applyCatalogDrop(catalog, [id], dest);
+      const node = getNode(catalog, id);
+      return {
+        ok,
+        gitPath: node?.gitPath ?? null,
+        parentId: node?.parentId ?? null,
+      };
+    },
+    canDrop: (id, parentId) => canCatalogDrop(catalog, [id], parentId),
     deleteNode: (id) => {
       deleteNode(catalog, id);
     },

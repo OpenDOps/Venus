@@ -18,17 +18,19 @@ wiki/
   assets/
   .venus/
     pages.yaml                 ← pages + folders naming map; restore on Flush from catalog pin
+    links.json                 ← M4: inbound/outbound docId (Flush convert set; not live SoT)
     ids/
       <docId>.json             ← block-id sidecar; clock = pin / accept clock
     snapshots/                 ← optional M8: <docId>/<gitSha>.bin (Yjs bytes)
 ```
 
-[LifeIndexing](../Agents/LifeIndexing.md) reads this tree at the flush SHA (gists, tags, direct + logical graphs). Logical artifacts are a **side index** keyed by that SHA (Venus tables, or a follow-up under `.venus/` that does not change `.md` and does not delay `last_flushed`). They are not live truth and not a snapshot git message.
+[LifeIndexing](../Agents/LifeIndexing.md) reads this tree at the flush SHA (gists, tags, heading-grained direct + logical graphs). **M4 Flush** already writes `.venus/links.json` (page-level inbound/outbound) so convert can rewrite hrefs without `fromDoc` of every page. That file is **not** AB1 and must not wait on LLM. Logical artifacts are a **side index** keyed by that SHA (Venus tables, or a follow-up under `.venus/` that does not change `.md` and does not delay `last_flushed`). They are not live truth and not a snapshot git message.
 
 | Path | What | Source |
 |---|---|---|
 | `<gitPath>.md` | Projection of one published page | `fromDoc` on a **pin** (snapshot) or on published after comment-commit **accept**. Create starts as `{uuid}.md`; rename `git mv`s; delete `git rm`s when the catalog pin lacks that doc. |
 | `.venus/pages.yaml` | Full naming map: `pages:` + `folders:` | Flush: **Rust** y-octo walk of catalog pin in `venus-sidecar` (id ↔ name ↔ `gitPath`). Same walk replaces `page_identity`. Not live identity. Not `fromDoc`. [page-identity](./page-identity.md) |
+| `.venus/links.json` | `{ inbound, outbound }` maps of `docId` | Flush: derived from `<!-- venus:doc:… -->` in converted markdown (`venus-sidecar` `links.rs`; host oracle `mdgate/link-index.js`). Convert set = body-dirty ∪ inbound hits ∪ outbound-when-dirname-changed. Rebuild from HEAD if missing. Not `docMetas`. Not catalog Yjs. Not LifeIndexing. [M4 step 7](../M4/plan.md#7-step-links) |
 | `.venus/ids/<docId>.json` | `{ docId, clock, blocks: [{ id, start, end }] }` | Same export. Ranges rebuilt every write; ids are CRDT ids |
 | `assets/` | Image (and other) bytes | Hub blob store → files on flush if dirty |
 | directories | Folder **nesting** | Catalog `gitPath`; `git mv` on publish when path changed |

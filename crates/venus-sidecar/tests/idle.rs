@@ -261,7 +261,7 @@ async fn idle_coalesce() {
     let ws = unique_workspace();
     persist(&pool, &ws, b"t0").await;
     let idle = Duration::from_millis(500);
-    observe_once(&pool, idle).await.expect("observe");
+    observe_once(&pool, idle, &ws).await.expect("observe");
     assert_eq!(job_count(&pool, &ws).await, 1);
     let first = first_dirty_ms(&pool, &ws).await;
     let nb1 = job_not_before_ms(&pool, &ws).await;
@@ -272,7 +272,7 @@ async fn idle_coalesce() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     persist(&pool, &ws, b"t100").await;
-    observe_once(&pool, idle).await.expect("observe 2");
+    observe_once(&pool, idle, &ws).await.expect("observe 2");
     assert_eq!(
         job_count(&pool, &ws).await,
         1,
@@ -315,7 +315,7 @@ async fn flush_now_http() {
     let pool = connect_fresh().await;
     let ws = unique_workspace();
     persist(&pool, &ws, b"idle").await;
-    observe_once(&pool, Duration::from_secs(60))
+    observe_once(&pool, Duration::from_secs(60), &ws)
         .await
         .expect("idle job");
     assert_eq!(job_count(&pool, &ws).await, 1);
@@ -353,7 +353,7 @@ async fn no_pin_at_enqueue() {
     let ws = unique_workspace();
     let pins = PinMap::new();
     persist(&pool, &ws, b"enqueue").await;
-    observe_once(&pool, Duration::from_secs(60))
+    observe_once(&pool, Duration::from_secs(60), &ws)
         .await
         .expect("observe");
     assert!(pins.is_empty(), "observer insert must not pin");

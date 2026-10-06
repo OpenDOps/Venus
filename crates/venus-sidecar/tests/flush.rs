@@ -13,11 +13,11 @@ use sqlx::PgPool;
 use tokio::sync::OnceCell;
 use venus_hub::db;
 use venus_sidecar::config::database_url_from_env;
-use venus_sidecar::cut::GIT_PATH;
-use venus_sidecar::git::{WikiConfig, SIDECAR_REL};
+use venus_sidecar::cut::{cut_workspace, GIT_PATH};
+use venus_sidecar::git::{WikiConfig, LINKS_JSON_REL, PAGES_YAML_REL, SIDECAR_REL};
 use venus_sidecar::pin::PinMap;
-use venus_sidecar::queue::{flush_claimed, Claim};
-use venus_sidecar::{PAGE_DOC_ID, PAGE_DOC_UUID};
+use venus_sidecar::queue::{convert_pins, flush_claimed, Claim};
+use venus_sidecar::{CATALOG_DOC_ID, PAGE_DOC_ID, PAGE_DOC_UUID};
 use y_octo::Doc;
 
 struct TestPg {
@@ -108,6 +108,10 @@ fn unique_workspace() -> String {
 }
 
 fn affine_home_pin(paragraph: &str) -> Vec<u8> {
+    affine_page_pin("Venus", paragraph, None)
+}
+
+fn affine_page_pin(title: &str, paragraph: &str, embed_page_id: Option<&str>) -> Vec<u8> {
     let doc = Doc::default();
     let mut blocks = doc.get_or_create_map("blocks").expect("blocks");
 
@@ -119,9 +123,10 @@ fn affine_home_pin(paragraph: &str) -> Vec<u8> {
     page_children.push("note").expect("page child");
     page.insert("sys:children".into(), page_children)
         .expect("page sys:children");
-    let mut title = doc.create_text().expect("title");
-    title.insert(0, "Venus").expect("title text");
-    page.insert("prop:title".into(), title).expect("page title");
+    let mut title_text = doc.create_text().expect("title");
+    title_text.insert(0, title).expect("title text");
+    page.insert("prop:title".into(), title_text)
+        .expect("page title");
     blocks.insert("page".into(), page).expect("insert page");
 
     let mut note = doc.create_map().expect("note map");
@@ -130,6 +135,9 @@ fn affine_home_pin(paragraph: &str) -> Vec<u8> {
     note.insert("sys:id".into(), "note").expect("note id");
     let mut note_children = doc.create_array().expect("note children");
     note_children.push("para").expect("note child");
+    if embed_page_id.is_some() {
+        note_children.push("embed").expect("embed child");
+    }
     note.insert("sys:children".into(), note_children)
         .expect("note sys:children");
     blocks.insert("note".into(), note).expect("insert note");
@@ -147,6 +155,20 @@ fn affine_home_pin(paragraph: &str) -> Vec<u8> {
     para.insert("prop:text".into(), text).expect("prop:text");
     blocks.insert("para".into(), para).expect("insert para");
 
+    if let Some(page_id) = embed_page_id {
+        let mut embed = doc.create_map().expect("embed map");
+        embed
+            .insert("sys:flavour".into(), "affine:embed-linked-doc")
+            .expect("embed flavour");
+        embed.insert("sys:id".into(), "embed").expect("embed id");
+        embed.insert("prop:pageId".into(), page_id).expect("pageId");
+        let embed_children = doc.create_array().expect("embed children");
+        embed
+            .insert("sys:children".into(), embed_children)
+            .expect("embed sys:children");
+        blocks.insert("embed".into(), embed).expect("insert embed");
+    }
+
     doc.encode_update_v1().expect("encode pin")
 }
 
@@ -160,7 +182,11 @@ fn repo_root() -> PathBuf {
 }
 
 async fn persist_pin(pool: &PgPool, workspace: &str, bytes: &[u8]) -> i64 {
-    db::push_update(pool, workspace, PAGE_DOC_UUID, bytes)
+    persist_doc(pool, workspace, PAGE_DOC_UUID, bytes).await
+}
+
+async fn persist_doc(pool: &PgPool, workspace: &str, doc_id: &str, bytes: &[u8]) -> i64 {
+    db::push_update(pool, workspace, doc_id, bytes)
         .await
         .expect("persist crdt_update")
 }
@@ -479,4 +505,586 @@ fn queue_flush_is_not_export() {
             "flush path must not poll export ({needle})"
         );
     }
+}
+
+const CREATED_UUID: &str = "a1b2c3d4-e5f6-4780-abcd-ef1234567890";
+const THIRD_UUID: &str = "c3d4e5f6-a7b8-4012-cdef-123456789012";
+const FOURTH_UUID: &str = "d4e5f6a7-b8c9-4123-def0-234567890123";
+const DESIGN_FOLDER: &str = "folder:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+struct CatalogDoc {
+    doc: Doc,
+}
+
+impl CatalogDoc {
+    fn seed(name: &str, git_name: &str, parent_id: &str) -> Self {
+        let doc = Doc::default();
+        let mut nodes = doc.get_or_create_map("nodes").expect("nodes");
+        put_catalog_node(
+            &doc,
+            &mut nodes,
+            "folder:spec",
+            "folder",
+            "spec",
+            None,
+            "spec",
+            None,
+        );
+        if parent_id != "folder:spec" {
+            put_catalog_node(
+                &doc,
+                &mut nodes,
+                DESIGN_FOLDER,
+                "folder",
+                "design",
+                None,
+                "design",
+                None,
+            );
+        }
+        put_catalog_node(
+            &doc,
+            &mut nodes,
+            PAGE_DOC_ID,
+            "doc",
+            "home",
+            Some("folder:spec"),
+            "home.md",
+            Some(PAGE_DOC_ID),
+        );
+        put_catalog_node(
+            &doc,
+            &mut nodes,
+            CREATED_UUID,
+            "doc",
+            name,
+            Some(parent_id),
+            git_name,
+            Some(CREATED_UUID),
+        );
+        Self { doc }
+    }
+
+    fn add_page(&self, id: &str, name: &str, git_name: &str, parent_id: &str) {
+        let mut nodes = self.nodes();
+        put_catalog_node(
+            &self.doc,
+            &mut nodes,
+            id,
+            "doc",
+            name,
+            Some(parent_id),
+            git_name,
+            Some(id),
+        );
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        self.doc.encode_update_v1().expect("encode catalog")
+    }
+
+    fn nodes(&self) -> y_octo::Map {
+        self.doc.get_or_create_map("nodes").expect("nodes")
+    }
+
+    fn node(&self, id: &str) -> y_octo::Map {
+        match self.nodes().get(id) {
+            Some(y_octo::Value::Map(m)) => m,
+            other => panic!("catalog node {id}: {other:?}"),
+        }
+    }
+
+    fn rename_created(&self, name: &str, git_name: &str) {
+        let mut node = self.node(CREATED_UUID);
+        node.insert("name".into(), name).expect("name");
+        node.insert("gitName".into(), git_name).expect("gitName");
+    }
+
+    fn move_created_to_design(&self) {
+        let mut nodes = self.nodes();
+        if nodes.get(DESIGN_FOLDER).is_none() {
+            put_catalog_node(
+                &self.doc,
+                &mut nodes,
+                DESIGN_FOLDER,
+                "folder",
+                "design",
+                None,
+                "design",
+                None,
+            );
+        }
+        let mut node = self.node(CREATED_UUID);
+        node.insert("parentId".into(), DESIGN_FOLDER)
+            .expect("parentId");
+    }
+
+    fn delete_created(&self) {
+        self.nodes().remove(CREATED_UUID);
+    }
+}
+
+fn put_catalog_node(
+    doc: &Doc,
+    nodes: &mut y_octo::Map,
+    id: &str,
+    kind: &str,
+    name: &str,
+    parent_id: Option<&str>,
+    git_name: &str,
+    doc_id: Option<&str>,
+) {
+    let mut node = doc.create_map().expect("node map");
+    node.insert("id".into(), id).expect("id");
+    node.insert("kind".into(), kind).expect("kind");
+    node.insert("name".into(), name).expect("name");
+    if let Some(parent) = parent_id {
+        node.insert("parentId".into(), parent).expect("parentId");
+    }
+    node.insert("order".into(), "a0").expect("order");
+    node.insert("gitName".into(), git_name).expect("gitName");
+    if let Some(doc_id) = doc_id {
+        node.insert("docId".into(), doc_id).expect("docId");
+    }
+    nodes.insert(id.into(), node).expect("insert node");
+}
+
+fn catalog_seed_with_page(name: &str, git_name: &str, parent_id: &str) -> Vec<u8> {
+    CatalogDoc::seed(name, git_name, parent_id).encode()
+}
+
+async fn identity_rows(pool: &PgPool, workspace: &str) -> Vec<(String, String, String, String)> {
+    sqlx::query_as(
+        "SELECT uuid::text, doc_id, name, git_path
+         FROM page_identity
+         WHERE workspace_id = $1::uuid
+         ORDER BY git_path",
+    )
+    .bind(workspace)
+    .fetch_all(pool)
+    .await
+    .expect("page_identity")
+}
+
+fn head_renames(dir: &Path) -> Vec<(String, String)> {
+    let repo = Repository::open(dir).expect("open");
+    let commit = repo.head().expect("HEAD").peel_to_commit().expect("commit");
+    let tree = commit.tree().expect("tree");
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+    let mut diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+        .expect("diff");
+    let mut find = git2::DiffFindOptions::new();
+    find.renames(true);
+    diff.find_similar(Some(&mut find)).expect("find_similar");
+    let mut out = Vec::new();
+    diff.foreach(
+        &mut |delta, _| {
+            if delta.status() == git2::Delta::Renamed {
+                let old = delta.old_file().path().map(|p| p.display().to_string());
+                let new = delta.new_file().path().map(|p| p.display().to_string());
+                if let (Some(o), Some(n)) = (old, new) {
+                    out.push((o, n));
+                }
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )
+    .expect("foreach");
+    out
+}
+
+fn file_blob(dir: &Path, rel: &str) -> Vec<u8> {
+    fs::read(dir.join(rel)).unwrap_or_default()
+}
+
+#[tokio::test]
+async fn two_files_yaml_and_identity() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    persist_pin(&pool, &ws, &seed_home_pin()).await;
+    persist_doc(
+        &pool,
+        &ws,
+        CATALOG_DOC_ID,
+        &catalog_seed_with_page(CREATED_UUID, &format!("{CREATED_UUID}.md"), "folder:spec"),
+    )
+    .await;
+    persist_doc(&pool, &ws, CREATED_UUID, &affine_home_pin("created-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let outcome = flush_wiki(&pool, &ws, &WikiConfig::new(tmp.path()), Duration::ZERO).await;
+    assert!(outcome.committed);
+    assert!(tmp.path().join(GIT_PATH).is_file(), "home.md");
+    let created_md = format!("spec/{CREATED_UUID}.md");
+    assert!(
+        tmp.path().join(&created_md).is_file(),
+        "created page must not be skipped: {created_md}"
+    );
+    assert!(tmp.path().join(SIDECAR_REL).is_file());
+    assert!(tmp
+        .path()
+        .join(format!(".venus/ids/{CREATED_UUID}.json"))
+        .is_file());
+    let yaml = fs::read_to_string(tmp.path().join(PAGES_YAML_REL)).expect("pages.yaml");
+    assert!(
+        tmp.path().join(LINKS_JSON_REL).is_file(),
+        "catalog Flush writes .venus/links.json"
+    );
+    assert!(yaml.contains("spec/home.md:"));
+    assert!(yaml.contains(&format!("spec/{CREATED_UUID}.md:")));
+    assert!(yaml.contains("folder:spec"));
+    assert!(yaml.contains(&format!("uuid: {CREATED_UUID}")));
+    let rows = identity_rows(&pool, &ws).await;
+    assert!(
+        rows.iter()
+            .any(|r| r.0 == PAGE_DOC_UUID && r.1 == PAGE_DOC_ID && r.3 == "spec/home.md"),
+        "home identity: {rows:?}"
+    );
+    assert!(
+        rows.iter()
+            .any(|r| r.0 == CREATED_UUID && r.1 == CREATED_UUID && r.3 == created_md),
+        "created identity: {rows:?}"
+    );
+    assert!(last_flushed(&pool, &ws).await.is_some());
+    let catalog_lf: Option<(i64, String)> = sqlx::query_as(
+        "SELECT clock, git_sha FROM last_flushed
+         WHERE workspace_id = $1::uuid AND doc_id = $2::uuid",
+    )
+    .bind(&ws)
+    .bind(CATALOG_DOC_ID)
+    .fetch_optional(&pool)
+    .await
+    .expect("catalog last_flushed");
+    assert!(catalog_lf.is_some(), "catalog clock must be last_flushed");
+}
+
+#[tokio::test]
+async fn rename_then_flush_git_mv_same_uuid() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let catalog = CatalogDoc::seed(CREATED_UUID, &format!("{CREATED_UUID}.md"), "folder:spec");
+    let seed = catalog.encode();
+    catalog.rename_created("protocol", "protocol.md");
+    let renamed = catalog.encode();
+    drop(catalog);
+    persist_pin(&pool, &ws, &seed_home_pin()).await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &seed).await;
+    persist_doc(&pool, &ws, CREATED_UUID, &affine_home_pin("created-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let wiki = WikiConfig::new(tmp.path());
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    let created_md = format!("spec/{CREATED_UUID}.md");
+    let before = file_blob(tmp.path(), &created_md);
+    assert!(!before.is_empty());
+
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &renamed).await;
+    let second = flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(second.committed);
+    assert!(tmp.path().join("spec/protocol.md").is_file());
+    assert!(!tmp.path().join(&created_md).exists());
+    let after = file_blob(tmp.path(), "spec/protocol.md");
+    assert_eq!(
+        before, after,
+        "catalog-only rename must not fromDoc the page body"
+    );
+    let yaml = fs::read_to_string(tmp.path().join(PAGES_YAML_REL)).expect("yaml");
+    assert!(yaml.contains("spec/protocol.md:"));
+    assert!(!yaml.contains(&format!("spec/{CREATED_UUID}.md:")));
+    assert!(yaml.contains(&format!("uuid: {CREATED_UUID}")));
+    let rows = identity_rows(&pool, &ws).await;
+    let created = rows.iter().find(|r| r.0 == CREATED_UUID).expect("row");
+    assert_eq!(created.2, "protocol");
+    assert_eq!(created.3, "spec/protocol.md");
+    assert_eq!(head_subject(tmp.path()), "snapshot:");
+}
+
+#[tokio::test]
+async fn move_then_flush_renames_not_copy() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let catalog = CatalogDoc::seed("protocol", "protocol.md", "folder:spec");
+    let seed = catalog.encode();
+    catalog.move_created_to_design();
+    let moved = catalog.encode();
+    drop(catalog);
+    persist_pin(&pool, &ws, &seed_home_pin()).await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &seed).await;
+    persist_doc(&pool, &ws, CREATED_UUID, &affine_home_pin("created-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let wiki = WikiConfig::new(tmp.path());
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &moved).await;
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(tmp.path().join("design/protocol.md").is_file());
+    assert!(!tmp.path().join("spec/protocol.md").exists());
+    let yaml = fs::read_to_string(tmp.path().join(PAGES_YAML_REL)).expect("yaml");
+    assert!(yaml.contains("design/protocol.md:"));
+    assert!(yaml.contains("design:"));
+    assert!(yaml.contains(DESIGN_FOLDER));
+    let rows = identity_rows(&pool, &ws).await;
+    assert_eq!(
+        rows.iter()
+            .find(|r| r.0 == CREATED_UUID)
+            .map(|r| r.3.as_str()),
+        Some("design/protocol.md")
+    );
+    let renames = head_renames(tmp.path());
+    assert!(
+        renames
+            .iter()
+            .any(|(o, n)| o == "spec/protocol.md" && n == "design/protocol.md"),
+        "expected git rename, got {renames:?}"
+    );
+    let clone = tempfile::tempdir().expect("clone");
+    let dest = clone.path().join("copy");
+    let status = Command::new("git")
+        .args([
+            "clone",
+            "--",
+            tmp.path().to_str().expect("wiki utf8"),
+            dest.to_str().expect("clone utf8"),
+        ])
+        .status()
+        .expect("git clone");
+    assert!(status.success(), "clone without hub");
+    assert!(dest.join("design/protocol.md").is_file());
+    assert!(!dest.join("spec/protocol.md").exists());
+    assert!(dest.join(PAGES_YAML_REL).is_file());
+}
+
+#[tokio::test]
+async fn delete_then_flush_git_rm() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let catalog = CatalogDoc::seed(CREATED_UUID, &format!("{CREATED_UUID}.md"), "folder:spec");
+    let seed = catalog.encode();
+    catalog.delete_created();
+    let deleted = catalog.encode();
+    drop(catalog);
+    persist_pin(&pool, &ws, &seed_home_pin()).await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &seed).await;
+    persist_doc(&pool, &ws, CREATED_UUID, &affine_home_pin("created-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let wiki = WikiConfig::new(tmp.path());
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &deleted).await;
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(!tmp.path().join(format!("spec/{CREATED_UUID}.md")).exists());
+    assert!(!tmp
+        .path()
+        .join(format!(".venus/ids/{CREATED_UUID}.json"))
+        .exists());
+    assert!(tmp.path().join(GIT_PATH).is_file());
+    let yaml = fs::read_to_string(tmp.path().join(PAGES_YAML_REL)).expect("yaml");
+    assert!(!yaml.contains(CREATED_UUID));
+    let rows = identity_rows(&pool, &ws).await;
+    assert!(rows.iter().all(|r| r.0 != CREATED_UUID), "{rows:?}");
+    assert!(rows.iter().any(|r| r.0 == PAGE_DOC_UUID));
+}
+
+#[tokio::test]
+async fn convert_pins_skips_catalog() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    persist_doc(
+        &pool,
+        &ws,
+        CATALOG_DOC_ID,
+        &catalog_seed_with_page(CREATED_UUID, &format!("{CREATED_UUID}.md"), "folder:spec"),
+    )
+    .await;
+    persist_pin(&pool, &ws, &affine_home_pin("alpha")).await;
+    let mut pins = PinMap::new();
+    let claim = lease_this_wiki(&pool, &ws).await;
+    cut_workspace(&pool, &claim.workspace_id, &mut pins, None)
+        .await
+        .expect("cut");
+    assert!(
+        pins.get(CATALOG_DOC_ID).is_some(),
+        "catalog must be in the cut"
+    );
+    let converted = convert_pins(&ws, &pins).expect("convert");
+    assert!(
+        converted.iter().all(|(id, _)| id != CATALOG_DOC_ID),
+        "must not fromDoc catalog: {:?}",
+        converted.iter().map(|(id, _)| id).collect::<Vec<_>>()
+    );
+    assert!(converted.iter().any(|(id, _)| id == PAGE_DOC_UUID));
+}
+
+#[test]
+fn catalog_walk_is_rust_not_from_doc() {
+    let catalog =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/catalog.rs"))
+            .expect("catalog.rs");
+    let git = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/git.rs"))
+        .expect("git.rs");
+    assert!(!catalog.contains("from_doc::"));
+    assert!(!catalog.contains("MarkdownAdapter"));
+    assert!(catalog.contains("y_octo"));
+    assert!(!git.contains("from_doc"));
+    assert!(git.contains("git_mv"));
+}
+
+fn links_json(dir: &Path) -> serde_json::Value {
+    let raw = fs::read_to_string(dir.join(LINKS_JSON_REL)).expect("links.json");
+    serde_json::from_str(&raw).expect("links json")
+}
+
+#[tokio::test]
+async fn link_move_converts_inbound_not_unrelated() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let catalog = CatalogDoc::seed("protocol", "protocol.md", "folder:spec");
+    catalog.add_page(THIRD_UUID, "third", "third.md", "folder:spec");
+    let seed = catalog.encode();
+    catalog.move_created_to_design();
+    let moved = catalog.encode();
+    drop(catalog);
+    persist_pin(
+        &pool,
+        &ws,
+        &affine_page_pin("Venus", "hello-home", Some(CREATED_UUID)),
+    )
+    .await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &seed).await;
+    persist_doc(&pool, &ws, CREATED_UUID, &affine_home_pin("created-body")).await;
+    persist_doc(&pool, &ws, THIRD_UUID, &affine_home_pin("third-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let wiki = WikiConfig::new(tmp.path());
+    let first = flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(first.committed);
+    let home = fs::read_to_string(tmp.path().join(GIT_PATH)).expect("home.md");
+    assert!(home.starts_with("# Venus\n"), "{home}");
+    assert!(
+        home.contains("[protocol](protocol.md)"),
+        "catalog form, not workspace URL: {home}"
+    );
+    assert!(home.contains(&format!("<!-- venus:doc:{CREATED_UUID} -->")));
+    assert!(!home.contains("./workspace/"));
+    assert!(!home.contains("[untitled]"));
+    let links = links_json(tmp.path());
+    let inbound = links["inbound"][CREATED_UUID]
+        .as_array()
+        .expect("inbound uuid");
+    assert!(
+        inbound.iter().any(|v| v.as_str() == Some(PAGE_DOC_ID)),
+        "inbound: {links}"
+    );
+    let uuid_blob = file_blob(tmp.path(), "spec/protocol.md");
+    let third_blob = file_blob(tmp.path(), "spec/third.md");
+    assert!(!uuid_blob.is_empty());
+    assert!(!third_blob.is_empty());
+
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &moved).await;
+    let second = flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(second.committed);
+    assert!(
+        second.converted_ids.iter().any(|id| id == PAGE_DOC_UUID),
+        "home inbound must fromDoc: {:?}",
+        second.converted_ids
+    );
+    assert!(
+        !second.converted_ids.iter().any(|id| id == CREATED_UUID),
+        "uuid has no outbound: git mv only: {:?}",
+        second.converted_ids
+    );
+    assert!(
+        !second.converted_ids.iter().any(|id| id == THIRD_UUID),
+        "third must not convert: {:?}",
+        second.converted_ids
+    );
+    let home2 = fs::read_to_string(tmp.path().join(GIT_PATH)).expect("home after move");
+    assert!(
+        home2.contains("[protocol](../design/protocol.md)"),
+        "{home2}"
+    );
+    assert!(home2.contains(&format!("<!-- venus:doc:{CREATED_UUID} -->")));
+    assert!(!home2.contains("spec/protocol.md"));
+    assert_eq!(file_blob(tmp.path(), "design/protocol.md"), uuid_blob);
+    assert_eq!(file_blob(tmp.path(), "spec/third.md"), third_blob);
+    let links2 = links_json(tmp.path());
+    let inbound2 = links2["inbound"][CREATED_UUID]
+        .as_array()
+        .expect("inbound after move");
+    assert!(inbound2.iter().any(|v| v.as_str() == Some(PAGE_DOC_ID)));
+}
+
+#[tokio::test]
+async fn outbound_dirname_converts_source_not_target() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let catalog = CatalogDoc::seed("protocol", "protocol.md", "folder:spec");
+    catalog.add_page(FOURTH_UUID, "fourth", "fourth.md", "folder:spec");
+    let seed = catalog.encode();
+    catalog.move_created_to_design();
+    let moved = catalog.encode();
+    drop(catalog);
+    persist_pin(&pool, &ws, &affine_home_pin("home-plain")).await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &seed).await;
+    persist_doc(
+        &pool,
+        &ws,
+        CREATED_UUID,
+        &affine_page_pin("Venus", "created-body", Some(FOURTH_UUID)),
+    )
+    .await;
+    persist_doc(&pool, &ws, FOURTH_UUID, &affine_home_pin("fourth-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let wiki = WikiConfig::new(tmp.path());
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    let before = fs::read_to_string(tmp.path().join("spec/protocol.md")).expect("protocol");
+    assert!(before.contains("[fourth](fourth.md)"), "{before}");
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &moved).await;
+    let second = flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(
+        second.converted_ids.iter().any(|id| id == CREATED_UUID),
+        "dirname+outbound must fromDoc uuid: {:?}",
+        second.converted_ids
+    );
+    assert!(
+        !second.converted_ids.iter().any(|id| id == FOURTH_UUID),
+        "fourth is not inbound: {:?}",
+        second.converted_ids
+    );
+    let after = fs::read_to_string(tmp.path().join("design/protocol.md")).expect("moved");
+    assert!(after.contains("[fourth](../spec/fourth.md)"), "{after}");
+    assert!(after.contains(&format!("<!-- venus:doc:{FOURTH_UUID} -->")));
+}
+
+#[tokio::test]
+async fn name_change_converts_inbound_link_text() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let catalog = CatalogDoc::seed("protocol", "protocol.md", "folder:spec");
+    let seed = catalog.encode();
+    catalog.rename_created("lease", "lease.md");
+    let renamed = catalog.encode();
+    drop(catalog);
+    persist_pin(
+        &pool,
+        &ws,
+        &affine_page_pin("Venus", "hello-home", Some(CREATED_UUID)),
+    )
+    .await;
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &seed).await;
+    persist_doc(&pool, &ws, CREATED_UUID, &affine_home_pin("created-body")).await;
+    let tmp = tempfile::tempdir().expect("wiki dir");
+    let wiki = WikiConfig::new(tmp.path());
+    flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    let home = fs::read_to_string(tmp.path().join(GIT_PATH)).expect("home");
+    assert!(home.contains("[protocol](protocol.md)"), "{home}");
+    persist_doc(&pool, &ws, CATALOG_DOC_ID, &renamed).await;
+    let second = flush_wiki(&pool, &ws, &wiki, Duration::ZERO).await;
+    assert!(
+        second.converted_ids.iter().any(|id| id == PAGE_DOC_UUID),
+        "name change inbound: {:?}",
+        second.converted_ids
+    );
+    let home2 = fs::read_to_string(tmp.path().join(GIT_PATH)).expect("home2");
+    assert!(home2.contains("[lease](lease.md)"), "{home2}");
+    assert!(!home2.contains("[protocol]"));
 }

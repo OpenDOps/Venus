@@ -17,7 +17,7 @@ export function collectRangedBlocks(root: {
   children?: unknown[];
 } | null): Array<{ model: { id: string; flavour: string }; listDepth: number }>;
 
-export function blockMarkdownSlice(
+export async function blockMarkdownSlice(
   adapter: {
     job: { blockToSnapshot: (model: unknown) => unknown; assetsManager: unknown };
     fromBlockSnapshot: (payload: {
@@ -27,9 +27,23 @@ export function blockMarkdownSlice(
   },
   model: { flavour: string; props?: { pageId?: string } },
   listDepth: number,
+  catalogLinks?: {
+    sourceGitPath: string;
+    pages: Record<string, { name: string; gitPath: string }>;
+  },
 ): Promise<string>;
 
 export function encodeSidecarClock(ydoc: Doc): string;
+
+export function posixRelativeFromFiles(fromFile: string, toFile: string): string;
+
+export function catalogLinkedDocLink(
+  pageId: string,
+  catalogLinks: {
+    sourceGitPath: string;
+    pages: Record<string, { name: string; gitPath: string }>;
+  },
+): { link: string; href: string } | null;
 
 export function fromDoc(
   store: {
@@ -46,6 +60,10 @@ export function fromDoc(
     provider: unknown;
   },
   workspace: { id: string; meta: { docMetas: unknown[] } },
+  catalogLinks?: {
+    sourceGitPath: string;
+    pages: Record<string, { name: string; gitPath: string }>;
+  },
 ): Promise<{ markdown: string; sidecar: Sidecar }>;
 
 export function roundTripFromDoc(

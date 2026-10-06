@@ -15,7 +15,7 @@ export class MemoryNoopProvider {
 
   disconnect(_docId) {}
 
-  whenReady() {
+  whenReady(_docId) {
     return Promise.resolve();
   }
 
