@@ -124,7 +124,7 @@ Only **folders** (and wiki root) may be parents. Reparent onto a `kind: doc` nod
 
 Also reject **home** (`home_protected`): **delete** and **reparent**. Empty folder and leaf page (not home) may delete. Folder-with-children: `node_not_empty`. Same tokens on the **host op** (and UI). There is no hub HTTP for this.
 
-On a successful page delete: catalog `nodes.delete` only. The **UI auto-switches to home** whenever the open uuid is not a catalog `kind: doc` — this tab if that page was open, a **second tab** still on it, and a later visit (reload / bookmark / `connect` of that uuid). Do **not** key that check off live SQL (`page_identity` lags until Flush). Header / editor / outline / md pane rebind to home; drop that page’s `?doc=` session. Hub wire A is unchanged: a well-formed uuid still binds (empty or leftover `crdt_*`; **no GC in M4**). The host must not show that uuid as an open page. Git waits for Flush: sidecar sees the uuid missing from the catalog pin → `git rm` the `.md`, rewrite `pages.yaml` from the pin, drop the SQL row. `crdt_*` for that uuid may remain until a later GC; it is not a tree row and not in YAML. Do not create a second catalog node for a deleted uuid.
+On a successful page delete: catalog `nodes.delete` only. The **UI auto-switches to home** whenever the open uuid is not a catalog `kind: doc` — this tab if that page was open, a **second tab** still on it, and a later visit (reload / bookmark / `connect` of that uuid). Do **not** key that check off live SQL (`page_identity` lags until Flush). Header / editor / outline / md pane rebind to home; drop that page’s `?doc=` session. Until the next Flush, hub wire A still binds that well-formed uuid (empty or leftover `crdt_*`). The host must not show that uuid as an open page. Git waits for Flush: sidecar sees the uuid missing from the catalog pin → `git rm` the `.md`, rewrite `pages.yaml` from the pin, tombstone the SQL row (`deleted_at`). From then on the hub refuses that uuid on collab and `ExportDoc` (`doc_deleted`, 404). `crdt_*` for that uuid stays (**no GC in M4**; GC waits for a retention rule); it is not a tree row and not in YAML. Do not create a second catalog node for a deleted uuid.
 
 Folder delete is catalog-only (no `page_identity` row). Next Flush drops that folder from YAML. Empty catalog folders are usually absent as git directories; they **are** listed under YAML `folders:`.
 
@@ -210,12 +210,13 @@ workspace_id  UUID  not null
 uuid          UUID  not null   -- SQL doc_id, wire ?doc=, file identity
 doc_id        TEXT  not null   -- BlockSuite guid; = uuid text for M4-created pages; doc:home for home
 name          TEXT  not null   -- docname (tree label, UTF)
-git_path      TEXT  not null   -- filename path (…/*.md)
+git_path      TEXT  not null   -- filename path (…/*.md); last path for a tombstone
+deleted_at    TIMESTAMPTZ      -- set when a Flush walk no longer has the page
 primary key (workspace_id, uuid)
-unique (workspace_id, git_path)
+unique (workspace_id, git_path) where deleted_at is null
 ```
 
-**No HTTP.** Catalog ops do not upsert this table. Sidecar **replaces** the wiki’s rows from the catalog pin (same decode as YAML). Never YAML → this table. Never YAML → catalog Yjs. If SQL and catalog disagree, **catalog wins** for the live UI; SQL catches up at the next job. Delete **authorization** (`node_not_empty`, `home_protected`) is the host op reading the live catalog — that is not merge.
+**No HTTP.** Catalog ops do not upsert this table. Sidecar makes the wiki’s **live** rows equal the catalog pin (same decode as YAML) and **tombstones** (`deleted_at`) a row whose uuid left the walk. The hub refuses a tombstoned uuid (`doc_deleted`, 404). A uuid that comes back in a later walk is live again. A rebuild from HEAD `pages.yaml` (SQL and git disagree) drops extra rows instead of tombstoning them, since the yaml can trail the catalog. Never YAML → this table. Never YAML → catalog Yjs. If SQL and catalog disagree, **catalog wins** for the live UI; SQL catches up at the next job. Delete **authorization** (`node_not_empty`, `home_protected`) is the host op reading the live catalog — that is not merge.
 
 ## Git files
 
@@ -279,7 +280,7 @@ Compose stack. M0 wiki with seeded **home only** (catalog `spec` + `home`). No `
    - **When** you create a page, Flush, then delete that leaf (not home).
    - **Then** the row is gone from the catalog immediately; UI auto-switches to **home** if that uuid was open (this tab, a **second tab**, or a later visit). Hub may still bind the uuid. SQL / git / YAML may still list it until the next Flush.
    - **When** Flush.
-   - **Then** the row is gone from DB `page_identity`; git no longer has that `.md`; YAML `pages:` has no that uuid. Home still hydrates.
+   - **Then** the DB `page_identity` row is a tombstone (`deleted_at` set; not in `ListDocs`); the hub refuses `?doc=<uuid>` with `doc_deleted`; git no longer has that `.md`; YAML `pages:` has no that uuid. Home still hydrates.
 
 8. **Folders in YAML**
    - **When** you create a folder under `spec`, Flush.

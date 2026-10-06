@@ -5,6 +5,8 @@
 # M3 snapshotter is Compose `sidecar` (`--profile snapshot`). Flush autoinits wiki/.
 # Never omit Postgres (no SQLite fallback). Do not publish 5432.
 # Host ports bind 127.0.0.1 only (hub :3000, gRPC :3100, web :8080, hub-b :3001/:3101, sidecar :3002).
+# SurrealDB graph + search (`--profile graph`): :8000 graph, :8001 search-0, :8002 search-1.
+# Default `up` does not start them. Image surrealdb/surrealdb:v2.7.0. Cache is 64MB, not host RAM.
 # Operators: docs/devops/compose.md  Component: docs/design/components/backend/hub/
 
 # Pool: 32 covers 10 distinct cold exports + 10 blob GETs + 10 room flushes
@@ -41,6 +43,32 @@ x-hub-limits: &hub-limits
     - ALL
   security_opt:
     - no-new-privileges:true
+
+# Same limits as hub. Profile `graph` only — absent from default `up`.
+# The process binds 0.0.0.0 inside the container so the published port can
+# reach it. The host publish stays 127.0.0.1. User and pass come from env.
+x-surreal: &surreal
+  image: surrealdb/surrealdb:v2.7.0
+  profiles: ["graph"]
+  # Image user 65532 cannot create a directory in a new named volume (root:root).
+  user: "0:0"
+  mem_limit: 1g
+  pids_limit: 512
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  environment:
+    SURREAL_USER: ${SURREAL_USER:-venus}
+    SURREAL_PASS: ${SURREAL_PASS:-venus}
+    SURREAL_BIND: "0.0.0.0:8000"
+    SURREAL_ROCKSDB_BLOCK_CACHE_SIZE: 64MB
+  healthcheck:
+    test: ["CMD", "/surreal", "is-ready"]
+    interval: 2s
+    timeout: 5s
+    retries: 30
+    start_period: 20s
 
 services:
   postgres:
@@ -187,5 +215,34 @@ services:
       retries: 12
       start_period: 5s
 
+  # Graph store and search shards. Not on the default Compose path.
+  #   docker compose --profile graph up surreal-graph surreal-search-0 surreal-search-1
+  surreal-graph:
+    <<: *surreal
+    command: ["start", "rocksdb:/data/graph.db"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - surreal-graph-data:/data
+
+  surreal-search-0:
+    <<: *surreal
+    command: ["start", "rocksdb:/data/search.db"]
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - surreal-search-0-data:/data
+
+  surreal-search-1:
+    <<: *surreal
+    command: ["start", "rocksdb:/data/search.db"]
+    ports:
+      - "127.0.0.1:8002:8000"
+    volumes:
+      - surreal-search-1-data:/data
+
 volumes:
   pg-venus-data:
+  surreal-graph-data:
+  surreal-search-0-data:
+  surreal-search-1-data:

@@ -1,6 +1,6 @@
 # Semantic graph
 
-**Status:** design. **Plan written, not started** — search cluster [search-scale/plan.md](./search-scale/plan.md), board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M5](../venus-implementation-plan.md#m5--lease--freeze-week). Does **not** delay `last_flushed`.
+**Status:** design. **step-schema done** (graph schema, search indexes, allocation rows). Search cluster [search-scale/plan.md](./search-scale/plan.md), board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M5](../venus-implementation-plan.md#m5--lease--freeze-week). Does **not** delay `last_flushed`.
 
 Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeIndexing](../Agents/LifeIndexing.md). This folder is *how* that graph is built and where it is stored.
 
@@ -10,8 +10,8 @@ Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeInd
 | [extract.md](./extract.md) | In-document graph: tree-sitter, Aho–Corasick, regex, optional ONNX NER |
 | [connect.md](./connect.md) | Direct references between pages, then background semantic binds |
 | [store.md](./store.md) | SurrealDB graph schema, clocks, Compose |
-| [scale.md](./scale.md) | Graph store vs search projection. Write order. |
-| [search-scale](./search-scale/README.md) | `surreal-search` cluster: shards, replicas, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
+| [scale.md](./scale.md) | Graph store vs search projection. Fenced, versioned writes to equal copies; rendezvous placement; catch-up from the graph; splits. |
+| [search-scale](./search-scale/README.md) | `surreal-search` cluster: shards, copies, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
 | [plan.md](./plan.md) | Points at the search-scale board. Extractors are the next board. |
 
 ## What this is
@@ -50,7 +50,7 @@ In-document work must stay autonomous and fast. Do not call an LLM to find a fun
 | Job | Choice | Rejected for this job |
 |---|---|---|
 | **Graph store** | **SurrealDB 2**, namespace `graph`. `RELATE` edges and exact mention keys. Rust SDK. | Postgres `crdt_*` (live Yjs, not a graph). A second graph engine. Embedding cosine stored as a bind. |
-| **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and replicated by Venus ([scale — cluster](./scale.md#search-cluster)). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. |
+| **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and copied by Venus ([scale](./scale.md), [search-scale — cluster](./search-scale/README.md#cluster)). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. |
 | **In-doc code names** | **tree-sitter** on fenced code only | CodeGraph CLI and Aider. Those analyze the **product** repo at `productSha` ([code-bind](../Agents/code-bind.md)). They are not the wiki indexer. |
 | **Glossary / slang** | **`aho-corasick`** automaton compiled from `GLOSSARY.md` | An LLM pass over every paragraph. |
 | **Emails, phones, UUIDs, hashes, API paths** | **`regex`** (Rust engine, linear time) | NER for patterns that are regular. |
@@ -102,4 +102,4 @@ Glossary file changed: rescan **mentions** on every page (CPU, no model). Run th
 - Merge two pages because they embed near each other.
 - Run CodeGraph or Aider over `wiki/`.
 - Show the graph as a published page. AB2 reads it later; this folder does not ship chat.
-- Shard one wiki’s search index, or hash wikis onto nodes with the live replica count ([scale.md](./scale.md)).
+- Shard documents or place copies with `hash %` the node count ([scale.md — placement](./scale.md#placement)).

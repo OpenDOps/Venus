@@ -16,20 +16,20 @@ Compose (profile graph)
   hub               Yjs apply + broadcast            (unchanged)
   sidecar           pin → fromDoc → git              (unchanged; enqueues graph)
   surreal-graph     namespace graph, one writer      (this design)
-  surreal-search-0  search shard primary + replica   (this design)
-  surreal-search-1  the other primary + the other replica
-  graph worker      crates/venus-graph               writes primaries, copies replicas
+  surreal-search-0  a copy of each search shard      (this design)
+  surreal-search-1  a copy of each search shard
+  graph worker      crates/venus-graph               fenced writer: graph, then every copy
 ```
 
 | | |
 |---|---|
-| Image | `surrealdb/surrealdb:v2` |
+| Image | `surrealdb/surrealdb:v2.7.0` |
 | Command | `start --bind 0.0.0.0:8000 --user venus --pass … rocksdb:/data/graph.db` |
-| Volume | `surreal-venus-data` → `/data` |
+| Volume | `surreal-graph-data` → `/data` |
 | Listen | Graph `127.0.0.1:8000`. Search nodes `127.0.0.1:8001` and `:8002`. Not published wide. |
-| Client | Rust crate `surrealdb`, WebSocket from the `graph` service only |
+| Client | Rust crate `surrealdb` `2.7.0` in `crates/venus-graph` (`protocol-ws`, `rustls`, no embedded RocksDB). WebSocket from the `graph` service only |
 
-Namespace `graph`, database = `workspace_id` (one database per wiki, one process). The search projection is namespace `search` on the nodes in [search_allocation](./scale.md#search-cluster). A second wiki must not share this database.
+Namespace `graph`, database = `workspace_id` (one database per wiki, one process). The search projection is namespace `search` on the nodes in [search_allocation](./scale.md#postgres-tables). A second wiki must not share this database.
 
 The hub **does not** get a SurrealDB client. The browser **does not** open SurrealDB. AB2 will call a small read API on `venus-graph` (or in-process query) later. Until then the accept bar is the data in SurrealDB, checked by tests.
 
@@ -44,7 +44,9 @@ The working graph is the **latest successful index of each page**, not a full co
 | Record | Clock |
 |---|---|
 | `page.indexed_sha` | SHA whose markdown was extracted |
-| `page.search_sha` | SHA last projected into the search namespace. ≤ `indexed_sha`. |
+| `page.search_sha` | SHA last projected into the search namespace (one copy of its shard committed). ≤ `indexed_sha`. |
+| `page.search_seq` | Version of the last projection. From `graph_meta.search_seq`, +1 per projected doc. Search copies keep only the newest ([scale](./scale.md#fence-and-sequence)). |
+| `page.hkey` | First 8 bytes of `sha256(docId)`, big-endian, shifted right by 1 (63 bits). `hkey % shard_count` is the search shard ([scale](./scale.md#shards)). |
 | `page.pass` | Monotonic int; mentions and extractor edges from older passes are deleted |
 | `page.body` hashes on headings | Skip extract + model when unchanged |
 | `graph_meta:workspace` | `schema` (int), `glossary_id` (blob hash), `ner` (bool), `wiki_sha` (last job SHA, even if some pages lag) |
@@ -85,6 +87,8 @@ DEFINE FIELD schema       ON graph_meta TYPE int;
 DEFINE FIELD glossary_id  ON graph_meta TYPE option<string>;
 DEFINE FIELD ner          ON graph_meta TYPE bool DEFAULT false;
 DEFINE FIELD wiki_sha     ON graph_meta TYPE option<string>;
+DEFINE FIELD fence        ON graph_meta TYPE int DEFAULT 0;
+DEFINE FIELD search_seq   ON graph_meta TYPE int DEFAULT 0;
 
 DEFINE TABLE page SCHEMAFULL;
 DEFINE FIELD git_path     ON page TYPE string;
@@ -92,6 +96,10 @@ DEFINE FIELD title        ON page TYPE string;
 DEFINE FIELD indexed_sha  ON page TYPE string;
 DEFINE FIELD search_sha   ON page TYPE option<string>;
 DEFINE FIELD search_error ON page TYPE option<string>;
+DEFINE FIELD search_seq   ON page TYPE int DEFAULT 0;
+DEFINE FIELD hkey         ON page TYPE int;
+DEFINE FIELD deleted      ON page TYPE bool DEFAULT false;
+DEFINE INDEX page_search_seq ON page FIELDS search_seq;
 DEFINE FIELD pass         ON page TYPE int;
 DEFINE FIELD gist         ON page TYPE option<string>;
 DEFINE FIELD index_error  ON page TYPE option<string>;

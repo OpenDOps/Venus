@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { expect, test, type Page } from '@playwright/test';
 import { PAGE_DOC_ID, WORKSPACE_ID } from '../src/host/ids.js';
 import { assertHubOn3000, assertSidecarOn3002 } from './hub-ws';
@@ -70,6 +72,24 @@ async function readWiki(rel: string) {
     return await readFile(join(wikiRoot, rel), 'utf8');
   } catch {
     return '';
+  }
+}
+
+/** `rel` is a blob in the wiki's HEAD commit (not just the working tree). */
+async function committed(rel: string) {
+  try {
+    await promisify(execFile)('git', [
+      '-c',
+      `safe.directory=${wikiRoot}`,
+      '-C',
+      wikiRoot,
+      'cat-file',
+      '-e',
+      `HEAD:${rel}`,
+    ]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -179,6 +199,7 @@ test('embed card survives rename+move; git hrefs follow catalog', async ({
   expect(homeAfterCreate).not.toContain(
     `./workspace/${WORKSPACE_ID}/${created.id}`,
   );
+  expect(await committed(created.gitPath), created.gitPath).toBe(true);
 
   const protocolName = `protocol-${created.id.slice(0, 8)}`;
   await page.evaluate(
@@ -196,6 +217,7 @@ test('embed card survives rename+move; git hrefs follow catalog', async ({
       home.includes(`[${protocolName}]`) && home.includes(`${protocolName}.md`)
     );
   });
+  expect(await committed(`spec/${protocolName}.md`)).toBe(true);
 
   const designName = `design-${created.id.slice(0, 8)}`;
   const design = await page.evaluate((name) => {
@@ -222,6 +244,8 @@ test('embed card survives rename+move; git hrefs follow catalog', async ({
   expect(homeAfterMove).toContain(
     `[${protocolName}](../${designName}/${protocolName}.md)`,
   );
+  expect(await committed(moved.gitPath), moved.gitPath).toBe(true);
+  expect(await committed(`spec/${protocolName}.md`)).toBe(false);
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForCatalog(page);

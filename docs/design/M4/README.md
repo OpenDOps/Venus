@@ -11,7 +11,6 @@ This folder is the implementation contract for the M4 slice in [venus-implementa
 | [plan.md](./plan.md) | Story, [steps summary](./plan.md#steps-summary), work, exact test scenarios |
 | [M4.state.yaml](./M4.state.yaml) | Board: step status only |
 | [create-rename-map.md](./create-rename-map.md) | Pointer. Canonical: [page-identity](../datamodel/page-identity.md). Hub SQL: [hub page-identity](../components/backend/hub/page-identity.md). |
-| [step-3-findings.md](./step-3-findings.md) | Catalog CRDT revalidation (logic data-flows + fix proposals; security; perf already fixed) |
 | [react-tree-issues.md](./react-tree-issues.md) | Step-tree React / network review: problem, flow, proposed fix per issue |
 | [implementation-findings.md](./implementation-findings.md) | Steps 1–7 implementation review: findings by severity, data flow, proposed fixes |
 

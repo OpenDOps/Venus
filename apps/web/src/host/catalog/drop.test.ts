@@ -96,8 +96,7 @@ test('applyCatalogDrop multi-item uses a fresh dest slot per id', async () => {
   expect(ids).toContain(PAGE_DOC_ID);
   const o1 = getNode(catalog, p1.id)?.order;
   const o2 = getNode(catalog, p2.id)?.order;
-  expect(o1).toBeTruthy();
-  expect(o2).toBeTruthy();
+  if (!o1 || !o2) throw new Error(`missing order: ${o1} ${o2}`);
   expect(o1).not.toBe(o2);
   expect(o1 < o2).toBe(true);
 });

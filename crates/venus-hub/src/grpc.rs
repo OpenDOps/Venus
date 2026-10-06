@@ -15,7 +15,7 @@ use crate::db;
 use crate::http::{bind_doc_id, workspace_id_ok};
 use crate::room::Hub;
 use crate::rpc::{
-    CODE_INVALID_DOC, CODE_INVALID_WORKSPACE, CODE_ROOM_FULL, CODE_STORE_FAILED,
+    CODE_DOC_DELETED, CODE_INVALID_DOC, CODE_INVALID_WORKSPACE, CODE_ROOM_FULL, CODE_STORE_FAILED,
     CODE_UNKNOWN_WORKSPACE, GRPC_LISTEN_DEFAULT, GRPC_LISTEN_ENV, GRPC_SERVICE,
 };
 use crate::{CATALOG_DOC_ID, PAGE_DOC_ID};
@@ -133,6 +133,14 @@ fn status_store(workspace_id: &str, e: anyhow::Error) -> Status {
             Code::ResourceExhausted,
             CODE_ROOM_FULL,
             &message,
+            workspace_id,
+        );
+    }
+    if crate::room::is_deleted(&e) {
+        return status_error(
+            Code::NotFound,
+            CODE_DOC_DELETED,
+            &e.to_string(),
             workspace_id,
         );
     }

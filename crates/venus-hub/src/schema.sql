@@ -104,16 +104,41 @@ CREATE TABLE IF NOT EXISTS last_flushed (
 );
 
 -- Flush cache of catalog kind: doc nodes. Hub persist does not write this.
--- Sidecar replaces rows from the catalog pin. ListDocs reads it (lags Flush).
+-- Sidecar upserts live rows from the catalog pin. ListDocs reads it (lags Flush).
+-- `deleted_at` is the tombstone of a page that left the walk: the hub refuses
+-- to open that uuid. Its CRDT rows stay until a retention rule exists.
 CREATE TABLE IF NOT EXISTS page_identity (
     workspace_id UUID NOT NULL,
     uuid UUID NOT NULL,
     doc_id TEXT NOT NULL,
     name TEXT NOT NULL,
     git_path TEXT NOT NULL,
-    PRIMARY KEY (workspace_id, uuid),
-    UNIQUE (workspace_id, git_path)
+    deleted_at TIMESTAMPTZ,
+    PRIMARY KEY (workspace_id, uuid)
 );
+-- A tombstone keeps its last path, so only live rows are unique by path.
+-- Guarded so a boot after the cutover takes no lock on page_identity.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = 'page_identity'::regclass
+      AND attname = 'deleted_at' AND NOT attisdropped
+  ) THEN
+    ALTER TABLE page_identity ADD COLUMN deleted_at TIMESTAMPTZ;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'page_identity_workspace_id_git_path_key'
+  ) THEN
+    ALTER TABLE page_identity DROP CONSTRAINT page_identity_workspace_id_git_path_key;
+  END IF;
+  IF to_regclass('page_identity_live_git_path') IS NULL THEN
+    CREATE UNIQUE INDEX page_identity_live_git_path
+      ON page_identity (workspace_id, git_path)
+      WHERE deleted_at IS NULL;
+  END IF;
+END $$;
 
 -- Fold two UUIDs (256 bits) to one int8 advisory key. All 16+16 bytes
 -- participate via XOR. Distinct (ws, doc) can still collide (64-bit

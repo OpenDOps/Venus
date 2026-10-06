@@ -17,19 +17,52 @@ columns:
 steps:
   step-recon: # 1
     n: 1
-    state: pending
+    state: done
     breakpoint: human
     pr: null
+    dodResults:
+      - name: Binary
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test recon binary — surrealdb/surrealdb:v2.7.0; client 2.7.0 default-features false, protocol-ws + rustls; Cargo.lock has no rocksdb crate; search nodes do not create namespace graph; no DEFINE INDEX on the graph client."
+      - name: HA default
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test recon ha_default — exit 7 is a third search node, replica_count still 1, shard_count still 2. replica_count = 2 stays a non-goal. Dev shape P=2, R=1, two nodes."
+      - name: Queue split
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test recon flush_jobs — jobs.workspace_id UUID PRIMARY KEY; reason IN ('idle', 'flush', 'lease'); schema.sql has no graph_jobs. Flush unchanged."
+      - name: Copies
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test recon copies — scale.md, README cluster, and plan steps 4–7 name no leader copy, no promotion, no role column. scale.md defines rendezvous, fence, seq, applied_seq, hkey % shard_count, ack on one copy, refill from the graph. Step 4 tests Placement, Fenced, Older seq, One copy down. Step 7 uses rendezvous and SEARCH_REALLOCATE_DELAY_MS."
   step-compose: # 2
     n: 2
-    state: pending
+    state: done
     breakpoint: human
     pr: null
+    dodResults:
+      - name: Profile off
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test compose profile_off — docker compose config --services is postgres hub web; profile graph is required for surreal-graph, surreal-search-0, surreal-search-1. Host publish is 127.0.0.1. Volumes are distinct. Cache is 64MB."
+      - name: Three processes
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test compose three_processes — :8000, :8001, and :8002 healthy. Each HostConfig.Memory is 1073741824."
+      - name: Independent disk
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test compose independent_disk — UPSERT probe:keep on :8001 is absent on :8002 and still present on :8001 after force-recreate of surreal-search-1. /data volumes differ."
   step-schema: # 3
     n: 3
-    state: pending
+    state: done
     breakpoint: human
     pr: null
+    dodResults:
+      - name: Graph has no index
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test schema graph_has_no_index — :8000 namespace graph has links_to, page.search_sha, page.search_error, and no SEARCH index. Second migrate applies. graph_migrator_refuses_search_index rejects a SEARCH index."
+      - name: Search has no graph
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test schema search_has_no_graph — :8001 and :8002 have heading_text and mention_text, no links_to, no namespace graph. search_migrator_omits_graph_edges rejects links_to."
+      - name: Allocation
+        status: pass
+        evidence: "2026-10-06 cargo test -p venus-graph --test schema allocation — search_cluster shard_count 2 replica_count 1. Four rows: shard 0 primary node 0 replica node 1; shard 1 primary node 1 replica node 0. Second migrate stays at two primaries."
   step-project: # 4
     n: 4
     state: pending

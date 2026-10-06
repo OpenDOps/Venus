@@ -6,7 +6,7 @@ The **sidecar** (`crates/venus-sidecar`, after claim) hydrates the **catalog pin
 
 - walks `nodes` (not `fromDoc`, not markdown)
 - writes `wiki/.venus/pages.yaml` (`pages:` + `folders:`)
-- **replaces** `page_identity` rows for that wiki to match catalog `kind: doc` nodes
+- makes the live `page_identity` rows for that wiki match catalog `kind: doc` nodes, and tombstones (`deleted_at`) a row whose uuid left the walk
 
 That walk is already required for `git mv`. It does **not** run on typing or on hub apply. Page pins in the same job still `fromDoc` to `.md`.
 
@@ -52,14 +52,17 @@ workspace_id  UUID  not null
 uuid          UUID  not null   -- PK with workspace; SQL doc_id; ?doc=
 doc_id        TEXT  not null   -- BlockSuite guid (= uuid text for created pages)
 name          TEXT  not null   -- docname
-git_path      TEXT  not null   -- unique per workspace
+git_path      TEXT  not null   -- unique per workspace among live rows
+deleted_at    TIMESTAMPTZ      -- Flush tombstone: the walk no longer has this page
 primary key (workspace_id, uuid)
-unique (workspace_id, git_path)
+unique (workspace_id, git_path) where deleted_at is null   -- index page_identity_live_git_path
 ```
+
+`Room::ensure_doc` and `Hub::live_export_doc` refuse a tombstoned uuid with `DocDeleted` (collab 404, gRPC `NOT_FOUND`, code `doc_deleted`), even when the doc is still resident. Home and catalog are never tombstoned.
 
 Seed/ensure a row for home at migrate: uuid `PAGE_DOC_ID`, `doc_id` `doc:home`, name `home`, `git_path` `spec/home.md`. Catalog space is **not** a page row. After the first Flush, sidecar overwrites the wiki’s rows from the pin (home included).
 
-`ListDocs` reads this table (lags until the next snapshot/Flush). Live UI uses the catalog Y.Doc, not this table.
+`ListDocs` reads the live rows of this table (lags until the next snapshot/Flush). Live UI uses the catalog Y.Doc, not this table.
 
 ## No HTTP
 
@@ -73,4 +76,4 @@ Product rules: [datamodel page-identity — Delete](../../../datamodel/page-iden
 
 1. Hub merge still treats catalog bytes as opaque, not as folder vs page in y-octo.
 2. Catalog CRDT is live tree truth. This table and YAML are Flush projections. YAML → catalog is forbidden.
-3. After Flush, SQL rows match catalog `kind: doc` at the pin. `crdt_*` for a deleted uuid may remain until a later GC; it is not a catalog node.
+3. After Flush, live SQL rows match catalog `kind: doc` at the pin. A deleted uuid is a tombstone row; its `crdt_*` stays until a GC with a retention rule exists. It is not a catalog node.

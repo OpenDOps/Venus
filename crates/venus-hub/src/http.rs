@@ -25,8 +25,8 @@ use crate::blobs::{blob_hash, sniff_content_type};
 use crate::config::default_cors_origins;
 use crate::db;
 use crate::room::{
-    is_capacity, GetRoomError, Hub, Room, CAP_CONNECTIONS, MAX_CONNECTIONS_PER_IP, OUTBOUND_BYTES,
-    PERSIST_BYTES,
+    is_capacity, is_deleted, GetRoomError, Hub, Room, CAP_CONNECTIONS, MAX_CONNECTIONS_PER_IP,
+    OUTBOUND_BYTES, PERSIST_BYTES,
 };
 use crate::rpc;
 use crate::{PAGE_DOC_ID, SUBPROTOCOL};
@@ -355,6 +355,13 @@ async fn collaboration_get(
                     return rpc::error_response(
                         StatusCode::TOO_MANY_REQUESTS,
                         rpc::CODE_ROOM_FULL,
+                        &e.to_string(),
+                    );
+                }
+                if is_deleted(&e) {
+                    return rpc::error_response(
+                        StatusCode::NOT_FOUND,
+                        rpc::CODE_DOC_DELETED,
                         &e.to_string(),
                     );
                 }

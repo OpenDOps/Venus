@@ -520,7 +520,13 @@ async fn record_published_state(
 ) -> Result<()> {
     let mut tx = pool.begin().await.context("publish begin")?;
     if let Some(walk) = walk {
-        catalog::replace_page_identity_tx(&mut tx, workspace_id, &walk.pages).await?;
+        catalog::replace_page_identity_tx(
+            &mut tx,
+            workspace_id,
+            &walk.pages,
+            catalog::Leaving::Tombstone,
+        )
+        .await?;
     }
     for (doc_id, entry) in pins.iter() {
         sqlx::query(LAST_FLUSHED_SQL)

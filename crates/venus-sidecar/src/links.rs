@@ -9,7 +9,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::{sidecar_doc_id, CatalogWalk, OldPage};
+use crate::catalog::{CatalogWalk, OldPage};
 use crate::convert::Converted;
 
 pub const LINKS_JSON_REL: &str = ".venus/links.json";
@@ -466,6 +466,19 @@ pub fn persist_links_json(
     write(dir, &index)
 }
 
+/// Doc id of a converted pin that the walk publishes. A page created and
+/// deleted between two Flushes is converted but not published: no edge.
+fn walk_doc_id<'a>(
+    sql_to_doc: &HashMap<&'a str, &'a str>,
+    live_doc: &HashSet<&'a str>,
+    id: &'a str,
+) -> Option<&'a str> {
+    sql_to_doc
+        .get(id)
+        .copied()
+        .or_else(|| live_doc.contains(id).then_some(id))
+}
+
 pub fn persist_on_flush(
     dir: &Path,
     walk: &CatalogWalk,
@@ -487,14 +500,9 @@ pub fn persist_on_flush(
 
     let converted_owned: Vec<(String, String)> = converted
         .iter()
-        .map(|(id, conv)| {
-            let doc_id = sql_to_doc
-                .get(id.as_str())
-                .copied()
-                .or_else(|| live_doc.contains(id.as_str()).then_some(id.as_str()))
-                .unwrap_or_else(|| sidecar_doc_id(id))
-                .to_string();
-            (doc_id, conv.markdown.clone())
+        .filter_map(|(id, conv)| {
+            let doc_id = walk_doc_id(&sql_to_doc, &live_doc, id)?;
+            Some((doc_id.to_string(), conv.markdown.clone()))
         })
         .collect();
     let converted_refs: Vec<(&str, &str)> = converted_owned
@@ -536,11 +544,9 @@ pub fn compose_flush_bytes(
         .collect();
     let live_doc: HashSet<&str> = walk.pages.iter().map(|page| page.doc_id.as_str()).collect();
     for (id, conv) in converted {
-        let doc_id = sql_to_doc
-            .get(id.as_str())
-            .copied()
-            .or_else(|| live_doc.contains(id.as_str()).then_some(id.as_str()))
-            .unwrap_or_else(|| sidecar_doc_id(id));
+        let Some(doc_id) = walk_doc_id(&sql_to_doc, &live_doc, id) else {
+            continue;
+        };
         upsert_outbound(&mut index, doc_id, &targets_in_markdown(&conv.markdown));
     }
     for (sql_uuid, old) in old_pages {
@@ -856,6 +862,65 @@ mod tests {
         .unwrap();
         let parsed = parse(&rebuilt).unwrap();
         assert_eq!(outbound(&parsed, HOME), &[TARGET.to_string()][..]);
+    }
+
+    #[test]
+    fn converted_page_not_in_the_walk_gets_no_edge() {
+        use crate::catalog::CatalogPage;
+        use crate::convert::{Converted, Sidecar};
+        use crate::PAGE_DOC_UUID;
+
+        const FLEETING: &str = "f1ee7f1e-0000-4000-8000-000000000001";
+        let walk = CatalogWalk {
+            pages: vec![
+                CatalogPage {
+                    sql_uuid: PAGE_DOC_UUID.into(),
+                    doc_id: HOME.into(),
+                    name: "home".into(),
+                    git_path: "home.md".into(),
+                },
+                CatalogPage {
+                    sql_uuid: TARGET.into(),
+                    doc_id: TARGET.into(),
+                    name: "protocol".into(),
+                    git_path: "spec/protocol.md".into(),
+                },
+            ],
+            folders: vec![],
+        };
+        let linking = |id: &str, doc: &str| {
+            (
+                id.to_string(),
+                Converted {
+                    markdown: format!("See it.\n<!-- venus:doc:{TARGET} -->\n"),
+                    sidecar: Sidecar {
+                        doc_id: doc.into(),
+                        clock: "1".into(),
+                        blocks: vec![],
+                    },
+                },
+            )
+        };
+        let converted = vec![linking(PAGE_DOC_UUID, HOME), linking(FLEETING, FLEETING)];
+
+        let bytes = compose_flush_bytes(
+            Some(&serialize(&empty_index()).unwrap()),
+            &[],
+            &HashMap::new(),
+            &walk,
+            &converted,
+            &HashMap::new(),
+        )
+        .unwrap();
+        let composed = parse(&bytes).unwrap();
+        assert!(composed.outbound.get(FLEETING).is_none(), "{composed:?}");
+        assert_eq!(inbound(&composed, TARGET), &[HOME.to_string()][..]);
+
+        let tmp = tempfile::tempdir().unwrap();
+        persist_on_flush(tmp.path(), &walk, &converted, &HashMap::new()).unwrap();
+        let persisted = load(tmp.path()).expect("links.json");
+        assert!(persisted.outbound.get(FLEETING).is_none(), "{persisted:?}");
+        assert_eq!(inbound(&persisted, TARGET), &[HOME.to_string()][..]);
     }
 
     #[test]

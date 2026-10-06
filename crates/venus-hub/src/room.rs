@@ -74,6 +74,32 @@ pub fn is_capacity(err: &anyhow::Error) -> bool {
     err.downcast_ref::<RoomCapacity>().is_some()
 }
 
+/// The page's `page_identity` row is a Flush tombstone. Its CRDT rows remain.
+#[derive(Debug)]
+pub struct DocDeleted;
+
+impl std::fmt::Display for DocDeleted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("document was deleted")
+    }
+}
+
+impl std::error::Error for DocDeleted {}
+
+pub fn is_deleted(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<DocDeleted>().is_some()
+}
+
+async fn refuse_deleted(pool: &PgPool, workspace_id: &str, doc_id: &str) -> Result<()> {
+    if doc_id == PAGE_DOC_ID || doc_id == crate::CATALOG_DOC_ID {
+        return Ok(());
+    }
+    if db::page_deleted(pool, workspace_id, doc_id).await? {
+        return Err(DocDeleted.into());
+    }
+    Ok(())
+}
+
 /// Sender half: slot cap plus a queued-byte counter the socket task decrements.
 pub struct Outbound {
     tx: mpsc::Sender<Bytes>,
@@ -444,11 +470,13 @@ impl Room {
 
     /// Hydrate a non-home `doc_id` from SQL (empty trail is an empty `Doc`).
     /// Home is loaded in `open_room`. Idempotent. Refuses past `MAX_EXTRA_DOCS`
-    /// after dropping idle documents with an empty persist buffer.
+    /// after dropping idle documents with an empty persist buffer. A Flush
+    /// tombstone is `DocDeleted`, even when the doc is still resident.
     pub async fn ensure_doc(&self, pool: &PgPool, doc_id: &str) -> Result<()> {
         if doc_id == PAGE_DOC_ID {
             return Ok(());
         }
+        refuse_deleted(pool, &self.workspace_id, doc_id).await?;
         self.protect_open(doc_id).await;
         if self.touch_extra(doc_id).await {
             return Ok(());
@@ -1208,6 +1236,7 @@ impl Hub {
 
     /// RAM encode if this process has the room; else SQL. `doc_id` is a SQL uuid.
     pub async fn live_export_doc(&self, workspace_id: &str, doc_id: &str) -> Result<Vec<u8>> {
+        refuse_deleted(&self.pool, workspace_id, doc_id).await?;
         if let Some(room) = self.live_room(workspace_id).await {
             if doc_id != PAGE_DOC_ID {
                 room.ensure_doc(&self.pool, doc_id).await?;

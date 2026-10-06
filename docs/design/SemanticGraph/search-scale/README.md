@@ -1,17 +1,17 @@
 # Search scale
 
-**Status:** design. **Not started.** The `surreal-search` cluster. Split from the graph: [scale.md](../scale.md). First board: [plan.md](./plan.md).
+**Status:** step-schema done. Design moved to **equal copies** before step 4: every copy of a shard takes writes and reads, writes carry a fence and a `seq`, placement is rendezvous hashing ([scale.md](../scale.md)). Step 4 migrates the step-3 allocation rows to that shape. Profile `graph` starts the three processes. Image `surrealdb/surrealdb:v2.7.0`. First board: [plan.md](./plan.md).
 
 Word search is a projection of heading and mention text. It is not the graph. Edges, `mention.norm`, and model binds stay on `surreal-graph`.
 
 ## What runs on a search node
 
-The same **SurrealDB server binary** as the graph (`surrealdb/surrealdb:v2`, `surreal start rocksdb:…`). SurrealDB does not ship a search-only build. A search node does **not** load the graph.
+The same **SurrealDB server binary** as the graph (`surrealdb/surrealdb:v2.7.0`, `surreal start rocksdb:…`). SurrealDB does not ship a search-only build. A search node does **not** load the graph.
 
 | On a search node | Not on a search node |
 |---|---|
-| Namespace `search`, database = `workspace_id` | Namespace `graph` |
-| `page`, `heading`, `mention` text fields | `RELATE`, `links_to`, terms, symbols |
+| Namespace `search`, one database per shard copy: `⟨{workspace_id}_{epoch}_{shard}⟩` | Namespace `graph` |
+| `page`, `heading`, `mention` text fields, `meta:shard` | `RELATE`, `links_to`, terms, symbols |
 | `SEARCH` indexes (`heading_text`, `mention_text`) | Model edges, evidence quotes |
 | Its own RocksDB volume and memory cap | The wiki git tree, Yjs, Postgres `crdt_*` |
 
@@ -19,99 +19,90 @@ The same **SurrealDB server binary** as the graph (`surrealdb/surrealdb:v2`, `su
 
 ## Cluster
 
-SurrealDB does not shard or replicate a RocksDB file. Venus places copies above it. Postgres holds the map. The graph worker is the only writer and the query coordinator.
+SurrealDB does not shard or replicate a RocksDB file. Venus places copies above it. Postgres holds the map. Search nodes never talk to each other.
 
-A **shard** is a slice of `doc_id`s. A **replica** is another copy of that same shard. Sibling shards are not backups of each other.
+A **shard** is a slice of `doc_id`s. A **copy** is one database holding that slice on one node. All copies of a shard are equal. Sibling shards are not backups of each other.
 
 ```text
-venus-graph
-    │  write primary of shard(doc_id), then each replica
+venus-graph (writer lease for this wiki)
+    │  one batch per shard, to every in_sync copy at once
     ▼
 surreal-search-0              surreal-search-1
-  primary shard 0               primary shard 1
-  replica shard 1               replica shard 0
+  copy of shard 0               copy of shard 0
+  copy of shard 1               copy of shard 1
 ```
 
-Dev shape, and [the first board](./plan.md): `shard_count = 2`, `replica_count = 1`, two search nodes. A node never holds a shard’s primary and that shard’s replica.
+Dev shape, and [the first board](./plan.md): `shard_count = 2`, `replica_count = 1`, two search nodes. Two copies per shard on two nodes puts both shards on both nodes.
 
 | Piece | Rule |
 |---|---|
-| **Shard key** | `shard = sha256(doc_id) % shard_count`. The modulus is `shard_count`, not the number of live nodes. |
-| **Primary** | The only copy that takes a new projection for that shard. |
-| **Replica** | The same search transaction, after the primary commits. Read-only except to the worker. |
-| **Coordinator** | The worker. `@@` hits one in-sync copy of every shard (replica if `in_sync`, else primary). Merge by `search::score`. |
-| **Adding a node** | Place a replica or move one shard. Do not rehash existing `doc_id`s. |
-| **Changing `shard_count`** | Rebuild every shard from the graph under the new modulus, then flip the map. |
+| **Shard key** | `hkey % shard_count`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endian, shifted right by 1. Not the node count. [scale.md — shards](../scale.md#shards) |
+| **Copies** | `1 + replica_count` per shard, in distinct zones. Each takes writes and reads. |
+| **Placement** | Rendezvous hashing over `(workspace_id, epoch, shard, node_id)`. Exact for any N. [scale.md — placement](../scale.md#placement) |
+| **Write** | Graph transaction assigns `seq`. The writer sends one batch per shard to every `in_sync` copy in parallel. One commit is enough. [scale.md — write path](../scale.md#write-path) |
+| **Fence** | Every graph and search transaction rejects an older lease `fence`. A copy skips a doc whose stored `seq` is equal or newer. |
+| **Read** | Any `venus-graph` process. One `in_sync` copy per shard, fewer requests in flight, hedge after p95, fail over in the same request. [scale.md — read path](../scale.md#read-path) |
+| **Catch-up** | Replay graph pages with `search_seq > applied_seq` for that shard. Never from another search node. |
+| **Adding a node** | Next `node_id`. Only shards whose rendezvous homes now include it move one copy. No `doc_id` changes shard. |
+| **Changing `shard_count`** | Split by doubling, keeping half the rows in place. Any other change is a rebuild from the graph under a new `epoch`. |
 
-```text
-search_cluster
-  workspace_id     primary key
-  shard_count      int
-  replica_count    int
-
-search_node
-  node_id          primary key
-  url
-
-search_allocation
-  workspace_id
-  shard            int
-  role             primary | replica
-  node_id
-  state            in_sync | stale | down
-  synced_sha       text
-  primary key (workspace_id, shard, role, node_id)
-```
-
-One primary per `(workspace_id, shard)`. Up to `replica_count` replicas, each on a different node from the primary and from each other.
+Tables, exact columns, and defaults: [scale.md — Postgres tables](../scale.md#postgres-tables). In short: `graph_lease` (writer and monitor leases, `fence`), `search_cluster` (`epoch`, `shard_count`, `shard_count_next`, `replica_count`), `search_node` (`zone`, `weight`, `state`), `search_allocation` (one row per copy: `state joining | in_sync | lagging`, `applied_seq`). No role column.
 
 | Health | Meaning |
 |---|---|
-| **Green** | Every primary is `in_sync`, and every configured replica matches that `synced_sha`. |
-| **Yellow** | Every shard has a primary. A replica is `stale` or `down`. `@@` uses the primary. |
-| **Red** | A shard has no primary and no `in_sync` replica. Those docs are absent from word search. The graph still answers links and `norm`. |
-
-Promotion: primary is `down` and a replica of that shard is `in_sync`. Flip the replica’s role to `primary`. The old node returns as a `stale` replica and catches up from the new primary or from the graph. No Raft between SurrealDB processes. The allocation row is the cluster state.
+| **Green** | Every shard has `1 + replica_count` `in_sync` copies on `up` nodes. |
+| **Yellow** | Every shard has at least one `in_sync` copy. Some have fewer. Writes and reads continue. |
+| **Red** | A shard has no `in_sync` copy. Those docs are absent from word search. The graph still answers links and `norm`. |
 
 ## High availability
 
-`replica_count` counts extra copies. `1` means two copies total (primary + replica). Elasticsearch’s default replica count is 1.
+`replica_count` counts extra copies. `1` means two copies total. Elasticsearch’s default replica count is 1.
 
-| Nodes | `replica_count` | One node dies | A new replica while it is still dead |
+| Nodes | `replica_count` | One node dies | A new copy while it is still dead |
 |---|---|---|---|
-| 2 | 1 | Search stays up. The remaining copies sit on the survivor. | No. A second death rebuilds from the graph. **This board.** |
-| **3** | **1** | Search stays up. The other copy is on a survivor. | **Yes.** The third node takes a new replica. **HA default.** |
+| 2 | 1 | Search stays up. The other copy of every shard is on the survivor. No write gap. | No. A second death rebuilds from the graph. **This board.** |
+| **3** | **1** | Search stays up. The other copy is on a survivor. | **Yes.** After the delay, the next node in that shard’s ranking takes a new copy. **HA default.** |
 | 3 | 2 | Two copies stay up. | Yes, and the index was stored three times. Not the default. |
 
-Three nodes with `replica_count = 1` is the durable layout: lose one node, then place a replacement replica on the node that has room, without raising the replica count. `replica_count = 2` is for surviving two search nodes down at once before that replacement exists.
+Three nodes with `replica_count = 1` is the durable layout: lose one node, then a replacement copy lands on the third node without raising the replica count. `replica_count = 2` is for surviving two search nodes down at once before that replacement exists.
 
-There is no separate trio of “master” nodes. Cluster state is the Postgres allocation table. The graph worker is the only process that flips it.
+There is no leader and no separate trio of “master” nodes. Cluster state is Postgres. A wiki’s writer changes its copy rows. The monitor changes node state.
 
 ## Rebuild
 
-A dropped copy is rebuilt from another copy of **that shard**. Shard 1 cannot recreate shard 0.
+A lost copy is refilled from the **graph**, from that copy’s own `applied_seq`. Shard 1 cannot recreate shard 0, and a search node never copies from another.
 
-| Lost | Restore from | Then |
+| Lost | Restore | Then |
 |---|---|---|
-| One replica | Its primary, or the graph rows in that shard | Replica `in_sync`. Green. |
-| One primary, replica `in_sync` | Promote the replica | That node is the primary. |
-| One primary, no in-sync replica | Graph rows whose `shard` matches | New primary. No git read. |
+| One batch on one copy | Catch-up from its `applied_seq` | `in_sync`. Green. |
+| One node, back inside the delay | Catch-up for each copy on it | Green. No copy moved. |
+| One node, past the delay | New copy on the next ranked node, from `applied_seq = 0` | Green on the remaining nodes. |
+| One volume wiped | Recreate the database and schema, catch up from 0 | Green. |
+| Every copy of a shard | Catch up each home from 0 | Red until the first copy is `in_sync`. |
 | All search nodes | The graph, every shard | `search_sha` catches up. |
 
-Lose both copies of a shard and the graph still has the rows. Elasticsearch cannot do that step unless a snapshot exists. Do not rebuild a shard from markdown while the graph for that SHA exists. Two primaries for one shard are a bug in the allocation table.
+Lose every copy of a shard and the graph still has the rows. Elasticsearch cannot do that step unless a snapshot exists. Do not rebuild a shard from markdown while the graph for that SHA exists.
 
 ## Schema
 
-Ids match the graph (`heading:[docId, blockId]`, `mention:[docId, blockId, kind, start]`).
+Ids match the graph (`page:⟨docId⟩`, `heading:[docId, blockId]`, `mention:[docId, blockId, kind, start]`). A document’s rows are deleted by an id range on `docId`, not by a field scan.
+
+Each shard copy is one database with this schema. The name is `⟨{workspace_id}_{epoch}_{shard}⟩`.
 
 ```surql
 DEFINE NAMESPACE search;
-DEFINE DATABASE ⟨77e4a2b1-8b40-5979-a73c-fd4477216d00⟩;
+DEFINE DATABASE ⟨77e4a2b1-8b40-5979-a73c-fd4477216d00_0_0⟩;
+
+DEFINE TABLE meta SCHEMAFULL;               -- one row, meta:shard
+DEFINE FIELD fence       ON meta TYPE int;
+DEFINE FIELD applied_seq ON meta TYPE int;
 
 DEFINE TABLE page SCHEMAFULL;
 DEFINE FIELD git_path    ON page TYPE string;
 DEFINE FIELD title       ON page TYPE string;
 DEFINE FIELD indexed_sha ON page TYPE string;
+DEFINE FIELD seq         ON page TYPE int;
+DEFINE FIELD deleted     ON page TYPE bool DEFAULT false;
 
 DEFINE TABLE heading SCHEMAFULL;
 DEFINE FIELD doc_id      ON heading TYPE string;
@@ -137,21 +128,22 @@ DEFINE INDEX mention_text ON mention FIELDS text, norm SEARCH ANALYZER wiki BM25
 
 SurrealDB 3 spells `SEARCH` as `FULLTEXT`. `HIGHLIGHTS` stays off until a person sees snippets. No HNSW. No `RELATE`.
 
-Replace this `docId`’s rows on the primary in one transaction, then apply that transaction to each replica. Stamp `page.search_sha` on the **graph** only after the primary commits. A failed replica leaves the stamp, marks the replica `stale`, and the cluster goes yellow.
+A batch replaces each document’s rows in one transaction on every `in_sync` copy, after the fence and `seq` checks. Stamp `page.search_sha` on the **graph** after one copy of that shard commits. A copy that failed is `lagging`, and the cluster is yellow until catch-up.
 
-BM25 score is per shard. A term in half or more of the headings **in that shard** scores 0. More shards make that clamp easier to hit. Exact `norm` stays on the graph.
+BM25 score is per shard copy. A term in half or more of the headings **in that shard** scores 0. A new wiki has one shard, so that clamp and the score scale are wiki-wide. Exact `norm` stays on the graph.
 
 ## Memory
 
-Each search node: cap 1 GB, `SURREAL_ROCKSDB_BLOCK_CACHE_SIZE` 64 MB, derived from **that** cap. An uncapped host makes RocksDB request about half of machine RAM minus 1 GB. A hot node’s cap can rise without touching the graph process.
+Each search node: cap 1 GB, `SURREAL_ROCKSDB_BLOCK_CACHE_SIZE` 64 MB, derived from **that** cap. An uncapped host makes RocksDB request about half of machine RAM minus 1 GB. A hot node’s cap can rise without touching the graph process. A larger node gets a higher `weight` and takes more copies.
 
 ## Do not
 
 - Define namespace `graph` or a `SEARCH` index on `surreal-graph`.
 - Ask SurrealDB to replicate RocksDB or to choose `shard_count`.
-- Set `shard` with `hash %` the live node count.
-- Run two primaries for one `(workspace_id, shard)`.
-- Put a shard’s primary and its replica on the same node.
+- Set `shard` with `hash %` the node count, or place copies with `% N`.
+- Write a search row without the fence and `seq` checks.
+- Put two copies of one shard in one zone.
+- Copy a shard from another search node, or from a sibling shard.
 - Treat `replica_count = 2` as the default.
 - Mix two workspaces in one search database.
 - Block `last_flushed` on a search write.

@@ -690,7 +690,7 @@ pub async fn list_created_pages(
     sqlx::query_as(
         "SELECT uuid::text, doc_id, name, git_path
          FROM page_identity
-         WHERE workspace_id = $1::uuid AND uuid <> $2::uuid
+         WHERE workspace_id = $1::uuid AND uuid <> $2::uuid AND deleted_at IS NULL
          ORDER BY git_path",
     )
     .bind(workspace_id)
@@ -698,4 +698,19 @@ pub async fn list_created_pages(
     .fetch_all(pool)
     .await
     .context("list page_identity")
+}
+
+/// Flush tombstoned this page (the catalog dropped it). `doc_id` is a SQL uuid.
+pub async fn page_deleted(pool: &PgPool, workspace_id: &str, doc_id: &str) -> Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (
+           SELECT 1 FROM page_identity
+           WHERE workspace_id = $1::uuid AND uuid = $2::uuid AND deleted_at IS NOT NULL
+         )",
+    )
+    .bind(workspace_id)
+    .bind(doc_id)
+    .fetch_one(pool)
+    .await
+    .context("page_identity tombstone")
 }

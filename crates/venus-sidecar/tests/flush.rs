@@ -12,6 +12,7 @@ use git2::Repository;
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
 use venus_hub::db;
+use venus_sidecar::catalog::{replace_page_identity, CatalogPage, CatalogWalk, Leaving};
 use venus_sidecar::config::database_url_from_env;
 use venus_sidecar::cut::{cut_workspace, GIT_PATH};
 use venus_sidecar::git::{WikiConfig, LINKS_JSON_REL, PAGES_YAML_REL, SIDECAR_REL};
@@ -657,13 +658,25 @@ async fn identity_rows(pool: &PgPool, workspace: &str) -> Vec<(String, String, S
     sqlx::query_as(
         "SELECT uuid::text, doc_id, name, git_path
          FROM page_identity
-         WHERE workspace_id = $1::uuid
+         WHERE workspace_id = $1::uuid AND deleted_at IS NULL
          ORDER BY git_path",
     )
     .bind(workspace)
     .fetch_all(pool)
     .await
     .expect("page_identity")
+}
+
+async fn tombstoned_uuids(pool: &PgPool, workspace: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        "SELECT uuid::text FROM page_identity
+         WHERE workspace_id = $1::uuid AND deleted_at IS NOT NULL
+         ORDER BY uuid",
+    )
+    .bind(workspace)
+    .fetch_all(pool)
+    .await
+    .expect("tombstones")
 }
 
 fn head_renames(dir: &Path) -> Vec<(String, String)> {
@@ -883,6 +896,79 @@ async fn delete_then_flush_git_rm() {
     let rows = identity_rows(&pool, &ws).await;
     assert!(rows.iter().all(|r| r.0 != CREATED_UUID), "{rows:?}");
     assert!(rows.iter().any(|r| r.0 == PAGE_DOC_UUID));
+    assert_eq!(
+        tombstoned_uuids(&pool, &ws).await,
+        vec![CREATED_UUID.to_string()]
+    );
+    let deleted = db::page_deleted(&pool, &ws, CREATED_UUID)
+        .await
+        .expect("probe");
+    assert!(deleted, "hub sees the Flush tombstone");
+}
+
+#[tokio::test]
+async fn page_identity_swaps_paths_and_revives_a_tombstone() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let page = |uuid: &str, path: &str| CatalogPage {
+        sql_uuid: uuid.into(),
+        doc_id: uuid.into(),
+        name: uuid[..8].into(),
+        git_path: path.into(),
+    };
+    const A: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+    const B: &str = "bbbbbbbb-0000-4000-8000-000000000002";
+    let write = |pages: Vec<CatalogPage>, leaving: Leaving| {
+        let pool = pool.clone();
+        let ws = ws.clone();
+        async move {
+            let walk = CatalogWalk {
+                pages,
+                folders: Vec::new(),
+            };
+            replace_page_identity(&pool, &ws, &walk, leaving)
+                .await
+                .expect("replace page_identity");
+        }
+    };
+
+    write(
+        vec![page(A, "spec/x.md"), page(B, "spec/y.md")],
+        Leaving::Tombstone,
+    )
+    .await;
+    write(
+        vec![page(A, "spec/y.md"), page(B, "spec/x.md")],
+        Leaving::Tombstone,
+    )
+    .await;
+    let rows = identity_rows(&pool, &ws).await;
+    assert_eq!(
+        rows.iter()
+            .map(|r| (r.0.as_str(), r.3.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(B, "spec/x.md"), (A, "spec/y.md")]
+    );
+
+    write(vec![page(A, "spec/y.md")], Leaving::Tombstone).await;
+    assert_eq!(tombstoned_uuids(&pool, &ws).await, vec![B.to_string()]);
+    write(
+        vec![page(A, "spec/y.md"), page(B, "spec/y2.md")],
+        Leaving::Tombstone,
+    )
+    .await;
+    assert!(
+        tombstoned_uuids(&pool, &ws).await.is_empty(),
+        "B is live again"
+    );
+    assert_eq!(identity_rows(&pool, &ws).await.len(), 2);
+
+    write(vec![page(A, "spec/y.md")], Leaving::Drop).await;
+    assert!(
+        tombstoned_uuids(&pool, &ws).await.is_empty(),
+        "yaml rebuild never tombstones"
+    );
+    assert_eq!(identity_rows(&pool, &ws).await.len(), 1);
 }
 
 #[tokio::test]

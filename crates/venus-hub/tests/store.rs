@@ -2377,6 +2377,84 @@ async fn export_doc_per_sql_uuid() {
 }
 
 #[tokio::test]
+async fn tombstoned_page_is_refused_and_hidden() {
+    use venus_hub::room::is_deleted;
+
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    let gone = unique_workspace();
+    let live = unique_workspace();
+    db::push_update(&pool, &ws, &gone, &spike_bin())
+        .await
+        .expect("gone page");
+    sqlx::query(
+        "INSERT INTO page_identity (workspace_id, uuid, doc_id, name, git_path, deleted_at)
+         VALUES ($1::uuid, $2::uuid, $2::text, 'old', 'spec/same.md', now())",
+    )
+    .bind(&ws)
+    .bind(&gone)
+    .execute(&pool)
+    .await
+    .expect("tombstone row");
+    sqlx::query(
+        "INSERT INTO page_identity (workspace_id, uuid, doc_id, name, git_path)
+         VALUES ($1::uuid, $2::uuid, $2::text, 'new', 'spec/same.md')",
+    )
+    .bind(&ws)
+    .bind(&live)
+    .execute(&pool)
+    .await
+    .expect("a live row may reuse a tombstone's path");
+
+    let hub = Hub::new(
+        pool.clone(),
+        Lease::new(
+            pool.clone(),
+            ["tomb-", &uuid_like()].concat(),
+            Duration::from_secs(20),
+        ),
+        Duration::from_secs(1),
+        32,
+    );
+    let room = hub.get_room(&ws).await.expect("room");
+    let err = room.ensure_doc(&pool, &gone).await.expect_err("tombstoned");
+    assert!(is_deleted(&err), "{err}");
+    room.ensure_doc(&pool, &live)
+        .await
+        .expect("live page opens");
+    let err = hub
+        .live_export_doc(&ws, &gone)
+        .await
+        .expect_err("export refuses tombstone");
+    assert!(is_deleted(&err), "{err}");
+
+    let listed = db::list_created_pages(&pool, &ws).await.expect("list");
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0].0, live);
+
+    let trail: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM crdt_update WHERE workspace_id = $1::uuid AND doc_id = $2::uuid",
+    )
+    .bind(&ws)
+    .bind(&gone)
+    .fetch_one(&pool)
+    .await
+    .expect("trail");
+    assert!(trail > 0, "tombstone keeps CRDT rows");
+
+    sqlx::query("UPDATE page_identity SET deleted_at = NULL, git_path = 'spec/back.md' WHERE uuid = $1::uuid")
+        .bind(&gone)
+        .execute(&pool)
+        .await
+        .expect("revive");
+    room.ensure_doc(&pool, &gone)
+        .await
+        .expect("revived page opens");
+
+    hub.shutdown().await;
+}
+
+#[tokio::test]
 async fn grpc_export_doc_and_list_docs() {
     use tokio::net::TcpListener;
     use venus_hub::grpc::pb::venus::hub::v1::hub_client::HubClient;

@@ -6,7 +6,7 @@
  * trail), derives every `gitPath` with the host catalog code, and checks:
  *   files       clone `.md` set == catalog doc gitPaths (no missing, no stale)
  *   pages.yaml  pages + folders == catalog (uuid, docId, name)
- *   page_identity rows == pages.yaml
+ *   page_identity live rows == pages.yaml; no tombstone is in pages.yaml
  *   .venus/ids  one sidecar per catalog page, none for removed pages
  *   links       each `<!-- venus:doc:… -->` card: target in catalog, file in
  *               the clone, href relative to the source file, text = name
@@ -207,11 +207,15 @@ for (const path of yaml.folders.keys()) {
 }
 
 // --- 5. page_identity --------------------------------------------------------
-const identity = new Map(
-  rows(`SELECT uuid, doc_id, name, git_path FROM page_identity WHERE workspace_id = '${ws}'`).map(
-    ([uuid, docId, name, path]) => [uuid, { docId, name, path }],
-  ),
+const identityRows = rows(
+  `SELECT uuid, doc_id, name, git_path, deleted_at IS NOT NULL FROM page_identity WHERE workspace_id = '${ws}'`,
 );
+const identity = new Map(
+  identityRows
+    .filter((r) => r[4] !== 't')
+    .map(([uuid, docId, name, path]) => [uuid, { docId, name, path }]),
+);
+const tombstones = identityRows.filter((r) => r[4] === 't').map(([uuid]) => uuid);
 for (const [path, entry] of yaml.pages) {
   const row = identity.get(entry.uuid);
   if (!row) fail('page_identity', `no row for ${entry.uuid} (${path})`);
@@ -222,6 +226,9 @@ for (const [path, entry] of yaml.pages) {
 const yamlUuids = new Set([...yaml.pages.values()].map((e) => e.uuid));
 for (const [uuid, row] of identity) {
   if (!yamlUuids.has(uuid)) fail('page_identity', `row ${uuid} ${row.path} is not in pages.yaml`);
+}
+for (const uuid of tombstones) {
+  if (yamlUuids.has(uuid)) fail('page_identity', `${uuid} is in pages.yaml but tombstoned`);
 }
 
 // --- 6. .venus/ids -----------------------------------------------------------
@@ -330,7 +337,7 @@ console.log(`wiki HEAD   ${head}`);
 console.log(`clone       ${dest}`);
 console.log(`catalog     ${docs.length} pages, ${folders.length} folders (Postgres ${blobs.length} rows)`);
 console.log(`clone       ${files.size} .md files, ${cards} linked-doc cards`);
-console.log(`yaml / db   ${yaml.pages.size} pages, ${yaml.folders.size} folders / ${identity.size} page_identity rows`);
+console.log(`yaml / db   ${yaml.pages.size} pages, ${yaml.folders.size} folders / ${identity.size} live page_identity rows, ${tombstones.length} tombstoned`);
 if (failures.length > 0) {
   console.error(`\nFAIL (${failures.length})`);
   for (const f of failures) console.error(`  - ${f}`);

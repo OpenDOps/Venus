@@ -316,7 +316,7 @@ where
     let rows: Vec<(String, String, String, String)> = sqlx::query_as(
         "SELECT uuid::text, doc_id, git_path, name
          FROM page_identity
-         WHERE workspace_id = $1::uuid",
+         WHERE workspace_id = $1::uuid AND deleted_at IS NULL",
     )
     .bind(workspace_id)
     .fetch_all(executor)
@@ -338,27 +338,66 @@ where
         .collect())
 }
 
+/// What happens to a live row whose uuid is not in the new page set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Leaving {
+    /// The catalog dropped the page: keep the row with `deleted_at` so the hub
+    /// refuses to open it.
+    Tombstone,
+    /// The set came from HEAD `pages.yaml`, which can trail the catalog. A
+    /// missing page is not known to be deleted, so the row just goes.
+    Drop,
+}
+
 pub async fn replace_page_identity(
     pool: &PgPool,
     workspace_id: &str,
     walk: &CatalogWalk,
+    leaving: Leaving,
 ) -> Result<()> {
     let mut tx = pool.begin().await.context("page_identity begin")?;
-    replace_page_identity_tx(&mut tx, workspace_id, &walk.pages).await?;
+    replace_page_identity_tx(&mut tx, workspace_id, &walk.pages, leaving).await?;
     tx.commit().await.context("page_identity commit")?;
     Ok(())
 }
 
+/// Live rows become exactly `pages`. Rows in `pages` are deleted and inserted
+/// (not updated in place) so a path swap within one Flush never trips the
+/// live-path unique index, and a tombstoned uuid that came back is live again.
 pub async fn replace_page_identity_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     workspace_id: &str,
     pages: &[CatalogPage],
+    leaving: Leaving,
 ) -> Result<()> {
-    sqlx::query("DELETE FROM page_identity WHERE workspace_id = $1::uuid")
+    let uuids: Vec<&str> = pages.iter().map(|p| p.sql_uuid.as_str()).collect();
+    let leave_sql = match leaving {
+        Leaving::Tombstone => {
+            "UPDATE page_identity SET deleted_at = now()
+             WHERE workspace_id = $1::uuid AND deleted_at IS NULL
+               AND uuid <> ALL($2::text[]::uuid[])"
+        }
+        Leaving::Drop => {
+            "DELETE FROM page_identity
+             WHERE workspace_id = $1::uuid AND deleted_at IS NULL
+               AND uuid <> ALL($2::text[]::uuid[])"
+        }
+    };
+    sqlx::query(leave_sql)
         .bind(workspace_id)
+        .bind(&uuids)
         .execute(&mut **tx)
         .await
-        .context("delete page_identity")?;
+        .context("page_identity leaving rows")?;
+    sqlx::query(
+        "DELETE FROM page_identity
+         WHERE workspace_id = $1::uuid AND uuid = ANY($2::text[]::uuid[])",
+    )
+    .bind(workspace_id)
+    .bind(&uuids)
+    .execute(&mut **tx)
+    .await
+    .context("delete page_identity")?;
     for page in pages {
         sqlx::query(
             "INSERT INTO page_identity (workspace_id, uuid, doc_id, name, git_path)
@@ -403,6 +442,7 @@ pub async fn reconcile_page_identity(pool: &PgPool, workspace_id: &str, yaml: &s
             pages,
             folders: Vec::new(),
         },
+        Leaving::Drop,
     )
     .await
 }

@@ -54,7 +54,7 @@ Advertisement `docs` always includes:
 
 GET `/export` stays that pair (bind how-to). It does **not** grow with created pages.
 
-`ListDocs` (gRPC) returns those two **plus** every `page_identity` row (`role: page`, `sql_id` = uuid, `guid` = `doc_id` text). That table **lags until the next Flush** (sidecar replaces it from the catalog pin). The hub does **not** parse the catalog Y.Doc to name or list them. Folders are not `ListDocs` rows. This is not a catalog JSON tree. Live UI uses the catalog Y.Doc.
+`ListDocs` (gRPC) returns those two **plus** every live `page_identity` row (`deleted_at IS NULL`; `role: page`, `sql_id` = uuid, `guid` = `doc_id` text). That table **lags until the next Flush** (sidecar replaces it from the catalog pin). The hub does **not** parse the catalog Y.Doc to name or list them. Folders are not `ListDocs` rows. This is not a catalog JSON tree. Live UI uses the catalog Y.Doc.
 
 ## gRPC `venus.hub.v1.Hub`
 
@@ -84,13 +84,15 @@ With a second page: set `doc_id` to that SQL uuid.
 | `invalid_doc` | 400 | `INVALID_ARGUMENT` | `doc` / `doc_id` empty, guid, or not a UUID |
 | `export_http_disabled` | 400 | — (HTTP only) | GET `/export?doc=` — Yjs is not on GET |
 | `lease_held` | 503 | `UNAVAILABLE` | another hub owns `workspace_id` |
+| `room_full` | 429 | `RESOURCE_EXHAUSTED` | room at its open-document cap, or too many sockets from one address |
+| `doc_deleted` | 404 | `NOT_FOUND` | collab `?doc=` or `ExportDoc` of a page whose `page_identity` row is a Flush tombstone |
 | `node_not_empty` | — (host op) | — | Host `deleteNode` when any catalog node has `parentId === id` |
 | `home_protected` | — (host op) | — | Host `deleteNode` or `reparent` of home (`doc:home`) |
 | `store_failed` | 500 | `INTERNAL` | Postgres / hydrate / encode |
 
 Host catalog ops return the same `error.code` tokens (`node_not_empty`, `home_protected`) in-process. They are **not** hub HTTP. Do not add `/api/pages` to carry them.
 
-Collab upgrade JSON uses the same `error` object (`invalid_workspace`, `invalid_doc`, `lease_held`, `store_failed`). Blob **bytes** GET/HEAD stay binary (304/404); that is not this envelope.
+Collab upgrade JSON uses the same `error` object (`invalid_workspace`, `invalid_doc`, `lease_held`, `doc_deleted`, `room_full`, `store_failed`). Blob **bytes** GET/HEAD stay binary (304/404); that is not this envelope.
 
 ## What this replaces
 
