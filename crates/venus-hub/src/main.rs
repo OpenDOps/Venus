@@ -1,6 +1,8 @@
 //! Venus hub binary. Compose service `hub`.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::net::SocketAddr;
+
 use anyhow::{Context, Result};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
@@ -86,7 +88,8 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app = router(AppState::with_cors(hub.clone(), cfg.cors_origins));
+    let app = router(AppState::with_cors(hub.clone(), cfg.cors_origins))
+        .into_make_service_with_connect_info::<SocketAddr>();
     let serve_result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await

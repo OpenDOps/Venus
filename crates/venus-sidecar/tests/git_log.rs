@@ -42,7 +42,7 @@ fn commit_rel(dir: &Path, rel: &str, body: &str, message: &str) -> String {
 fn log_empty_without_repo() {
     let tmp = tempfile::tempdir().expect("tmp");
     let wiki = WikiConfig::new(tmp.path());
-    let log = git::log_path(&wiki, GIT_PATH).expect("log");
+    let log = git::log_path(&wiki, GIT_PATH, git::GIT_LOG_DEFAULT_LIMIT).expect("log");
     assert!(log.is_empty(), "no .git → empty log, not an error");
 }
 
@@ -57,7 +57,7 @@ fn log_shows_autocomment_newest_first() {
         "# Venus\n\nhello\n",
         "snapshot: Venus",
     );
-    let log = git::log_path(&wiki, GIT_PATH).expect("log");
+    let log = git::log_path(&wiki, GIT_PATH, git::GIT_LOG_DEFAULT_LIMIT).expect("log");
     assert_eq!(log.len(), 2);
     assert_eq!(
         log[0],
@@ -76,18 +76,33 @@ fn log_skips_commits_that_do_not_touch_home() {
     let wiki = WikiConfig::new(tmp.path());
     let home = commit_rel(tmp.path(), GIT_PATH, "# Venus\n", "snapshot: Venus");
     let _other = commit_rel(tmp.path(), "README.md", "nope\n", "chore: readme");
-    let log = git::log_path(&wiki, GIT_PATH).expect("log");
+    let log = git::log_path(&wiki, GIT_PATH, git::GIT_LOG_DEFAULT_LIMIT).expect("log");
     assert_eq!(log.len(), 1);
     assert_eq!(log[0].sha, home);
     assert_eq!(log[0].subject, "snapshot: Venus");
 }
 
 #[test]
+fn log_stops_once_the_limit_of_touching_commits_is_reached() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let wiki = WikiConfig::new(tmp.path());
+    let oldest = commit_rel(tmp.path(), GIT_PATH, "# one\n", "snapshot: one");
+    let middle = commit_rel(tmp.path(), GIT_PATH, "# two\n", "snapshot: two");
+    let newest = commit_rel(tmp.path(), GIT_PATH, "# three\n", "snapshot: three");
+    let _other = commit_rel(tmp.path(), "README.md", "nope\n", "chore: readme");
+    let log = git::log_path(&wiki, GIT_PATH, 2).expect("log");
+    assert_eq!(log.len(), 2);
+    assert_eq!(log[0].sha, newest);
+    assert_eq!(log[1].sha, middle);
+    assert!(!log.iter().any(|row| row.sha == oldest));
+}
+
+#[test]
 fn log_rejects_non_catalog_path() {
     let tmp = tempfile::tempdir().expect("tmp");
     let wiki = WikiConfig::new(tmp.path());
-    assert!(git::log_path(&wiki, "../Cargo.toml").is_err());
-    assert!(git::log_path(&wiki, "spec/other.md").is_err());
+    assert!(git::log_path(&wiki, "../Cargo.toml", git::GIT_LOG_DEFAULT_LIMIT).is_err());
+    assert!(git::log_path(&wiki, "spec/other.md", git::GIT_LOG_DEFAULT_LIMIT).is_err());
     assert!(!git::is_catalog_log_path(".."));
     assert!(!git::is_catalog_log_path("/spec/home.md"));
     assert!(git::is_catalog_log_path(GIT_PATH));
@@ -128,6 +143,57 @@ async fn http_git_log_json_and_default_path() {
     let bytes = res.into_body().collect().await.unwrap().to_bytes();
     let rows: Vec<GitLogEntry> = serde_json::from_slice(&bytes).expect("json");
     assert_eq!(rows[0].subject, "snapshot: Venus");
+}
+
+#[tokio::test]
+async fn http_git_log_limit_and_cache_skip_the_walk() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let _older = commit_rel(tmp.path(), GIT_PATH, "# one\n", "snapshot: one");
+    let newest = commit_rel(tmp.path(), GIT_PATH, "# two\n", "snapshot: two");
+    let app = router_with_wiki(None, WikiConfig::new(tmp.path()));
+    let limited = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/git/log?limit=1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(limited.status(), StatusCode::OK);
+    let bytes = limited.into_body().collect().await.unwrap().to_bytes();
+    let rows: Vec<GitLogEntry> = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].sha, newest);
+
+    let full = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/git/log")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let full_bytes = full.into_body().collect().await.unwrap().to_bytes();
+    let full_rows: Vec<GitLogEntry> = serde_json::from_slice(&full_bytes).expect("json");
+    assert_eq!(full_rows.len(), 2);
+
+    fs::remove_dir_all(tmp.path().join(".git/objects")).expect("drop objects");
+    let cached = app
+        .oneshot(
+            Request::builder()
+                .uri("/git/log")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cached.status(), StatusCode::OK);
+    let cached_bytes = cached.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(cached_bytes, full_bytes);
 }
 
 #[tokio::test]

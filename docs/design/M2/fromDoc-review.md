@@ -106,6 +106,8 @@ Detail: [security.md](./security.md). `toDoc` still runs only in Vitest (`roundT
 
 **Revisit after M4.** One-page M2 keeps S4 apply-resolution and S5 synced-doc inlining mostly latent. [M4](../M4/README.md) adds catalog, two pages, and `embed-linked-doc` round-trip; [dogfood](../venus-implementation-plan.md#v1-dogfood--document-the-product) starts then. Re-read this note and [security.md](./security.md) before treating the wiki as the product store.
 
+**M4 close-out re-read (2026-10-06):** catalog links now export `[name](relative.md)` + `<!-- venus:doc:<id> -->` (or `~~name~~` + `missing`), checked by `pnpm wiki:verify`. S5 is live with many pages: `createMarkdownAdapter` still sets `embedSyncedDocMiddleware('content')`, so a pasted synced-doc block would inline another page's body into this page's git file. S4 apply-resolution still waits for M6. Neither is closed by M4; fix S5 before dogfood treats git as the product store.
+
 **M4 recon (2026-09-15):** catalog + wire A are mapped ([api-map](../api-map.md) Names — catalog / tree / header). Do **not** change apply or `toDoc` in M4 recon. Export keeps `venus:doc:` first. S4 path-suffix inject and S5 `'content'` inlining stay open until [step-links](../M4/plan.md#7-step-links) / dogfood.
 
 | ID | Sev | M2 status | Finding |

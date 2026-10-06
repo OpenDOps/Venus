@@ -2,14 +2,16 @@
 //! GET `/api/block/:workspace/export` is advertisement JSON (see `rpc`).
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::convert::Infallible;
 use std::future::pending;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, Query, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -22,7 +24,10 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use crate::blobs::{blob_hash, sniff_content_type};
 use crate::config::default_cors_origins;
 use crate::db;
-use crate::room::{GetRoomError, Hub, Room, OUTBOUND_BYTES, PERSIST_BYTES};
+use crate::room::{
+    is_capacity, GetRoomError, Hub, Room, CAP_CONNECTIONS, MAX_CONNECTIONS_PER_IP, OUTBOUND_BYTES,
+    PERSIST_BYTES,
+};
 use crate::rpc;
 use crate::{PAGE_DOC_ID, SUBPROTOCOL};
 
@@ -299,10 +304,30 @@ where
     }
 }
 
+/// Socket peer when the listener installed `ConnectInfo`. Missing in oneshot
+/// tests, which then skip the per-address cap.
+struct PeerIp(Option<IpAddr>);
+
+impl<S> FromRequestParts<S> for PeerIp
+where
+    S: Send + Sync,
+{
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let ip = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|info| info.0.ip());
+        Ok(Self(ip))
+    }
+}
+
 async fn collaboration_get(
     Path(workspace_id): Path<String>,
     Query(q): Query<CollabQuery>,
     State(st): State<AppState>,
+    PeerIp(peer): PeerIp,
     OptionalWs(ws): OptionalWs,
 ) -> Response {
     let workspace_id = match take_workspace_id(workspace_id) {
@@ -326,6 +351,13 @@ async fn collaboration_get(
     match st.hub.get_room(&workspace_id).await {
         Ok(room) => {
             if let Err(e) = room.ensure_doc(&st.hub.pool, &doc_id).await {
+                if is_capacity(&e) {
+                    return rpc::error_response(
+                        StatusCode::TOO_MANY_REQUESTS,
+                        rpc::CODE_ROOM_FULL,
+                        &e.to_string(),
+                    );
+                }
                 tracing::error!(
                     workspace_id = %workspace_id,
                     doc_id = %doc_id,
@@ -334,13 +366,22 @@ async fn collaboration_get(
                 );
                 return rpc::error_store_failed(&workspace_id);
             }
+            if let Some(ip) = peer {
+                if room.connections_from(ip).await >= MAX_CONNECTIONS_PER_IP {
+                    return rpc::error_response(
+                        StatusCode::TOO_MANY_REQUESTS,
+                        rpc::CODE_ROOM_FULL,
+                        CAP_CONNECTIONS,
+                    );
+                }
+            }
             let max = st.ws_max_message.max(1);
             let ping = st.ws_ping;
             let pong = st.ws_pong;
             ws.max_message_size(max)
                 .max_frame_size(max)
                 .protocols([SUBPROTOCOL])
-                .on_upgrade(move |socket| handle_socket(socket, room, doc_id, ping, pong))
+                .on_upgrade(move |socket| handle_socket(socket, room, doc_id, peer, ping, pong))
         }
         Err(GetRoomError::Held {
             workspace_id: id,
@@ -390,11 +431,12 @@ async fn handle_socket(
     mut socket: WebSocket,
     room: Arc<Room>,
     doc_id: String,
+    peer: Option<IpAddr>,
     ping: Duration,
     pong: Duration,
 ) {
     let (id, tx, mut rx) = room.connect_client();
-    let hello = match room.attach_doc(id, tx, &doc_id).await {
+    let hello = match room.attach_from(id, tx, &doc_id, peer).await {
         Ok(frames) => frames,
         Err(e) => {
             tracing::error!(error = %e, "ws attach");

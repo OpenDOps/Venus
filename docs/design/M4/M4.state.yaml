@@ -192,13 +192,40 @@ steps:
         evidence: "2026-10-06 cargo test --test flush name_change_converts_inbound_link_text — home in convert set, git [lease](lease.md). Vitest rename lease, not [protocol]."
   step-shared-worker: # 8
     n: 8
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Fallback
+        status: pass
+        evidence: "2026-10-06 pnpm test:e2e:m4 m4-shared-worker Fallback — SharedWorker deleted (forceTabSockets), __VENUS_HUB_TRANSPORT__=tab, stats null, both tabs open home + catalog WS, drop in A appears in B, tree shows home + new folder. m4-tree / m1-provider / m1-two-tabs run on the tab path; pnpm test:e2e:m4 15 passed, pnpm test:e2e:m1 10 passed. Vitest sync-provider Fallback: no SharedWorker or a throwing constructor → transport tab; hub-relay worker error → tab."
+      - name: Share in one profile
+        status: pass
+        evidence: "2026-10-06 m4-shared-worker Share (Chromium, one context, Compose hub :3000) — transport shared-worker; no hub WS on either page; worker stats ports=2, one socket per URL, catalog and home sockets channels=2 ports=2; drop in page 1 appears in page 2; typing home in page 1 appears in page 2 (worker relays, hub does not echo); closing page 2 drops catalog ports to 1. Two contexts: each worker ports=1. Vitest hub-relay.test.ts 7 passed (sibling relay fails when disabled)."
+      - name: Seam holds
+        status: pass
+        evidence: "2026-10-06 sync-provider.test.ts — mount-editor / editor-container / boot have no SharedWorker / hub-shared-worker / shared-worker-socket / hub-relay / serviceWorker; hub-shared-worker.js + hub-relay.js import no yjs / y-protocols / @blocksuite; unset VITE_SYNC_URL constructs no SharedWorker. pnpm test 214 passed; pnpm test:e2e (m0+m2) 16 passed; pnpm test:e2e:m3 2 passed 1 skipped."
   step-verify: # 9
     n: 9
-    state: pending
+    state: pending # breakpoint human: Manual path and the H2 legacy cleanup are open
     breakpoint: human
     pr: null
-    dodResults: []
+    dodResults:
+      - name: Create → rename → map
+        status: pass
+        evidence: "2026-10-06 pnpm test:e2e:m4 m4-create-rename (not skipped) — create in spec → spec/<uuid>.md + pages.yaml + page_identity; rename → git mv; delete → git rm. Compose hub + sidecar rebuilt from the working tree."
+      - name: Exit held
+        status: pending
+        evidence: "2026-10-06 pnpm wiki:verify (apps/web/scripts/m4-verify-wiki.mjs; clones wiki HEAD --no-hardlinks, decodes the catalog from Postgres) — 29 pages / 11 folders: .md set, pages.yaml pages + folders, page_identity, .venus/ids, card hrefs + text, links.json all match, except 4 H2 legacy pages with no hub body (64d7aca4, a2c00a9a, f12cf50f, 6d9e0dad): no .md, and home.md links 3 of them. Pages created after the H2 fix all verify. Clear with runbook M4 Baseline (Delete + Flush), then rerun. Negative check: a moved file, a stale file, and a wrong YAML name in a scratch copy each fail."
+      - name: Smoke
+        status: pass
+        evidence: "2026-10-06 pnpm test:e2e:m4 16 passed (m4-create-rename, m4-tree, m4-header, m4-link incl. rename+move, m4-shared-worker); moves are in m4-tree drop and m4-link (no separate m4-move spec). pnpm test:e2e:m1 10 passed; pnpm test:e2e:m3 2 passed 1 skipped + test:e2e:m3:live 1 passed; M2 pane in pnpm test:e2e."
+      - name: Manual path
+        status: pending
+        evidence: "Runbook Manual testing (M4 close-out). Person records date, browser, __VENUS_HUB_TRANSPORT__. @ menu checked headless 2026-10-06: Link to Doc lists catalog pages by name."
+      - name: Prior milestones green
+        status: pass
+        evidence: "2026-10-06 pnpm test 226 passed; pnpm test:e2e (m0 + m2, memory, no worker) 16 passed."
+      - name: fromDoc-review S4/S5 re-read
+        status: pass
+        evidence: "2026-10-06 S5 still open (markdown-adapter.js embedSyncedDocMiddleware('content')); S4 apply stays M6. Not closed here. Note in M2/fromDoc-review.md."

@@ -92,6 +92,37 @@ async function waitForCard(page: Page, pageId: string) {
     .toBe(true);
 }
 
+async function cardView(page: Page, pageId: string) {
+  return page.locator(CARD).evaluateAll((els, id) => {
+    for (const el of els) {
+      const host = el as {
+        model?: {
+          pageId?: string;
+          style?: string;
+          props?: { pageId?: string; style?: string };
+        };
+        shadowRoot?: ShadowRoot | null;
+      };
+      const model = host.model;
+      const pid = model?.pageId ?? model?.props?.pageId ?? '';
+      if (pid !== id) continue;
+      const root = host.shadowRoot ?? (el as unknown as ParentNode);
+      const frame = root.querySelector?.('.affine-embed-linked-doc-block');
+      const title =
+        root
+          .querySelector?.('.affine-embed-linked-doc-content-title-text')
+          ?.textContent?.trim() ?? '';
+      return {
+        style: model?.props?.style ?? model?.style ?? '',
+        deleted: Boolean(frame?.classList.contains('deleted')),
+        loading: Boolean(frame?.classList.contains('loading')),
+        title,
+      };
+    }
+    return null;
+  }, pageId);
+}
+
 async function cardPageId(page: Page, pageId: string) {
   return page.locator(CARD).evaluateAll((els, id) => {
     for (const el of els) {
@@ -198,5 +229,72 @@ test('embed card survives rename+move; git hrefs follow catalog', async ({
   await expectOpenDoc(page, PAGE_DOC_ID);
   await waitForCard(page, created.id);
   expect(await cardPageId(page, created.id)).toBe(created.id);
+  await expect
+    .poll(() => cardView(page, created.id), { timeout: 30_000 })
+    .toEqual({
+      style: 'horizontal',
+      deleted: false,
+      loading: false,
+      title: protocolName,
+    });
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+test('two tabs leave the linked-doc card untitled-free and do not rewrite home', async ({
+  page,
+  context,
+}) => {
+  const pageA = page;
+  const errorsA = await waitForCatalog(pageA);
+  const pageB = await context.newPage();
+  const errorsB = await waitForCatalog(pageB);
+
+  const created = await pageA.evaluate(() => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    return ops.createDoc('folder:spec');
+  });
+  const protocolName = `protocol-${created.id.slice(0, 8)}`;
+  await pageA.evaluate(
+    ({ id, name }) => {
+      const ops = window.__VENUS_CATALOG_OPS__;
+      if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+      return ops.rename(id, name);
+    },
+    { id: created.id, name: protocolName },
+  );
+  await pageA.evaluate((pageId) => {
+    const insert = window.__VENUS_INSERT_LINKED_DOC__;
+    if (!insert) throw new Error('missing __VENUS_INSERT_LINKED_DOC__');
+    insert(pageId);
+  }, created.id);
+  await waitForCard(pageA, created.id);
+  await waitForCard(pageB, created.id);
+
+  await expect
+    .poll(() => cardView(pageB, created.id), { timeout: 30_000 })
+    .toEqual({
+      style: 'horizontal',
+      deleted: false,
+      loading: false,
+      title: protocolName,
+    });
+
+  const vectorA = await pageA.evaluate(
+    () => window.__VENUS_OPEN_VECTOR__?.() ?? '',
+  );
+  const vectorB = await pageB.evaluate(
+    () => window.__VENUS_OPEN_VECTOR__?.() ?? '',
+  );
+  expect(vectorA).not.toBe('');
+  expect(vectorB).not.toBe('');
+  await pageA.waitForTimeout(2000);
+  expect(await pageA.evaluate(() => window.__VENUS_OPEN_VECTOR__?.() ?? '')).toBe(
+    vectorA,
+  );
+  expect(await pageB.evaluate(() => window.__VENUS_OPEN_VECTOR__?.() ?? '')).toBe(
+    vectorB,
+  );
+  expect(errorsA, errorsA.join('\n')).toEqual([]);
+  expect(errorsB, errorsB.join('\n')).toEqual([]);
 });

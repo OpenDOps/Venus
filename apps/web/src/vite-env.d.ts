@@ -22,6 +22,12 @@ export {};
 declare global {
   interface Window {
     __VENUS_PROVIDER_KIND__?: string;
+    /** Live hub only: `shared-worker` holds wire A sockets, or `tab`. */
+    __VENUS_HUB_TRANSPORT__?: 'shared-worker' | 'tab';
+    /** Worker socket table; `null` on the per-tab path. */
+    __VENUS_HUB_STATS__?: () => Promise<
+      import('./host/providers/shared-worker-socket.js').HubWorkerStats | null
+    >;
     __VENUS_WS_PROTOCOLS__?: string | string[];
     __VENUS_PAGE_FLAVOUR__?: string;
     /** Playwright e2e only (`addInitScript`). */
@@ -44,11 +50,11 @@ declare global {
         parentId: string | null;
         docId?: string;
       } | null;
-      createDoc: (createAt: string | null) => {
+      createDoc: (createAt: string | null) => Promise<{
         id: string;
         docId?: string;
         gitPath: string;
-      };
+      }>;
       createFolder: (
         createAt: string | null,
         name: string,
@@ -68,6 +74,8 @@ declare global {
     /** Open a catalog doc in this tab (home if missing). */
     __VENUS_OPEN_DOC__?: (docId: string) => void;
     __VENUS_OPEN_DOC_ID__?: string;
+    /** State vector of the open page, for idle-clock checks. */
+    __VENUS_OPEN_VECTOR__?: () => string;
     __VENUS_INSERT_LINKED_DOC__?: (pageId: string) => string;
   }
 }

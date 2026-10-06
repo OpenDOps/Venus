@@ -1,5 +1,6 @@
 import { MemoryNoopProvider } from '../sync-provider.js';
 import { VenusBlobSource, blobOriginFromSyncUrl } from './blob-source.js';
+import { createSharedWorkerSockets } from './shared-worker-socket.js';
 import { VenusHubProvider } from './venus-hub-provider.js';
 import { COLLABORATION_PATH, WORKSPACE_ID } from '../ids.js';
 
@@ -30,14 +31,16 @@ export function resolveSyncUrl(env = import.meta.env) {
 
 /**
  * App-only factory. Vitest calls createM0Workspace() with the memory default.
- * Unset / empty VITE_SYNC_URL → MemoryNoopProvider (no socket).
+ * Unset / empty VITE_SYNC_URL → MemoryNoopProvider (no socket, no worker).
+ * Where `SharedWorker` exists, the hub provider's sockets live in one worker
+ * per origin + hub URL; otherwise each tab opens its own.
  *
  * @param {{ VITE_SYNC_URL?: string }} [env]
  */
 export function providerFromEnv(env = import.meta.env) {
   const url = resolveSyncUrl(env);
   if (!url) return new MemoryNoopProvider();
-  return new VenusHubProvider(url);
+  return new VenusHubProvider(url, { sockets: createSharedWorkerSockets(url) });
 }
 
 /**

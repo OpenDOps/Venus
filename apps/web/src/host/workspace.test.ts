@@ -95,7 +95,7 @@ test('openDoc catch does not impersonate a missing doc', () => {
   expect(catchBlock).not.toContain('setOpenDocId(');
   expect(catchBlock).not.toContain('setOpenStore(');
   expect(catchBlock).not.toContain('homeStore');
-  expect(openDoc).toContain('extraDocIdRef.current === nextId');
+  expect(openDoc).toContain('pages.has(nextId)');
   expect(openDoc).toContain('getDoc');
   expect(openDoc).toMatch(/getDoc[\s\S]*setOpenStore\(/);
 });

@@ -3,6 +3,7 @@
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
@@ -39,6 +40,39 @@ pub const OUTBOUND_BYTES: usize = 1024 * 1024;
 /// push would exceed this; the newest stays. Must be ≥ `WS_MAX_MESSAGE` so one
 /// accepted frame always fits. Do not drop on SQL error (L2).
 pub const PERSIST_BYTES: usize = 8 * 1024 * 1024;
+
+/// Non-home documents resident in one room. Home is the room doc, not counted.
+/// Idle documents with an empty persist buffer are dropped before a new one is refused.
+pub const MAX_EXTRA_DOCS: usize = 64;
+
+/// Sockets one client address may hold on one room, home included.
+pub const MAX_CONNECTIONS_PER_IP: usize = 32;
+
+/// How long `ensure_doc` keeps a document after hydration with no socket yet.
+/// The websocket upgrade follows immediately. A detached document is not covered
+/// and can be dropped at the cap right away.
+const OPEN_GRACE: Duration = Duration::from_secs(15);
+
+pub const CAP_DOCS: &str = "too many open documents";
+pub const CAP_CONNECTIONS: &str = "too many connections";
+
+/// Room refused another document or another socket from one address.
+#[derive(Debug)]
+pub struct RoomCapacity {
+    pub kind: &'static str,
+}
+
+impl std::fmt::Display for RoomCapacity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.kind)
+    }
+}
+
+impl std::error::Error for RoomCapacity {}
+
+pub fn is_capacity(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<RoomCapacity>().is_some()
+}
 
 /// Sender half: slot cap plus a queued-byte counter the socket task decrements.
 pub struct Outbound {
@@ -181,6 +215,7 @@ impl std::error::Error for GetRoomError {}
 struct Client {
     tx: Outbound,
     doc_id: String,
+    ip: Option<IpAddr>,
 }
 
 struct ExtraSpace {
@@ -188,20 +223,38 @@ struct ExtraSpace {
     persist: Mutex<PersistBuf>,
     trail_len: AtomicU64,
     flush_mu: Mutex<()>,
+    last_active: StdMutex<Instant>,
 }
 
 impl ExtraSpace {
-    fn empty() -> Self {
+    fn hydrated(doc: Doc, trail_len: u64) -> Self {
         Self {
-            doc: RwLock::new(Doc::default()),
+            doc: RwLock::new(doc),
             persist: Mutex::new(PersistBuf {
                 bins: Vec::new(),
                 bytes: 0,
                 in_flight: 0,
             }),
-            trail_len: AtomicU64::new(0),
+            trail_len: AtomicU64::new(trail_len),
             flush_mu: Mutex::new(()),
+            last_active: StdMutex::new(Instant::now()),
         }
+    }
+
+    fn touch(&self) {
+        *self.last_active.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+    }
+
+    fn idle_for(&self) -> Duration {
+        self.last_active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .elapsed()
+    }
+
+    async fn persist_is_empty(&self) -> bool {
+        let p = self.persist.lock().await;
+        p.bins.is_empty() && p.in_flight == 0
     }
 }
 
@@ -219,6 +272,9 @@ pub struct Room {
     /// while a persist-task flush is in flight.
     flush_mu: Mutex<()>,
     extra: Mutex<HashMap<String, Arc<ExtraSpace>>>,
+    /// `ensure_doc` stamps a document here so the cap cannot drop it before the
+    /// socket attaches. `attach_from` clears the stamp once the client is in.
+    opening: Mutex<HashMap<String, Instant>>,
     clients: Mutex<HashMap<ClientId, Client>>,
     next_client: AtomicU64,
     trail_len: AtomicU64,
@@ -261,6 +317,7 @@ impl Room {
             outbound_budget,
             flush_mu: Mutex::new(()),
             extra: Mutex::new(HashMap::new()),
+            opening: Mutex::new(HashMap::new()),
             clients: Mutex::new(HashMap::new()),
             next_client: AtomicU64::new(1),
             trail_len: AtomicU64::new(trail_len),
@@ -296,59 +353,233 @@ impl Room {
         tx: Outbound,
         doc_id: &str,
     ) -> Result<Vec<Vec<u8>>> {
-        let hello = if doc_id == PAGE_DOC_ID {
-            Self::hello_frames(&*self.doc.read().await)?
-        } else {
-            let space = self.extra_or_empty(doc_id).await;
-            let doc = space.doc.read().await;
-            Self::hello_frames(&*doc)?
-        };
-        let mut clients = self.clients.lock().await;
-        clients.insert(
-            id,
-            Client {
-                tx,
-                doc_id: doc_id.to_string(),
-            },
-        );
-        self.note_client_count(clients.len());
-        Ok(hello)
+        self.attach_from(id, tx, doc_id, None).await
     }
 
-    async fn extra_or_empty(&self, doc_id: &str) -> Arc<ExtraSpace> {
-        let mut extra = self.extra.lock().await;
-        extra
-            .entry(doc_id.to_string())
-            .or_insert_with(|| Arc::new(ExtraSpace::empty()))
-            .clone()
+    /// `ip` is the socket peer. `None` is not counted toward the per-address cap
+    /// (tests and requests that never installed `ConnectInfo`).
+    pub async fn attach_from(
+        &self,
+        id: ClientId,
+        tx: Outbound,
+        doc_id: &str,
+        ip: Option<IpAddr>,
+    ) -> Result<Vec<Vec<u8>>> {
+        {
+            let mut clients = self.clients.lock().await;
+            if let Some(ip) = ip {
+                let n = clients.values().filter(|c| c.ip == Some(ip)).count();
+                if n >= MAX_CONNECTIONS_PER_IP {
+                    return Err(RoomCapacity {
+                        kind: CAP_CONNECTIONS,
+                    }
+                    .into());
+                }
+            }
+            // Register before opening the document so eviction sees this client.
+            clients.insert(
+                id,
+                Client {
+                    tx,
+                    doc_id: doc_id.to_string(),
+                    ip,
+                },
+            );
+            self.note_client_count(clients.len());
+        }
+        self.opening.lock().await.remove(doc_id);
+        let hello = if doc_id == PAGE_DOC_ID {
+            Self::hello_frames(&*self.doc.read().await)
+        } else {
+            match self.admit_doc(doc_id).await {
+                Ok(space) => {
+                    let doc = space.doc.read().await;
+                    Self::hello_frames(&*doc)
+                }
+                Err(e) => {
+                    self.detach(id).await;
+                    return Err(e);
+                }
+            }
+        };
+        match hello {
+            Ok(frames) => Ok(frames),
+            Err(e) => {
+                self.detach(id).await;
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn connections_from(&self, ip: IpAddr) -> usize {
+        self.clients
+            .lock()
+            .await
+            .values()
+            .filter(|c| c.ip == Some(ip))
+            .count()
+    }
+
+    #[doc(hidden)]
+    pub async fn extra_doc_count(&self) -> usize {
+        self.extra.lock().await.len()
+    }
+
+    async fn extra_space(&self, doc_id: &str) -> Option<Arc<ExtraSpace>> {
+        self.extra.lock().await.get(doc_id).cloned()
+    }
+
+    /// Open a non-home document already in the map, or an empty one under the cap.
+    /// Hydration from SQL is `ensure_doc`; this only admits a resident doc.
+    async fn admit_doc(&self, doc_id: &str) -> Result<Arc<ExtraSpace>> {
+        if let Some(space) = self.extra_space(doc_id).await {
+            space.touch();
+            return Ok(space);
+        }
+        self.insert_extra(doc_id, Doc::default(), 0).await?;
+        self.extra_space(doc_id)
+            .await
+            .context("admitted document missing")
     }
 
     /// Hydrate a non-home `doc_id` from SQL (empty trail is an empty `Doc`).
-    /// Home is loaded in `open_room`. Idempotent.
+    /// Home is loaded in `open_room`. Idempotent. Refuses past `MAX_EXTRA_DOCS`
+    /// after dropping idle documents with an empty persist buffer.
     pub async fn ensure_doc(&self, pool: &PgPool, doc_id: &str) -> Result<()> {
         if doc_id == PAGE_DOC_ID {
             return Ok(());
         }
-        {
-            if self.extra.lock().await.contains_key(doc_id) {
-                return Ok(());
-            }
+        self.protect_open(doc_id).await;
+        if self.touch_extra(doc_id).await {
+            return Ok(());
         }
         let (doc, trail_len) = db::hydrate_with_trail_len(pool, &self.workspace_id, doc_id).await?;
-        let mut extra = self.extra.lock().await;
-        if let std::collections::hash_map::Entry::Vacant(v) = extra.entry(doc_id.to_string()) {
-            v.insert(Arc::new(ExtraSpace {
-                doc: RwLock::new(doc),
-                persist: Mutex::new(PersistBuf {
-                    bins: Vec::new(),
-                    bytes: 0,
-                    in_flight: 0,
-                }),
-                trail_len: AtomicU64::new(trail_len),
-                flush_mu: Mutex::new(()),
-            }));
+        self.insert_extra(doc_id, doc, trail_len).await
+    }
+
+    async fn protect_open(&self, doc_id: &str) {
+        self.opening
+            .lock()
+            .await
+            .insert(doc_id.to_string(), Instant::now());
+    }
+
+    async fn fresh_openings(&self) -> HashSet<String> {
+        let mut opening = self.opening.lock().await;
+        opening.retain(|_, t| t.elapsed() < OPEN_GRACE);
+        opening.keys().cloned().collect()
+    }
+
+    async fn touch_extra(&self, doc_id: &str) -> bool {
+        let extra = self.extra.lock().await;
+        if let Some(space) = extra.get(doc_id) {
+            space.touch();
+            true
+        } else {
+            false
         }
-        Ok(())
+    }
+
+    async fn insert_extra(&self, doc_id: &str, doc: Doc, trail_len: u64) -> Result<()> {
+        let mut pending = Some((doc, trail_len));
+        loop {
+            {
+                let mut extra = self.extra.lock().await;
+                if let Some(space) = extra.get(doc_id) {
+                    space.touch();
+                    return Ok(());
+                }
+                if extra.len() < MAX_EXTRA_DOCS {
+                    let (doc, trail_len) = pending.take().expect("pending doc");
+                    extra.insert(
+                        doc_id.to_string(),
+                        Arc::new(ExtraSpace::hydrated(doc, trail_len)),
+                    );
+                    return Ok(());
+                }
+            }
+            if self.evict_for_capacity().await == 0 {
+                return Err(RoomCapacity { kind: CAP_DOCS }.into());
+            }
+        }
+    }
+
+    async fn busy_doc_ids(&self) -> HashSet<String> {
+        self.clients
+            .lock()
+            .await
+            .values()
+            .map(|c| c.doc_id.clone())
+            .collect()
+    }
+
+    /// Drop non-home documents with no client, an empty persist buffer, and
+    /// no in-flight handle, once they have been idle for `ttl`. Home stays.
+    pub async fn evict_idle_docs(&self, ttl: Duration) -> usize {
+        let busy = self.busy_doc_ids().await;
+        let opening = self.fresh_openings().await;
+        let mut extra = self.extra.lock().await;
+        let gone: Vec<String> = extra
+            .iter()
+            .filter(|(id, space)| {
+                !busy.contains(*id)
+                    && !opening.contains(*id)
+                    && Arc::strong_count(space) == 1
+                    && space.idle_for() >= ttl
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut n = 0;
+        for id in gone {
+            if !extra
+                .get(&id)
+                .expect("id just listed")
+                .persist_is_empty()
+                .await
+            {
+                continue;
+            }
+            extra.remove(&id);
+            n += 1;
+        }
+        if n > 0 {
+            tracing::debug!(
+                workspace = %self.workspace_id,
+                evicted = n,
+                "evict idle docs"
+            );
+        }
+        n
+    }
+
+    /// Free the oldest idle, empty documents until one slot is open. A document
+    /// with a client or unflushed updates is never dropped, even at the cap.
+    async fn evict_for_capacity(&self) -> usize {
+        let busy = self.busy_doc_ids().await;
+        let opening = self.fresh_openings().await;
+        let mut extra = self.extra.lock().await;
+        if extra.len() < MAX_EXTRA_DOCS {
+            return 0;
+        }
+        let mut idle: Vec<(String, Instant)> = Vec::new();
+        for (id, space) in extra.iter() {
+            if busy.contains(id) || opening.contains(id) || Arc::strong_count(space) > 1 {
+                continue;
+            }
+            if !space.persist_is_empty().await {
+                continue;
+            }
+            let last = *space.last_active.lock().unwrap_or_else(|e| e.into_inner());
+            idle.push((id.clone(), last));
+        }
+        idle.sort_by_key(|(_, t)| *t);
+        let need = extra.len() + 1 - MAX_EXTRA_DOCS;
+        let mut n = 0;
+        for (id, _) in idle.into_iter().take(need) {
+            extra.remove(&id);
+            n += 1;
+        }
+        n
     }
 
     fn hello_frames(doc: &Doc) -> Result<Vec<Vec<u8>>> {
@@ -471,7 +702,10 @@ impl Room {
             let doc = self.doc.read().await;
             encode_step2_for(&doc, sv)
         } else {
-            let space = self.extra_or_empty(&doc_id).await;
+            let space = self
+                .extra_space(&doc_id)
+                .await
+                .context("document is not open")?;
             let doc = space.doc.read().await;
             encode_step2_for(&doc, sv)
         }
@@ -502,7 +736,11 @@ impl Room {
                 buf.push_capped(Bytes::from(bin), self.persist_budget, &self.workspace_id);
             }
         } else {
-            let space = self.extra_or_empty(&doc_id).await;
+            let space = self
+                .extra_space(&doc_id)
+                .await
+                .context("document is not open")?;
+            space.touch();
             {
                 let mut doc = space.doc.write().await;
                 if self.stopped() {
@@ -691,7 +929,11 @@ impl Room {
         if doc_id == PAGE_DOC_ID {
             return self.encode_live().await;
         }
-        let space = self.extra_or_empty(doc_id).await;
+        // A document that was never opened is empty. Do not insert it: export
+        // calls `ensure_doc` first, and a stray encode must not pin RAM.
+        let Some(space) = self.extra_space(doc_id).await else {
+            return encode_v1(&Doc::default());
+        };
         let doc = space.doc.read().await;
         encode_v1(&doc)
     }
@@ -1037,6 +1279,8 @@ impl Hub {
         for room in rooms {
             if room.is_idle(idle_ttl).await {
                 self.shed(&room.workspace_id, true).await;
+            } else {
+                room.evict_idle_docs(idle_ttl).await;
             }
         }
     }
@@ -1509,5 +1753,156 @@ mod m4_wire {
         );
         let other = room.encode_live_doc(OTHER).await.expect("other live");
         assert!(live_has_spike(&other), "second doc must hold the update");
+    }
+}
+
+#[cfg(test)]
+mod m8 {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use super::*;
+
+    fn doc_n(n: u32) -> String {
+        format!("doc-{n}")
+    }
+
+    fn spike_bin() -> Vec<u8> {
+        let d = Doc::default();
+        let mut map = d.get_or_create_map("spike").expect("map");
+        map.insert("k".to_string(), "v").expect("insert");
+        encode_v1(&d).expect("encode")
+    }
+
+    async fn attach_n(room: &Room, n: u32) -> ClientId {
+        let (id, tx, _rx) = room.connect_client();
+        room.attach_doc(id, tx, &doc_n(n)).await.expect("attach");
+        id
+    }
+
+    #[tokio::test]
+    async fn idle_empty_doc_is_evicted_and_a_live_client_is_kept() {
+        let room = Room::new("m8-evict".into(), Doc::default());
+        let idle = attach_n(&room, 1).await;
+        let live = attach_n(&room, 2).await;
+        room.detach(idle).await;
+
+        let n = room.evict_idle_docs(Duration::ZERO).await;
+        assert_eq!(n, 1);
+        assert_eq!(room.extra_doc_count().await, 1);
+        let _ = room.encode_live_doc(&doc_n(1)).await.expect("evicted");
+        assert_eq!(
+            room.extra_doc_count().await,
+            1,
+            "encoding an evicted document must not put it back"
+        );
+        let _ = live;
+    }
+
+    #[tokio::test]
+    async fn unflushed_doc_is_not_evicted() {
+        let room = Room::new("m8-dirty".into(), Doc::default());
+        let id = attach_n(&room, 1).await;
+        room.apply_and_fanout(id, spike_bin()).await.expect("apply");
+        room.detach(id).await;
+        assert_eq!(room.evict_idle_docs(Duration::ZERO).await, 0);
+        assert_eq!(room.extra_doc_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn unknown_encode_does_not_pin_a_document() {
+        let room = Room::new("m8-encode".into(), Doc::default());
+        let bin = room.encode_live_doc("never-opened").await.expect("empty");
+        assert!(bin.is_empty() || room.extra_doc_count().await == 0);
+        assert_eq!(room.extra_doc_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn document_cap_refuses_a_busy_room_and_reuses_an_idle_slot() {
+        let room = Room::new("m8-docs".into(), Doc::default());
+        let mut ids = Vec::new();
+        for n in 0..MAX_EXTRA_DOCS as u32 {
+            ids.push(attach_n(&room, n).await);
+        }
+        assert_eq!(room.extra_doc_count().await, MAX_EXTRA_DOCS);
+        let (id, tx, _rx) = room.connect_client();
+        let err = room
+            .attach_doc(id, tx, &doc_n(10_000))
+            .await
+            .expect_err("cap");
+        assert!(is_capacity(&err), "{err}");
+        assert!(err.to_string().contains(CAP_DOCS), "{err}");
+
+        room.detach(ids[0]).await;
+        let (id, tx, _rx) = room.connect_client();
+        room.attach_doc(id, tx, &doc_n(10_001))
+            .await
+            .expect("idle slot freed");
+        assert_eq!(room.extra_doc_count().await, MAX_EXTRA_DOCS);
+    }
+
+    #[tokio::test]
+    async fn a_document_waiting_for_its_socket_is_not_dropped_at_the_cap() {
+        let room = Room::new("m8-open".into(), Doc::default());
+        let mut ids = Vec::new();
+        for n in 0..MAX_EXTRA_DOCS as u32 {
+            ids.push(attach_n(&room, n).await);
+        }
+        room.detach(ids[0]).await;
+        room.protect_open(&doc_n(0)).await;
+        let (id, tx, _rx) = room.connect_client();
+        let err = room
+            .attach_doc(id, tx, &doc_n(10_002))
+            .await
+            .expect_err("hydrated doc still reserved");
+        assert!(is_capacity(&err), "{err}");
+        assert_eq!(room.extra_doc_count().await, MAX_EXTRA_DOCS);
+    }
+
+    #[tokio::test]
+    async fn connection_cap_is_per_address() {
+        let room = Room::new("m8-ip".into(), Doc::default());
+        let a = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 5));
+        let b = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 9));
+        for _ in 0..MAX_CONNECTIONS_PER_IP {
+            let (id, tx, _rx) = room.connect_client();
+            room.attach_from(id, tx, PAGE_DOC_ID, Some(a))
+                .await
+                .expect("under cap");
+        }
+        let (id, tx, _rx) = room.connect_client();
+        let err = room
+            .attach_from(id, tx, PAGE_DOC_ID, Some(a))
+            .await
+            .expect_err("same address");
+        assert!(is_capacity(&err), "{err}");
+        assert!(err.to_string().contains(CAP_CONNECTIONS), "{err}");
+
+        let (id, tx, _rx) = room.connect_client();
+        room.attach_from(id, tx, PAGE_DOC_ID, Some(b))
+            .await
+            .expect("other address");
+
+        for _ in 0..MAX_CONNECTIONS_PER_IP {
+            let (id, tx, _rx) = room.connect_client();
+            room.attach_from(id, tx, PAGE_DOC_ID, None)
+                .await
+                .expect("missing address is not capped");
+        }
+        assert_eq!(
+            room.extra_doc_count().await,
+            0,
+            "home is not an extra document"
+        );
+    }
+
+    #[test]
+    fn heartbeat_evicts_extra_docs_while_the_room_stays() {
+        let src = include_str!("room.rs");
+        let start = src.find("pub async fn heartbeat").expect("heartbeat");
+        let slice = &src[start..start + 900];
+        assert!(
+            slice.contains("evict_idle_docs"),
+            "heartbeat must drop idle documents before the room itself is shed"
+        );
     }
 }

@@ -316,7 +316,7 @@ Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in the hub; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
-Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M5–M6 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M6** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
+Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. The graph store and in-document extractors are [SemanticGraph](./SemanticGraph/README.md) (SurrealDB; start once M4 links exist). Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M5–M6 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M6** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
 
 - First snapshot: sidecar **autoinits** `wiki/` (git2 init + catalog dirs) if missing; product git ignores it. No origin in M3.
 - Catalog v0: one folder, one doc, fixed path.
@@ -342,6 +342,8 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 **Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves, Flush used `.venus/links.json` (not `fromDoc` of every page). Header undo/redo matches keyboard undo on the open page.
 
 **After M4 (not this exit):** record the workspace’s **wiki remote + product remote@branch** (separate histories; submodules lean). Do **not** delay M5 for the analyzer. **Before AB5:** select CodeGraph CLI, Aider, or both ([code-bind — select](./Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). Design: [code-bind](./Agents/code-bind.md). AB5 / runner review: [agentic-binding — AB5](./Agents/agentic-binding.md#ab5--code-bind--aider), [product-plan](../product/product-plan.md#workspace-and-aider).
+
+**Next graph build (after M4, parallel to M5):** [SemanticGraph](./SemanticGraph/README.md). First board is the index split ([plan](./SemanticGraph/plan.md)): one graph process and a two-node `surreal-search` cluster (2 shards, 1 replica) before any parser (steps 1–5 now; step 6 waits until M4 is closed). SurrealDB holds the spatial wiki graph (namespace `graph`) and a search projection (namespace `search`, [scale](./SemanticGraph/scale.md)). Tree-sitter, glossary, regex, and the background model are the boards after this split. Does not replace M5. Does not run CodeGraph or Aider on the wiki.
 
 ### M5 — Lease + freeze (week)
 
@@ -436,11 +438,12 @@ Venus/
   apps/web/                 # BlockSuite host + tree + review UI
   crates/venus-hub/         # M3.0 product hub: y-octo apply + WS + persist
   crates/venus-sidecar/     # convert worker: y-octo hydrate + M2 adapter + git2
+  crates/venus-graph/       # semantic graph worker → SurrealDB (after M4). Not the hub.
   packages/catalog/         # not M4; catalog ops are apps/web/src/host/catalog/
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
-  docs/design/              # product + architecture + datamodel + CRDT + MDGate + milestone plans (M0–M8)
+  docs/design/              # product + architecture + datamodel + CRDT + MDGate + SemanticGraph + milestone plans (M0–M8)
   docs/devops/              # Compose now; Kubernetes later; hub fleet after M3.0
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```

@@ -75,22 +75,32 @@ export function joinGitNames(parentGitPath, gitName) {
 }
 
 /**
+ * ASCII case fold. Matches Rust `str::to_lowercase` for the names we publish.
+ *
+ * @param {unknown} name
+ */
+export function caseFoldName(name) {
+  return String(name ?? '').toLowerCase();
+}
+
+/**
  * Derive a unique POSIX filename from a docname.
+ * `taken` is compared case-insensitively (`Notes` blocks `notes`).
  *
  * @param {unknown} name
  * @param {{ fallback: string, taken?: Iterable<string> }} options
  */
 export function filenameFromDocname(name, options) {
   const fallback = options.fallback;
-  const taken = new Set(options.taken ?? []);
+  const taken = new Set([...(options.taken ?? [])].map((item) => caseFoldName(item)));
   let stem = sanitizeDocname(name).replace(/[/\\]/g, '_');
   stem = stem.replace(/_+/g, '_');
   stem = stem.replace(/^[._\s]+|[._\s]+$/g, '');
   if (!stem || stem === '.' || stem === '..' || /\.md$/i.test(stem)) {
     stem = fallback;
   }
-  if (!taken.has(stem)) return stem;
+  if (!taken.has(caseFoldName(stem))) return stem;
   let n = 1;
-  while (taken.has(`${stem}_${n}`)) n += 1;
+  while (taken.has(caseFoldName(`${stem}_${n}`))) n += 1;
   return `${stem}_${n}`;
 }

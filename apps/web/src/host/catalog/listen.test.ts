@@ -7,12 +7,13 @@ import { PAGE_DOC_ID } from '../ids.js';
 import { createM0Workspace } from '../workspace.js';
 import {
   applyCatalogHostChrome,
+  batchOnAnimationFrame,
   listenCatalogHost,
   openNodeTitle,
   shouldAutoHome,
 } from './listen.js';
 import { createDoc, createFolder, deleteNode, rename, seedOnce } from './ops.js';
-import { FOLDER_SPEC_ID, nodesMap } from './schema.js';
+import { FOLDER_SPEC_ID, getNode, nodesMap, putNode } from './schema.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -114,10 +115,61 @@ test('listenCatalogHost reads getOpenDocId live without resubscribing', async ()
   stop();
 });
 
+test('listenCatalogHost repairs a duplicate gitName after a microtask', async () => {
+  const { catalog, workspace } = await seeded();
+  const a = createDoc(catalog, workspace, { createAt: FOLDER_SPEC_ID });
+  const b = createDoc(catalog, workspace, { createAt: FOLDER_SPEC_ID });
+  const stop = listenCatalogHost(catalog, () => PAGE_DOC_ID, {
+    onTitle: () => {},
+    onMissingOpen: () => {},
+    onChange: () => {},
+  });
+  putNode(catalog, { id: a.id, gitName: 'notes.md' });
+  putNode(catalog, { id: b.id, gitName: 'notes.md' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const [low, high] = [a.id, b.id].sort();
+  expect(getNode(catalog, low)?.gitName).toBe('notes.md');
+  expect(getNode(catalog, high)?.gitName).toBe(`notes-${high.slice(0, 8)}.md`);
+  expect(getNode(catalog, high)?.name).toBe(high);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(getNode(catalog, high)?.gitName).toBe(`notes-${high.slice(0, 8)}.md`);
+  stop();
+});
+
+test('catalog onChange shares one rebuild per animation frame', () => {
+  const queued: Array<() => void> = [];
+  let runs = 0;
+  const batch = batchOnAnimationFrame(
+    () => {
+      runs += 1;
+    },
+    (fn) => {
+      queued.push(fn);
+      return queued.length;
+    },
+    (id) => {
+      const index = Number(id) - 1;
+      queued[index] = () => {};
+    },
+  );
+  batch.schedule();
+  batch.schedule();
+  expect(queued).toHaveLength(1);
+  queued[0]();
+  expect(runs).toBe(1);
+  batch.schedule();
+  batch.schedule();
+  expect(queued).toHaveLength(2);
+  batch.cancel();
+  queued[1]();
+  expect(runs).toBe(1);
+});
+
 test('App uses one listenCatalogHost; CatalogTree does not observeDeep', () => {
   const app = readFileSync(join(here, '../../App.tsx'), 'utf8');
   const tree = readFileSync(join(here, 'CatalogTree.tsx'), 'utf8');
   expect(app).toMatch(/listenCatalogHost/);
+  expect(app).toMatch(/batchOnAnimationFrame/);
   expect(app).toMatch(/applyCatalogHostChrome/);
   expect(app).not.toMatch(/observeDeep/);
   expect(app).not.toMatch(/unobserveDeep/);

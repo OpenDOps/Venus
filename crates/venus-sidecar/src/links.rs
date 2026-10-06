@@ -55,8 +55,9 @@ pub fn targets_in_markdown(markdown: &str) -> Vec<String> {
         };
         let inner = markdown[inner_start..inner_start + rel_close].trim();
         if let Some(rest) = inner.strip_prefix("venus:doc:") {
-            let id = rest.trim();
-            if is_safe_page_id(id) {
+            let rest = rest.trim();
+            let id = rest.strip_suffix(" missing").unwrap_or(rest).trim();
+            if is_safe_page_id(id) && (rest == id || rest == format!("{id} missing")) {
                 found.push(id.to_string());
             }
         }
@@ -165,56 +166,42 @@ pub fn load(dir: &Path) -> Option<LinkIndex> {
     parse(&bytes)
 }
 
-fn unquote(s: &str) -> String {
-    let s = s.trim();
-    if s.len() >= 2
-        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
-    {
-        s[1..s.len() - 1]
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\")
-    } else {
-        s.to_string()
-    }
+/// `pages.yaml` path → docId (`pages:` only). Parsed with `serde_yaml`.
+pub fn path_to_doc_id_from_pages_yaml(yaml: &str) -> HashMap<String, String> {
+    crate::catalog::path_to_doc_from_pages_yaml(yaml)
+        .into_iter()
+        .filter(|(_, id)| is_safe_page_id(id))
+        .collect()
 }
 
-/// `pages.yaml` path → docId (`pages:` only).
-pub fn path_to_doc_id_from_pages_yaml(yaml: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    let mut in_pages = false;
-    let mut path: Option<String> = None;
-    for line in yaml.lines() {
-        let trimmed = line.trim_end();
-        if trimmed == "pages:" {
-            in_pages = true;
-            path = None;
-            continue;
-        }
-        if !line.starts_with(' ') && trimmed.ends_with(':') {
-            in_pages = trimmed == "pages:";
-            path = None;
-            continue;
-        }
-        if !in_pages {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("  ") {
-            if !rest.starts_with(' ') && rest.trim_end().ends_with(':') {
-                let key = rest.trim_end().trim_end_matches(':');
-                path = Some(unquote(key));
-                continue;
-            }
-        }
-        if let Some(rest) = line.trim_start().strip_prefix("docId:") {
-            if let Some(p) = &path {
-                let id = unquote(rest);
-                if is_safe_page_id(&id) {
-                    map.insert(p.clone(), id);
-                }
-            }
+/// Link index for a Flush, from HEAD. A parsed `.venus/links.json` blob wins.
+/// A missing or unparsed blob is rebuilt from HEAD markdown and `page_identity`
+/// paths. Does not read the working tree. An empty index is success only when
+/// there is no blob and no committed pages to index. A git read error is returned.
+pub fn index_from_committed(dir: &Path, old_pages: &HashMap<String, OldPage>) -> Result<LinkIndex> {
+    if let Some(bytes) = crate::git::head_links_blob(dir)? {
+        if let Some(index) = parse(&bytes) {
+            return Ok(index);
         }
     }
-    map
+    let map = path_to_doc_from_old_pages(old_pages);
+    if map.is_empty() {
+        return Ok(empty_index());
+    }
+    let files = crate::git::head_markdown_files(dir)?;
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, markdown)| (path.as_str(), markdown.as_str()))
+        .collect();
+    Ok(index_from_markdown(&refs, &map))
+}
+
+fn path_to_doc_from_old_pages(old_pages: &HashMap<String, OldPage>) -> HashMap<String, String> {
+    old_pages
+        .values()
+        .filter(|page| is_safe_page_id(&page.doc_id))
+        .map(|page| (page.git_path.clone(), page.doc_id.clone()))
+        .collect()
 }
 
 fn rel_posix(root: &Path, file: &Path) -> Option<String> {
@@ -282,6 +269,10 @@ fn load_path_map(
 /// Rebuild from working-tree markdown + path→docId. Does not read pin bytes.
 pub fn rebuild_from_wiki(dir: &Path, path_to_doc: &HashMap<String, String>) -> Result<LinkIndex> {
     let map = load_path_map(dir, path_to_doc)?;
+    rebuild_mapped(dir, &map)
+}
+
+fn rebuild_mapped(dir: &Path, map: &HashMap<String, String>) -> Result<LinkIndex> {
     let mut files = Vec::new();
     collect_md(dir, dir, &mut files)?;
     let mut index = empty_index();
@@ -303,6 +294,8 @@ pub fn posix_dirname(path: &str) -> &str {
 }
 
 /// POSIX relative from the exporting file to the target file.
+/// Each leftover segment is percent-encoded so the result is a CommonMark
+/// link destination (` ` → `%20`, `(` → `%28`). `..` stays literal.
 pub fn posix_relative(from_file: &str, to_file: &str) -> String {
     let from_dir = posix_dirname(from_file);
     let from: Vec<&str> = if from_dir.is_empty() {
@@ -315,13 +308,63 @@ pub fn posix_relative(from_file: &str, to_file: &str) -> String {
     while i < from.len() && i < to.len() && from[i] == to[i] {
         i += 1;
     }
-    let mut rel: Vec<&str> = (0..from.len().saturating_sub(i)).map(|_| "..").collect();
-    rel.extend_from_slice(&to[i..]);
+    let mut rel: Vec<String> = (0..from.len().saturating_sub(i))
+        .map(|_| "..".to_string())
+        .collect();
+    rel.extend(to[i..].iter().copied().map(encode_href_segment));
     if rel.is_empty() {
-        to.last().copied().unwrap_or(to_file).to_string()
+        to.last()
+            .copied()
+            .map(encode_href_segment)
+            .unwrap_or_else(|| encode_href_segment(to_file))
     } else {
         rel.join("/")
     }
+}
+
+/// Link label escapes. Same bytes as the host `escapeLinkText`.
+/// Markers are escaped, then every control character (newline, tab, and the
+/// rest of Unicode category Cc) becomes a space, then the label is trimmed.
+pub fn escape_link_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' | '`' | '*' | '_' | '[' | ']' | '<' | '>' => {
+                out.push('\\');
+                out.push(c);
+            }
+            other if other.is_control() => out.push(' '),
+            other => out.push(other),
+        }
+    }
+    out.trim().to_string()
+}
+
+/// `[escaped name](percent-encoded relative path)`.
+pub fn catalog_linked_doc_link(name: &str, from_file: &str, to_file: &str) -> String {
+    let href = posix_relative(from_file, to_file);
+    format!("[{}]({href})", escape_link_text(name))
+}
+
+fn encode_href_segment(seg: &str) -> String {
+    if seg == ".." || seg == "." {
+        return seg.to_string();
+    }
+    let mut out = String::new();
+    for b in seg.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push('%');
+                const HEX: &[u8; 16] = b"0123456789ABCDEF";
+                out.push(HEX[(b >> 4) as usize] as char);
+                out.push(HEX[(b & 0xf) as usize] as char);
+            }
+        }
+    }
+    out
 }
 
 /// Convert set SQL uuids: body-dirty ∪ inbound[path- or name-changed] ∪
@@ -360,7 +403,37 @@ pub fn convert_set(
             need.insert(page.sql_uuid.clone());
         }
     }
+    let live_sql: HashSet<&str> = walk.pages.iter().map(|p| p.sql_uuid.as_str()).collect();
+    for old in old_pages.values() {
+        if live_sql.contains(old.sql_uuid.as_str()) {
+            continue;
+        }
+        for src in inbound(index, &old.doc_id) {
+            if let Some(sql) = doc_to_sql.get(src.as_str()) {
+                need.insert((*sql).to_string());
+            }
+        }
+    }
     need
+}
+
+/// `doc_id` → last catalog name for pages in `old_pages` that this walk dropped.
+pub fn missing_link_names(
+    walk: Option<&CatalogWalk>,
+    old_pages: &HashMap<String, OldPage>,
+) -> HashMap<String, String> {
+    let live_sql: HashSet<&str> = walk
+        .iter()
+        .flat_map(|w| w.pages.iter().map(|p| p.sql_uuid.as_str()))
+        .collect();
+    let mut names = HashMap::new();
+    for old in old_pages.values() {
+        if live_sql.contains(old.sql_uuid.as_str()) || old.name.is_empty() {
+            continue;
+        }
+        names.insert(old.doc_id.clone(), old.name.clone());
+    }
+    names
 }
 
 pub fn write(dir: &Path, index: &LinkIndex) -> Result<()> {
@@ -434,6 +507,59 @@ pub fn persist_on_flush(
         .map(|(_, old)| old.doc_id.as_str())
         .collect();
     persist_links_json(dir, &path_to_doc, &converted_refs, &deleted)
+}
+
+/// `.venus/links.json` bytes for a commit built from HEAD, not the working tree.
+/// `existing` is the HEAD blob. When it is missing or does not parse,
+/// `head_markdown` is indexed with `rebuild_paths` (HEAD path → doc id).
+pub fn compose_flush_bytes(
+    existing: Option<&[u8]>,
+    head_markdown: &[(&str, &str)],
+    rebuild_paths: &HashMap<String, String>,
+    walk: &CatalogWalk,
+    converted: &[(String, Converted)],
+    old_pages: &HashMap<String, OldPage>,
+) -> Result<Vec<u8>> {
+    let mut index = match existing.and_then(parse) {
+        Some(index) => index,
+        None => index_from_markdown(head_markdown, rebuild_paths),
+    };
+    let live: HashSet<&str> = walk
+        .pages
+        .iter()
+        .map(|page| page.sql_uuid.as_str())
+        .collect();
+    let sql_to_doc: HashMap<&str, &str> = walk
+        .pages
+        .iter()
+        .map(|page| (page.sql_uuid.as_str(), page.doc_id.as_str()))
+        .collect();
+    let live_doc: HashSet<&str> = walk.pages.iter().map(|page| page.doc_id.as_str()).collect();
+    for (id, conv) in converted {
+        let doc_id = sql_to_doc
+            .get(id.as_str())
+            .copied()
+            .or_else(|| live_doc.contains(id.as_str()).then_some(id.as_str()))
+            .unwrap_or_else(|| sidecar_doc_id(id));
+        upsert_outbound(&mut index, doc_id, &targets_in_markdown(&conv.markdown));
+    }
+    for (sql_uuid, old) in old_pages {
+        if !live.contains(sql_uuid.as_str()) {
+            drop_id(&mut index, &old.doc_id);
+        }
+    }
+    serialize(&index)
+}
+
+fn index_from_markdown(files: &[(&str, &str)], map: &HashMap<String, String>) -> LinkIndex {
+    let mut index = empty_index();
+    for (rel, markdown) in files {
+        let Some(id) = map.get(*rel) else {
+            continue;
+        };
+        upsert_outbound(&mut index, id, &targets_in_markdown(markdown));
+    }
+    index
 }
 
 #[cfg(test)]
@@ -565,6 +691,62 @@ mod tests {
     }
 
     #[test]
+    fn convert_set_includes_inbound_of_deleted_target() {
+        use crate::catalog::CatalogPage;
+        use crate::PAGE_DOC_UUID;
+
+        let home = CatalogPage {
+            sql_uuid: PAGE_DOC_UUID.into(),
+            doc_id: HOME.into(),
+            name: "home".into(),
+            git_path: "spec/home.md".into(),
+        };
+        let walk = CatalogWalk {
+            pages: vec![home],
+            folders: vec![],
+        };
+        let mut old = HashMap::new();
+        old.insert(
+            PAGE_DOC_UUID.to_string(),
+            OldPage {
+                sql_uuid: PAGE_DOC_UUID.into(),
+                doc_id: HOME.into(),
+                git_path: "spec/home.md".into(),
+                name: "home".into(),
+            },
+        );
+        old.insert(
+            TARGET.to_string(),
+            OldPage {
+                sql_uuid: TARGET.into(),
+                doc_id: TARGET.into(),
+                git_path: "spec/protocol.md".into(),
+                name: "protocol".into(),
+            },
+        );
+        let mut index = empty_index();
+        upsert_outbound(&mut index, HOME, &[TARGET.to_string()]);
+        let need = convert_set(&walk, &old, &HashSet::new(), &index);
+        assert!(
+            need.contains(PAGE_DOC_UUID),
+            "home linked the deleted page: {need:?}"
+        );
+        assert!(
+            !need.contains(TARGET),
+            "deleted page is not converted: {need:?}"
+        );
+        let names = missing_link_names(Some(&walk), &old);
+        assert_eq!(names.get(TARGET).map(String::as_str), Some("protocol"));
+        assert!(names.get(HOME).is_none());
+    }
+
+    #[test]
+    fn missing_comment_still_names_the_target() {
+        let md = format!("~~protocol~~\n<!-- venus:doc:{TARGET} missing -->\n");
+        assert_eq!(targets_in_markdown(&md), vec![TARGET.to_string()]);
+    }
+
+    #[test]
     fn posix_relative_same_dir_and_nested() {
         assert_eq!(
             posix_relative("spec/home.md", "spec/protocol.md"),
@@ -574,5 +756,211 @@ mod tests {
             posix_relative("spec/home.md", "design/protocol.md"),
             "../design/protocol.md"
         );
+        assert_eq!(
+            posix_relative("spec/home.md", "spec/Renamed venus (page).md"),
+            "Renamed%20venus%20%28page%29.md"
+        );
+        assert_eq!(
+            posix_relative("a/b/home.md", "c/café.md"),
+            "../../c/caf%C3%A9.md"
+        );
+        assert_eq!(
+            catalog_linked_doc_link(
+                "my_page * (x) [y] z",
+                "spec/home.md",
+                "spec/Renamed venus (page).md",
+            ),
+            include_str!("../../../apps/web/src/host/mdgate/goldens/catalog-link-escape.md")
+                .trim_end()
+        );
+        let injected = catalog_linked_doc_link("a\n# Injected", "spec/home.md", "spec/protocol.md");
+        assert_eq!(injected, "[a # Injected](protocol.md)");
+        assert!(!injected.contains('\n'));
+    }
+
+    #[test]
+    fn compose_flush_bytes_reads_head_not_the_workdir() {
+        use crate::catalog::CatalogPage;
+        use crate::convert::{Converted, Sidecar};
+        use crate::PAGE_DOC_UUID;
+
+        let home = CatalogPage {
+            sql_uuid: PAGE_DOC_UUID.into(),
+            doc_id: HOME.into(),
+            name: "home".into(),
+            git_path: "spec/home.md".into(),
+        };
+        let walk = CatalogWalk {
+            pages: vec![home],
+            folders: vec![],
+        };
+        let mut old = HashMap::new();
+        old.insert(
+            PAGE_DOC_UUID.to_string(),
+            OldPage {
+                sql_uuid: PAGE_DOC_UUID.into(),
+                doc_id: HOME.into(),
+                git_path: "spec/home.md".into(),
+                name: "home".into(),
+            },
+        );
+        old.insert(
+            TARGET.to_string(),
+            OldPage {
+                sql_uuid: TARGET.into(),
+                doc_id: TARGET.into(),
+                git_path: "spec/protocol.md".into(),
+                name: "protocol".into(),
+            },
+        );
+        let mut prior = empty_index();
+        upsert_outbound(&mut prior, HOME, &[TARGET.to_string()]);
+        let existing = serialize(&prior).unwrap();
+        let converted = vec![(
+            PAGE_DOC_UUID.to_string(),
+            Converted {
+                markdown: "# home\n".into(),
+                sidecar: Sidecar {
+                    doc_id: HOME.into(),
+                    clock: "1".into(),
+                    blocks: vec![],
+                },
+            },
+        )];
+        let bytes = compose_flush_bytes(
+            Some(&existing),
+            &[],
+            &HashMap::new(),
+            &walk,
+            &converted,
+            &old,
+        )
+        .unwrap();
+        let parsed = parse(&bytes).unwrap();
+        assert!(outbound(&parsed, HOME).is_empty());
+        assert!(inbound(&parsed, TARGET).is_empty());
+
+        let mut paths = HashMap::new();
+        paths.insert("spec/home.md".into(), HOME.to_string());
+        let rebuilt = compose_flush_bytes(
+            None,
+            &[(
+                "spec/home.md",
+                "See it.\n<!-- venus:doc:a1b2c3d4-e5f6-4780-abcd-ef1234567890 -->\n",
+            )],
+            &paths,
+            &walk,
+            &[],
+            &HashMap::new(),
+        )
+        .unwrap();
+        let parsed = parse(&rebuilt).unwrap();
+        assert_eq!(outbound(&parsed, HOME), &[TARGET.to_string()][..]);
+    }
+
+    #[test]
+    fn index_from_committed_reads_head_not_the_workdir() {
+        let src = include_str!("links.rs");
+        let start = src.find("pub fn index_from_committed").expect("fn");
+        let end = src.find("fn path_to_doc_from_old_pages").expect("next");
+        let body = &src[start..end];
+        assert!(!body.contains("rebuild_mapped"), "{body}");
+        assert!(!body.contains("rebuild_from_wiki"), "{body}");
+        assert!(!body.contains("collect_md"), "{body}");
+        assert!(body.contains("head_links_blob"), "{body}");
+        assert!(body.contains("head_markdown_files"), "{body}");
+    }
+
+    fn home_identity() -> HashMap<String, OldPage> {
+        use crate::PAGE_DOC_UUID;
+        let mut old = HashMap::new();
+        old.insert(
+            PAGE_DOC_UUID.to_string(),
+            OldPage {
+                sql_uuid: PAGE_DOC_UUID.into(),
+                doc_id: HOME.into(),
+                git_path: "spec/home.md".into(),
+                name: "home".into(),
+            },
+        );
+        old
+    }
+
+    const HEAD_MD: &str = "See it.\n<!-- venus:doc:a1b2c3d4-e5f6-4780-abcd-ef1234567890 -->\n";
+
+    fn commit_files(dir: &std::path::Path, files: &[(&str, &str)]) {
+        let repo = crate::git::ensure_repo(dir).expect("repo");
+        let mut index = repo.index().expect("index");
+        for (rel, body) in files {
+            let path = dir.join(rel);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&path, body).unwrap();
+            index.add_path(std::path::Path::new(rel)).unwrap();
+        }
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("Venus", "venus@localhost").unwrap();
+        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit> = parent.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, "seed", &tree, &parents)
+            .unwrap();
+    }
+
+    #[test]
+    fn missing_links_blob_is_rebuilt_from_head_markdown() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        commit_files(tmp.path(), &[("spec/home.md", HEAD_MD)]);
+        std::fs::write(tmp.path().join("spec/home.md"), "workdir only\n").unwrap();
+        std::fs::write(tmp.path().join(".venus/links.json"), "{}\n").unwrap();
+        let index = index_from_committed(tmp.path(), &home_identity()).expect("index");
+        assert_eq!(outbound(&index, HOME), &[TARGET.to_string()][..]);
+    }
+
+    #[test]
+    fn unparsed_links_blob_is_rebuilt_from_head_markdown() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        commit_files(
+            tmp.path(),
+            &[("spec/home.md", HEAD_MD), (".venus/links.json", "{")],
+        );
+        let index = index_from_committed(tmp.path(), &home_identity()).expect("index");
+        assert_eq!(outbound(&index, HOME), &[TARGET.to_string()][..]);
+    }
+
+    #[test]
+    fn parsed_links_blob_is_not_rebuilt() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let mut prior = empty_index();
+        upsert_outbound(&mut prior, HOME, &[TARGET.to_string()]);
+        let blob = String::from_utf8(serialize(&prior).unwrap()).unwrap();
+        commit_files(
+            tmp.path(),
+            &[
+                ("spec/home.md", "no comment in head\n"),
+                (".venus/links.json", &blob),
+            ],
+        );
+        let index = index_from_committed(tmp.path(), &home_identity()).expect("index");
+        assert_eq!(outbound(&index, HOME), &[TARGET.to_string()][..]);
+    }
+
+    #[test]
+    fn no_repo_and_no_pages_is_an_empty_index() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let index = index_from_committed(tmp.path(), &HashMap::new()).expect("empty");
+        assert!(index.outbound.is_empty());
+        assert!(index.inbound.is_empty());
+    }
+
+    #[test]
+    fn a_broken_git_dir_fails_the_index() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        std::fs::write(tmp.path().join(".git"), "not a repository").unwrap();
+        let err = index_from_committed(tmp.path(), &home_identity()).expect_err("open");
+        let msg = err.to_string();
+        assert!(msg.contains("open") || msg.contains(".git"), "{msg}");
     }
 }

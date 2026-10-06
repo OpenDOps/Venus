@@ -6,7 +6,13 @@ import { SEED_H1, SEED_H2, seedMarkdownDemo } from '../seed.js';
 import { MemoryNoopProvider } from '../sync-provider.js';
 import { PAGE_DOC_ID, WORKSPACE_ID } from '../ids.js';
 import { createM0Workspace } from '../workspace.js';
-import { fromDoc } from './from-doc.js';
+import {
+  catalogLinkedDocLink,
+  escapeLinkText,
+  fromDoc,
+  missingLinkedDocExport,
+  posixRelativeFromFiles,
+} from './from-doc.js';
 import { createDoc, createFolder, rename, reparent, seedOnce } from '../catalog/ops.js';
 import { FOLDER_SPEC_ID, listNodes } from '../catalog/schema.js';
 import * as Y from 'yjs';
@@ -21,6 +27,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const seedGoldenPath = join(here, 'goldens/seed.fromDoc.md');
+const linkEscapeGolden = readFileSync(join(here, 'goldens/catalog-link-escape.md'), 'utf8').trim();
 
 type HostStore = Awaited<ReturnType<typeof createM0Workspace>>['store'];
 
@@ -308,4 +315,102 @@ test('catalog fromDoc is catalog name + relative path, not workspace URL', async
   expect(leased.markdown).toContain('[lease](');
   expect(leased.markdown).not.toContain('[protocol]');
   expect(session.workspace.meta.getDocMeta?.(created.id)?.title).toBe('lease');
+});
+
+test('missing catalog target is struck text, not a workspace URL', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const note = noteOf(session.store);
+  addEmbedLinkedDoc(session.store, note.id, 'doc:lease');
+  const idOnly = '~~doc:lease~~\n<!-- venus:doc:doc:lease missing -->';
+  const withName = '~~protocol~~\n<!-- venus:doc:doc:lease missing -->';
+  expect(missingLinkedDocExport('doc:lease')).toBe(idOnly);
+  expect(missingLinkedDocExport('doc:lease', 'protocol')).toBe(withName);
+  expect(missingLinkedDocExport('doc:lease', '')).toBe(idOnly);
+
+  const { markdown, sidecar } = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages: {
+      [PAGE_DOC_ID]: { name: 'home', gitPath: 'spec/home.md' },
+    },
+  });
+  expect(markdown).toContain(idOnly);
+  expect(markdown).not.toContain('./workspace/');
+  expect(markdown).not.toMatch(/\[untitled\]/);
+  const embedRange = sidecar.blocks.find((b) =>
+    markdown.slice(b.start, b.end).includes('venus:doc:doc:lease missing'),
+  );
+  expect(embedRange).toBeDefined();
+
+  const named = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages: {
+      [PAGE_DOC_ID]: { name: 'home', gitPath: 'spec/home.md' },
+    },
+    missing: { 'doc:lease': 'protocol' },
+  });
+  expect(named.markdown).toContain(withName);
+  expect(named.markdown).not.toContain('./workspace/');
+});
+
+test('a newline in a catalog name stays on one link line', () => {
+  expect(escapeLinkText('a\n# Injected')).toBe('a # Injected');
+  const linked = catalogLinkedDocLink('doc:lease', {
+    sourceGitPath: 'spec/home.md',
+    pages: {
+      'doc:lease': { name: 'a\n# Injected', gitPath: 'spec/protocol.md' },
+    },
+  });
+  expect(linked?.link).toBe('[a # Injected](protocol.md)');
+  expect(linked?.link).not.toContain('\n');
+});
+
+test('an unsafe page id publishes no workspace url', async () => {
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const note = noteOf(session.store);
+  addEmbedLinkedDoc(session.store, note.id, '../x');
+  const { markdown } = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages: {
+      [PAGE_DOC_ID]: { name: 'home', gitPath: 'spec/home.md' },
+    },
+  });
+  expect(markdown).not.toContain('./workspace/');
+  expect(markdown).not.toContain('](../x)');
+});
+
+test('catalog link percent-encodes the path and escapes the label like Rust', async () => {
+  expect(posixRelativeFromFiles('spec/home.md', 'spec/Renamed venus (page).md')).toBe(
+    'Renamed%20venus%20%28page%29.md',
+  );
+  expect(posixRelativeFromFiles('a/b/home.md', 'c/café.md')).toBe('../../c/caf%C3%A9.md');
+  const linked = catalogLinkedDocLink('doc:lease', {
+    sourceGitPath: 'spec/home.md',
+    pages: {
+      'doc:lease': {
+        name: 'my_page * (x) [y] z',
+        gitPath: 'spec/Renamed venus (page).md',
+      },
+    },
+  });
+  expect(linked?.link).toBe(linkEscapeGolden);
+  expect(linked?.href).toBe('Renamed%20venus%20%28page%29.md');
+
+  const session = await createM0Workspace(new MemoryNoopProvider());
+  const note = noteOf(session.store);
+  addEmbedLinkedDoc(session.store, note.id, 'doc:lease');
+  const { markdown, sidecar } = await fromDoc(session.store, session.workspace, {
+    sourceGitPath: 'spec/home.md',
+    pages: {
+      'doc:lease': {
+        name: 'my_page * (x) [y] z',
+        gitPath: 'spec/Renamed venus (page).md',
+      },
+    },
+  });
+  expect(markdown).toContain(`${linkEscapeGolden}\n<!-- venus:doc:doc:lease -->`);
+  expect(markdown).not.toContain('Renamed venus');
+  const embedRange = sidecar.blocks.find((b) =>
+    markdown.slice(b.start, b.end).includes('Renamed%20venus%20%28page%29.md'),
+  );
+  expect(embedRange).toBeDefined();
 });

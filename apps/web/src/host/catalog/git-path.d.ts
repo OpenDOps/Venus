@@ -14,6 +14,7 @@ export function joinGitNames(
   parentGitPath: string | null | undefined,
   gitName: string,
 ): string;
+export function caseFoldName(name: unknown): string;
 export function filenameFromDocname(
   name: unknown,
   options: { fallback: string; taken?: Iterable<string> },

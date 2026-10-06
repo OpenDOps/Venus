@@ -5,12 +5,19 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
+use tower::ServiceExt;
 use venus_hub::db;
 use venus_sidecar::config::database_url_from_env;
+use venus_sidecar::http::router;
 use venus_sidecar::pin::PinMap;
-use venus_sidecar::queue::{claim_one, observe_once};
+use venus_sidecar::queue::{
+    claim_one, flush_status, observe_once, record_flush_failure, MAX_FLUSH_ATTEMPTS,
+};
 use venus_sidecar::PAGE_DOC_UUID;
 
 struct TestPg {
@@ -248,4 +255,98 @@ async fn two_wikis_two_consumers() {
     want.sort();
     assert_eq!(ids, want, "both wikis claimed in parallel");
     assert_ne!(a.owner, b.owner);
+}
+
+#[tokio::test]
+async fn deterministic_failure_is_409_until_a_newer_clock() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    insert_due_job(&pool, &ws).await;
+    record_flush_failure(
+        &pool,
+        &ws,
+        "worker",
+        &anyhow::anyhow!("catalog pin has no home doc"),
+    )
+    .await
+    .expect("record");
+
+    let claimed = claim_one(&pool, "worker", &ws).await.expect("claim");
+    assert!(claimed.is_none(), "a failed job is not claimed");
+    let status = flush_status(&pool, &ws).await.expect("status");
+    assert!(status.failed);
+    assert_eq!(status.attempts, 1);
+    assert!(status
+        .last_error
+        .as_deref()
+        .unwrap_or("")
+        .contains("no home doc"));
+
+    let app = router(Some(pool.clone()));
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/flush?workspace={ws}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(std::str::from_utf8(&body).unwrap().contains("no home doc"));
+
+    observe_once(&pool, Duration::ZERO, &ws)
+        .await
+        .expect("same clock");
+    assert!(
+        flush_status(&pool, &ws).await.expect("still failed").failed,
+        "the same dirty clock must not reopen the job"
+    );
+
+    sqlx::query("UPDATE dirty SET clock = clock + 1 WHERE workspace_id = $1::uuid")
+        .bind(&ws)
+        .execute(&pool)
+        .await
+        .expect("bump clock");
+    observe_once(&pool, Duration::ZERO, &ws)
+        .await
+        .expect("reopen");
+    let reopened = flush_status(&pool, &ws).await.expect("reopened");
+    assert!(!reopened.failed);
+    assert_eq!(reopened.attempts, 0);
+    assert!(reopened.last_error.is_none());
+    assert!(claim_one(&pool, "worker", &ws)
+        .await
+        .expect("claim after reopen")
+        .is_some());
+}
+
+#[tokio::test]
+async fn transient_failure_backs_off_then_stops() {
+    let pool = connect_fresh().await;
+    let ws = unique_workspace();
+    insert_due_job(&pool, &ws).await;
+    for attempt in 1..MAX_FLUSH_ATTEMPTS {
+        record_flush_failure(&pool, &ws, "worker", &anyhow::anyhow!("connection refused"))
+            .await
+            .expect("record");
+        let status = flush_status(&pool, &ws).await.expect("status");
+        assert!(!status.failed, "attempt {attempt} still retries");
+        assert_eq!(status.attempts, attempt);
+        assert!(
+            claim_one(&pool, "worker", &ws)
+                .await
+                .expect("claim")
+                .is_none(),
+            "backoff holds the job"
+        );
+    }
+    record_flush_failure(&pool, &ws, "worker", &anyhow::anyhow!("connection refused"))
+        .await
+        .expect("final");
+    let status = flush_status(&pool, &ws).await.expect("failed");
+    assert!(status.failed);
+    assert_eq!(status.attempts, MAX_FLUSH_ATTEMPTS);
 }

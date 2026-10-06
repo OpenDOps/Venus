@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectedCollaborationWs, assertHubOn3000 } from './hub-ws';
+import {
+  expectedCollaborationWs,
+  assertHubOn3000,
+  forceTabSockets,
+} from './hub-ws';
 
 const SEED_TITLE = 'Venus';
 const SEED_H1 = 'Why Venus';
@@ -58,6 +62,10 @@ test.beforeAll(async () => {
   await assertHubOn3000();
 });
 
+test.beforeEach(async ({ context }) => {
+  await forceTabSockets(context);
+});
+
 test('A typing appears in B without reload', async ({ page, context }) => {
   const pageA = page;
   const wsA = collectHubSockets(pageA);
@@ -68,11 +76,11 @@ test('A typing appears in B without reload', async ({ page, context }) => {
   await waitForHydrated(pageB);
 
   expect(
-    wsA.find((u) => u.includes(HUB_WS)),
+    wsA.find((u) => u === HUB_WS),
     'tab A must open a hub websocket',
   ).toBe(HUB_WS);
   expect(
-    wsB.find((u) => u.includes(HUB_WS)),
+    wsB.find((u) => u === HUB_WS),
     'tab B must open a hub websocket',
   ).toBe(HUB_WS);
 

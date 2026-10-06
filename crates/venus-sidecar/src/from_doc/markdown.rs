@@ -199,17 +199,29 @@ fn linked_doc_own(tree: &BlockTree, block: &Block) -> String {
 
 fn linked_doc_inline(tree: &BlockTree, block: &Block) -> String {
     let page_id = block.page_id.as_deref().unwrap_or("");
-    if page_id.is_empty() {
+    if !crate::links::is_safe_page_id(page_id) {
         return String::new();
     }
     if let Some(cat) = &tree.catalog {
         if let Some((name, git_path)) = cat.pages.get(page_id) {
-            let href = crate::links::posix_relative(&cat.source_git_path, git_path);
-            return format!("[{}]({href})", escape_text(name));
+            return crate::links::catalog_linked_doc_link(name, &cat.source_git_path, git_path);
         }
+        let name = cat.missing.get(page_id).map(String::as_str).unwrap_or("");
+        return missing_linked_doc(name, page_id);
     }
     let url = format!("./workspace/{}/{page_id}", tree.workspace_id);
-    "[untitled]({url})".replace("{url}", &url)
+    format!("[untitled]({url})")
+}
+
+/// Struck label plus a `venus:doc` comment marked `missing`. No `./workspace/` URL.
+/// An empty `name` uses `page_id` as the label.
+pub fn missing_linked_doc(name: &str, page_id: &str) -> String {
+    let raw = if name.is_empty() { page_id } else { name };
+    let mut label = crate::links::escape_link_text(raw);
+    if label.is_empty() {
+        label = crate::links::escape_link_text(page_id);
+    }
+    format!("~~{label}~~\n<!-- venus:doc:{page_id} missing -->")
 }
 
 fn stringify_flow(nodes: &[Flow], indent: usize) -> String {
@@ -336,6 +348,7 @@ fn escape_text(s: &str) -> String {
                 out.push('\\');
                 out.push(c);
             }
+            other if other.is_control() => out.push(' '),
             other => out.push(other),
         }
     }
@@ -375,7 +388,8 @@ fn with_venus_linked_doc_comment(slice: &str, page_id: Option<&str>) -> String {
         return slice.to_string();
     }
     let comment = format!("<!-- venus:doc:{page_id} -->");
-    if slice.contains(&comment) {
+    let missing = format!("<!-- venus:doc:{page_id} missing -->");
+    if slice.contains(&comment) || slice.contains(&missing) {
         return slice.to_string();
     }
     let core = slice.trim_end_matches('\n');
@@ -441,15 +455,13 @@ fn find_linked_doc_insert(
 ) -> Option<(usize, bool)> {
     let mut search = from;
     while search < markdown.len() {
-        let Some(open) = markdown[search..].find("](") else {
+        let Some(open) = find_link_open(markdown, search) else {
             return None;
         };
-        let open = search + open;
-        let Some(rel_close) = markdown[open + 2..].find(')') else {
-            return None;
+        let Some((url, close)) = read_link_destination(markdown, open + 2) else {
+            search = open + 2;
+            continue;
         };
-        let close = open + 2 + rel_close;
-        let url = &markdown[open + 2..close];
         if url_mentions_page_id(url, page_id) || expected_href.as_deref().is_some_and(|h| url == h)
         {
             return match markdown[close..].find('\n') {
@@ -458,6 +470,44 @@ fn find_linked_doc_insert(
             };
         }
         search = open + 2;
+    }
+    None
+}
+
+fn find_link_open(markdown: &str, from: usize) -> Option<usize> {
+    let mut search = from;
+    while let Some(rel) = markdown[search..].find("](") {
+        let open = search + rel;
+        if open > 0 && markdown.as_bytes().get(open - 1) == Some(&b'\\') {
+            search = open + 2;
+            continue;
+        }
+        return Some(open);
+    }
+    None
+}
+
+/// Destination after `](`. Percent-encoded bytes (`%HH`) stay inside the URL,
+/// so `%29` is not the closer. An angle-bracket destination ends at `>`.
+fn read_link_destination(markdown: &str, start: usize) -> Option<(&str, usize)> {
+    let bytes = markdown.as_bytes();
+    if bytes.get(start) == Some(&b'<') {
+        let end = markdown[start + 1..].find('>')? + start + 1;
+        if bytes.get(end + 1) != Some(&b')') {
+            return None;
+        }
+        return Some((&markdown[start + 1..end], end + 1));
+    }
+    let mut i = start;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            i += 3;
+            continue;
+        }
+        if bytes[i] == b')' {
+            return Some((&markdown[start..i], i));
+        }
+        i += 1;
     }
     None
 }
@@ -476,4 +526,42 @@ fn regex_is_safe(page_id: &str) -> bool {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
         && page_id.chars().next().is_some()
+}
+
+#[cfg(test)]
+mod link_label_tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::from_doc::tree::{Block, BlockTree};
+
+    fn embed(page_id: &str) -> Block {
+        Block {
+            id: "b".into(),
+            flavour: "affine:embed-linked-doc".into(),
+            children: Vec::new(),
+            para_type: String::new(),
+            deltas: Vec::new(),
+            title: String::new(),
+            checked: false,
+            language: None,
+            source_id: None,
+            page_id: Some(page_id.into()),
+            caption: None,
+            list_kind: None,
+        }
+    }
+
+    #[test]
+    fn unsafe_page_id_emits_no_workspace_url() {
+        let tree = BlockTree {
+            blocks: HashMap::new(),
+            page_id: "page".into(),
+            workspace_id: "ws".into(),
+            catalog: None,
+        };
+        let md = linked_doc_inline(&tree, &embed("../x"));
+        assert!(md.is_empty(), "{md}");
+        assert!(!md.contains("./workspace/"));
+    }
 }

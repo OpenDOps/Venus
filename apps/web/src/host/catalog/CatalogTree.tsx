@@ -12,7 +12,9 @@ import { useTree } from '@headless-tree/react';
 import type { DragTarget, ItemInstance, TreeInstance } from '@headless-tree/core';
 import type { Doc } from 'yjs';
 import { PAGE_DOC_ID } from '../ids.js';
+import type { SyncProvider } from '../sync-provider.js';
 import { testidProps } from '../providers/from-env.js';
+import { createPublishedDoc } from './create-published.js';
 import {
   applyCatalogDrop,
   canCatalogDrop,
@@ -20,18 +22,12 @@ import {
   destFromDrop,
   WIKI_ROOT_ID,
 } from './drop.js';
-import {
-  createDoc,
-  createFolder,
-  deleteNode,
-  rename,
-} from './ops.js';
+import { createFolder, deleteNode, rename } from './ops.js';
 import {
   FOLDER_SPEC_ID,
   KIND_DOC,
   KIND_FOLDER,
   childrenIndex,
-  childrenOf,
   getNode,
   hasChild,
   isHome,
@@ -39,6 +35,7 @@ import {
   type ChildrenIndex,
 } from './schema.js';
 import { pruneGoneTreeItems } from './tree-prune.js';
+import { UNFILED_ID, catalogTreeChildIds } from './repair-structure.js';
 import './CatalogTree.css';
 
 const WIKI_ROOT: CatalogNode = {
@@ -51,8 +48,19 @@ const WIKI_ROOT: CatalogNode = {
   gitPath: '',
 };
 
+const UNFILED: CatalogNode = {
+  id: UNFILED_ID,
+  kind: 'unfiled',
+  name: 'Unfiled',
+  parentId: null,
+  order: '',
+  gitName: '',
+  gitPath: '',
+};
+
 function treeItem(catalog: Doc, itemId: string): CatalogNode {
   if (itemId === WIKI_ROOT_ID) return WIKI_ROOT;
+  if (itemId === UNFILED_ID) return UNFILED;
   return (
     getNode(catalog, itemId, { gitPath: false }) ?? {
       id: itemId,
@@ -71,6 +79,7 @@ function dropParentId(target: DragTarget<CatalogNode>): string | null {
 }
 
 function canRenameRow(item: ItemInstance<CatalogNode>) {
+  if (item.getId() === UNFILED_ID) return false;
   const kind = item.getItemData().kind;
   return kind === KIND_DOC || kind === KIND_FOLDER;
 }
@@ -149,6 +158,7 @@ function treeItemClassName(
 type Props = {
   catalog: Doc;
   workspace: unknown;
+  provider: SyncProvider;
   selectedDocId: string;
   rebuildRef: MutableRefObject<(() => void) | null>;
   onOpenDoc: (docId: string) => void | Promise<void>;
@@ -157,6 +167,7 @@ type Props = {
 export const CatalogTree = memo(function CatalogTree({
   catalog,
   workspace,
+  provider,
   selectedDocId,
   rebuildRef,
   onOpenDoc,
@@ -181,19 +192,20 @@ export const CatalogTree = memo(function CatalogTree({
     initialState: { expandedItems: [FOLDER_SPEC_ID] },
     getItemName: (item) => item.getItemData().name,
     isItemFolder: (item) =>
-      item.getId() === WIKI_ROOT_ID || item.getItemData().kind === KIND_FOLDER,
+      item.getId() === WIKI_ROOT_ID ||
+      item.getId() === UNFILED_ID ||
+      item.getItemData().kind === KIND_FOLDER,
     dataLoader: {
       getItem: (itemId) => treeItem(catalog, itemId),
       getChildren: (itemId) =>
-        childrenOf(catalog, catalogParentId(itemId), loadChildrenIndex()).map(
-          (n) => n.id,
-        ),
+        catalogTreeChildIds(catalog, itemId, loadChildrenIndex()),
     },
     onPrimaryAction: (item) => {
       const data = item.getItemData();
       if (data.kind === 'doc') onOpenDoc(data.docId ?? data.id);
     },
     onRename: (item, value) => {
+      if (item.getId() === UNFILED_ID) return;
       rename(catalog, workspace, item.getId(), value);
     },
     canReorder: true,
@@ -227,6 +239,8 @@ export const CatalogTree = memo(function CatalogTree({
       childrenIndexRef.current = childrenIndex(catalog);
       tree.rebuildTree();
       pruneGoneTreeItems(tree, catalog);
+      const unfiled = tree.getItems().find((item) => item.getId() === UNFILED_ID);
+      if (unfiled && !unfiled.isExpanded()) unfiled.expand();
     };
     return () => {
       rebuildRef.current = null;
@@ -246,8 +260,13 @@ export const CatalogTree = memo(function CatalogTree({
   }
 
   function onCreatePage() {
-    createDoc(catalog, workspace, { createAt: resolveCreateAt() });
+    const createAt = resolveCreateAt();
     setContextCreateAt(undefined);
+    void createPublishedDoc(catalog, workspace, provider, { createAt }).catch(
+      (err) => {
+        console.error(err);
+      },
+    );
   }
 
   function onCreateFolder() {
@@ -365,7 +384,11 @@ export const CatalogTree = memo(function CatalogTree({
                     event.stopPropagation();
                     const data = item.getItemData();
                     setContextCreateAt(
-                      data.kind === KIND_FOLDER ? data.id : data.parentId,
+                      id === UNFILED_ID
+                        ? null
+                        : data.kind === KIND_FOLDER
+                          ? data.id
+                          : data.parentId,
                     );
                     item.select();
                   }}

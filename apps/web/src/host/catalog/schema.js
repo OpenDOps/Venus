@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { joinGitNames } from './git-path.js';
+import { repairedParent } from './structure.js';
 import { PAGE_DOC_ID } from '../ids.js';
 
 export const NODES_KEY = 'nodes';
@@ -62,20 +63,36 @@ export function readNode(ymap) {
  * @param {Map<string, string>} [memo]
  * @param {Set<string>} [visiting]
  */
-export function gitPathOf(catalog, id, memo = new Map(), visiting = new Set()) {
+/**
+ * @param {import('yjs').Doc} catalog
+ * @returns {Map<string, string | null>}
+ */
+function parentLinks(catalog) {
+  /** @type {Map<string, string | null>} */
+  const links = new Map();
+  nodesMap(catalog).forEach((value, key) => {
+    const id = value.get('id');
+    const nodeId = typeof id === 'string' && id ? id : String(key);
+    const parent = value.get('parentId');
+    links.set(nodeId, parent == null ? null : String(parent));
+  });
+  return links;
+}
+
+export function gitPathOf(catalog, id, memo = new Map(), visiting = new Set(), links = null) {
   if (memo.has(id)) return /** @type {string} */ (memo.get(id));
   const ymap = nodesMap(catalog).get(id);
   if (!ymap) {
     memo.set(id, '');
     return '';
   }
+  const parents = links ?? parentLinks(catalog);
   const gitName = storedGitName(ymap);
   if (visiting.has(id)) return gitName;
   visiting.add(id);
-  const parentRaw = ymap.get('parentId');
-  const parentId = parentRaw == null ? null : /** @type {string} */ (parentRaw);
+  const parentId = repairedParent(id, parents);
   const path = parentId
-    ? joinGitNames(gitPathOf(catalog, parentId, memo, visiting), gitName)
+    ? joinGitNames(gitPathOf(catalog, parentId, memo, visiting, parents), gitName)
     : gitName;
   visiting.delete(id);
   memo.set(id, path);

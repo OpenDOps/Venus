@@ -204,7 +204,7 @@ What each step **adds** to the product (not how to test it — that is under eac
 | [7](#7-step-links) | [`step-links`](#7-step-links) | ✅ **done.** Reverse index + embed-linked-doc; Flush converts index hits, not the whole wiki. |
 | [7.1](#71-step-link-index) | [`step-link-index`](#71-step-link-index) | ✅ **done.** `.venus/links.json`: inbound/outbound `docId`; rebuild from HEAD if missing; lookup without scanning every page. |
 | [7.2](#72-step-link-export) | [`step-link-export`](#72-step-link-export) | ✅ **done.** Card + export rewrite; Flush convert set = body-dirty ∪ index hits; still resolves after a move. |
-| [8](#8-step-shared-worker) | [`step-shared-worker`](#8-step-shared-worker) | Optional **SharedWorker** in front of A. Feature-detect; fallback per-tab. Not Service Worker. Not mux. |
+| [8](#8-step-shared-worker) | [`step-shared-worker`](#8-step-shared-worker) | ✅ **done.** Optional **SharedWorker** in front of A. Feature-detect; fallback per-tab. Not Service Worker. Not mux. |
 | [9](#9-step-verify) | [`step-verify`](#9-step-verify) | Close-out: person + Playwright; board `done`. |
 
 ---
@@ -784,7 +784,7 @@ needFromDoc = bodyDirty
 | **title** | SharedWorker in front of wire A (feature-detect) |
 | **dependsOn** | `step-links` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **done** 2026-10-06 ([board](./M4.state.yaml); breakpoint `human`) |
 
 **Adds:** fewer hub sockets when two tabs share a browsing profile. Hub protocol **unchanged** (still A: one TCP per `doc_id`, `?doc=`). Tree / header / Flush already work from steps 2–7 on per-tab sockets.
 
@@ -794,7 +794,7 @@ needFromDoc = bodyDirty
 
 1. `apps/web/src/host/providers/hub-shared-worker.js` (or Actual path): worker opens the **same** A WebSockets (`/collaboration/:workspace` and `?doc=`). Tabs send/receive `Uint8Array` updates over `MessagePort`. `Y.Doc`, BlockSuite `Store`, and React stay in the tab.
 2. Host: if SharedWorker exists, `VenusHubProvider` (or a thin wrapper) talks to the worker instead of `new WebSocket` in the tab. Same `connect(docId, ydoc)` / `disconnect` / `whenReady` seam. Memory provider unchanged.
-3. Subscribe/unsubscribe per `doc_id` in the worker (catalog stays while the tree is mounted; page socket replaced on switch). Last tab close → worker closes those sockets.
+3. Subscribe/unsubscribe per `doc_id` in the worker (catalog stays while the tree is mounted; page channels follow the tab's kept page sessions — open page + one previous, [react-tree-issues #12](./react-tree-issues.md#12-every-leaverevisit-is-a-new-page-ws)). Last tab close → worker closes those sockets.
 4. No SharedWorker (or worker construct throws): **identical** per-tab A path from step 2. Product must not require the worker.
 5. Playwright: two **pages in one BrowserContext** share one worker (assert fewer sockets or a host hook). Two **contexts** each get their own worker — that is not a fail; it is how the API isolates. Chromium has SharedWorker; if a browser in CI does not, skip the share assert and still run the fallback.
 
@@ -839,7 +839,7 @@ needFromDoc = bodyDirty
 | **title** | Close-out: create, rename, link, move, header undo |
 | **dependsOn** | `step-shared-worker` |
 | **kind** | implement |
-| **status** | **pending** ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **pending** — automated smoke green 2026-10-06; person pass and H2 legacy cleanup open ([board](./M4.state.yaml); breakpoint `human`) |
 
 **Adds:** board `done`. Person + clone + smoke. SharedWorker is an optimization; exit 1–12 must hold on the fallback path.
 

@@ -30,6 +30,7 @@ export async function blockMarkdownSlice(
   catalogLinks?: {
     sourceGitPath: string;
     pages: Record<string, { name: string; gitPath: string }>;
+    missing?: Record<string, string>;
   },
 ): Promise<string>;
 
@@ -37,11 +38,16 @@ export function encodeSidecarClock(ydoc: Doc): string;
 
 export function posixRelativeFromFiles(fromFile: string, toFile: string): string;
 
+export function escapeLinkText(name: string): string;
+
+export function missingLinkedDocExport(pageId: string, name?: string): string | null;
+
 export function catalogLinkedDocLink(
   pageId: string,
   catalogLinks: {
     sourceGitPath: string;
     pages: Record<string, { name: string; gitPath: string }>;
+    missing?: Record<string, string>;
   },
 ): { link: string; href: string } | null;
 
@@ -63,6 +69,7 @@ export function fromDoc(
   catalogLinks?: {
     sourceGitPath: string;
     pages: Record<string, { name: string; gitPath: string }>;
+    missing?: Record<string, string>;
   },
 ): Promise<{ markdown: string; sidecar: Sidecar }>;
 

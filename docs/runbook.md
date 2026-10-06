@@ -133,7 +133,7 @@ pnpm test:e2e
 
 Memory-only: `e2e/m0-*.spec.ts` and `e2e/m2-*.spec.ts`. Ignores `m1-*.spec.ts`. If a stale Vite is bound to 5173, kill it first — `reuseExistingServer` will reuse a broken process.
 
-M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out), [Manual testing (M2)](#manual-testing-m2-close-out), and [Manual testing (M3)](#manual-testing-m3-close-out).
+M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out), [Manual testing (M2)](#manual-testing-m2-close-out), [Manual testing (M3)](#manual-testing-m3-close-out), and [Manual testing (M4)](#manual-testing-m4-close-out). M4 e2e: `pnpm test:e2e:m4` (Compose `hub` + `sidecar`); after a Flush, `pnpm wiki:verify` checks the git tree against the catalog.
 
 ## Manual testing (M0 close-out)
 
@@ -210,6 +210,32 @@ Clone-elsewhere without the editor is `cargo test -p venus-sidecar --test verify
 8. **No origin.** `git -C wiki remote` is empty. Product git still ignores `/wiki/`.
 
 If any required step fails, M3 is not done. Fix the sidecar or host chrome; do not treat the live editor as the way to “see” git. Full contract: [M3 step 9](./design/M3/plan.md#9-step-verify).
+
+## Manual testing (M4 close-out)
+
+**Automated pass 2026-10-06; person pass pending.** Playwright (`pnpm test:e2e:m4`) does **not** replace this. Use Chrome or Firefox yourself. Fail on uncaught exceptions from the host or BlockSuite. Ignore extension noise. Path rules: [page-identity](./design/datamodel/page-identity.md).
+
+`pnpm wiki:verify` checks the git tree after a Flush without the editor. It clones `wiki/` HEAD to `/tmp/venus-m4-verify` (`--no-hardlinks`: hardlinked objects become unreadable to the Compose sidecar on Docker Desktop), decodes the catalog from Postgres, and requires: the clone's `.md` set equals the catalog `gitPath`s; `.venus/pages.yaml` pages and folders, `page_identity`, and `.venus/ids` agree with the catalog; every `<!-- venus:doc:… -->` card has an href relative to its file that resolves in the clone and link text equal to the target's name (or `~~name~~` + `missing` for a deleted target); `.venus/links.json` equals the cards. It exits 2 while the catalog or a catalog page has unflushed edits, and 1 on any mismatch.
+
+**Setup**
+
+1. From the repo root: `mkdir -p wiki && chmod a+rwx wiki`, then `docker compose --profile snapshot up --build -d postgres hub sidecar`. Rebuild after Rust changes: an old sidecar image answers `404` on `GET http://127.0.0.1:3002/flush/status`.
+2. Host Vite with Flush chrome: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 VITE_SIDECAR_URL=http://127.0.0.1:3002 VITE_DEBUG=1 pnpm --filter @venus/web dev`. Open **http://127.0.0.1:5173**. Other ports are not in `SIDECAR_CORS_ORIGINS`, so Flush and git log fail with `Failed to fetch`. Compose `web` on `:8080` has no debug bar; Flush there with `curl -X POST http://127.0.0.1:3002/flush`. Dev Vite serves ~3,500 unbundled modules, so a first load of 2–3 s is normal; the production build loads in ~0.5 s.
+3. **Baseline.** Click **Flush**, then `pnpm wiki:verify`. It must print `ok`. A page created before the H2 fix has a catalog row and no body on the hub; verify names it `(no page body on the hub: H2 legacy page)`. It cannot be opened (`EmptyPageSyncError`). Select it in the tree, **Delete**, Flush, verify again.
+
+**Steps**
+
+1. **Create.** Select `spec`, click **Page**. A row named by a uuid appears under `spec`. Click it: an empty page opens and the header title is that uuid. Type `hello-m4` in the body. Flush. `git -C wiki show --stat HEAD` adds `spec/<uuid>.md` (containing `hello-m4`) and `.venus/ids/<uuid>.json`, and `.venus/pages.yaml` lists that uuid.
+2. **Rename in the tree.** Pencil (or double-click) on the row, type `protocol`, Enter. The header title follows. Flush. `git -C wiki show -M --name-status HEAD` shows `R… spec/<uuid>.md spec/protocol.md`, not a delete plus an add.
+3. **Link.** Open **home**. In an empty paragraph type `@` and pick `protocol` under **Link to Doc**. A card appears. Do not use **Create "Untitled" doc** or **Import** in that menu: they make a BlockSuite doc that is not in the catalog. Flush. `wiki/spec/home.md` has `[protocol](protocol.md)` and `<!-- venus:doc:<uuid> -->` on the next line.
+4. **Folder and drop.** With `spec` selected click **Folder**, rename it `design`. Drag `protocol` onto `design`. Flush. `git show -M --name-status HEAD` shows `R… spec/protocol.md spec/design/protocol.md`, and the card in `home.md` is now `[protocol](design/protocol.md)`. The card in the editor still says `protocol`.
+5. **Header undo / redo.** Open `protocol`, type `undo-me`. **Undo** removes it, **Redo** brings it back; ⌘Z / ⇧⌘Z (Ctrl on Linux) do the same. Undo is disabled with nothing to undo. The right-hand outline lists headings only, never folders or pages.
+6. **Delete a leaf.** Create another page and open it. **Delete** is hidden on `home`, on `spec`, and on a folder with children. Delete the open page: the editor switches to home. Flush. `git show --name-status HEAD` shows `D spec/<uuid>.md`.
+7. **Clone.** `pnpm wiki:clone` (home is markdown, not Yjs) and `pnpm wiki:verify` (prints `ok`). Compare the tree on screen with `find /tmp/venus-m4-verify -name '*.md' -not -path '*/.git/*'`: same folders, same file names. `/tmp/venus-m4-verify/spec/design/protocol.md` contains `hello-m4`. `git -C wiki status --short` is empty.
+8. **Two tabs.** Open the same URL in a second tab of the same window. In the console `__VENUS_HUB_TRANSPORT__` is `'shared-worker'` (Chrome, Firefox) or `'tab'` (no SharedWorker). With `shared-worker`, `chrome://inspect/#workers` lists `venus-hub:ws://127.0.0.1:3000/…` and the page's Network → WS has no `/collaboration` socket. Rename a page in A: B's tree updates without reload. Type in B's page: A shows it. The per-tab path (`'tab'`) is covered by `m4-shared-worker` Fallback and by `m4-tree`, which run without SharedWorker.
+9. **Reload.** Reload both tabs. Tree, names, the card, and the page text are unchanged.
+
+Record date, browser, and `__VENUS_HUB_TRANSPORT__` under `step-verify` → **Manual path** in [M4.state.yaml](./design/M4/M4.state.yaml). If any step fails, M4 is not done. Full contract: [M4 step 9](./design/M4/plan.md#9-step-verify).
 
 ## Build
 

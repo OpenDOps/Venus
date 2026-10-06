@@ -253,4 +253,73 @@ fn catalog_walk_rewrites_linked_doc_not_workspace_url() {
         "{}",
         moved.markdown
     );
+
+    let home_only = CatalogWalk {
+        pages: vec![walk.pages[0].clone()],
+        folders: vec![],
+    };
+    let gone = from_doc::from_pinned_bytes_catalog(
+        &pin,
+        venus_sidecar::DEFAULT_WORKSPACE_ID,
+        PAGE_DOC_ID,
+        Some(&home_only),
+    )
+    .expect("missing target");
+    let id_only = "~~doc:lease~~\n<!-- venus:doc:doc:lease missing -->";
+    assert!(gone.markdown.contains(id_only), "{}", gone.markdown);
+    assert!(!gone.markdown.contains("./workspace/"));
+    assert!(!gone.markdown.contains("[untitled]"));
+
+    let mut names = std::collections::HashMap::new();
+    names.insert("doc:lease".into(), "protocol".into());
+    let named = from_doc::from_pinned_bytes_catalog_missing(
+        &pin,
+        venus_sidecar::DEFAULT_WORKSPACE_ID,
+        PAGE_DOC_ID,
+        Some(&home_only),
+        Some(&names),
+    )
+    .expect("named missing target");
+    let with_name = "~~protocol~~\n<!-- venus:doc:doc:lease missing -->";
+    assert!(named.markdown.contains(with_name), "{}", named.markdown);
+    assert_eq!(
+        from_doc::missing_linked_doc("protocol", "doc:lease"),
+        with_name
+    );
+    assert_eq!(from_doc::missing_linked_doc("", "doc:lease"), id_only);
+    assert_eq!(
+        from_doc::missing_linked_doc("my_page", "doc:lease"),
+        "~~my\\_page~~\n<!-- venus:doc:doc:lease missing -->"
+    );
+    assert!(!named.markdown.contains("./workspace/"));
+
+    let escaped = CatalogWalk {
+        pages: vec![
+            walk.pages[0].clone(),
+            CatalogPage {
+                sql_uuid: "00000000-0000-4000-8000-000000000001".into(),
+                doc_id: "doc:lease".into(),
+                name: "my_page * (x) [y] z".into(),
+                git_path: "spec/Renamed venus (page).md".into(),
+            },
+        ],
+        folders: vec![],
+    };
+    let special = from_doc::from_pinned_bytes_catalog(
+        &pin,
+        venus_sidecar::DEFAULT_WORKSPACE_ID,
+        PAGE_DOC_ID,
+        Some(&escaped),
+    )
+    .expect("escaped link");
+    let golden =
+        include_str!("../../../apps/web/src/host/mdgate/goldens/catalog-link-escape.md").trim_end();
+    assert!(
+        special
+            .markdown
+            .contains(&format!("{golden}\n<!-- venus:doc:doc:lease -->")),
+        "{}",
+        special.markdown
+    );
+    assert!(!special.markdown.contains("Renamed venus ("));
 }

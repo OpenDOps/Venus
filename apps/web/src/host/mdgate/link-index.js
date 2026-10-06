@@ -3,7 +3,7 @@ import { join, relative, sep } from 'node:path';
 
 /** pageId in `<!-- venus:doc:… -->` — same allowlist as convert comments. */
 const SAFE_PAGE_ID = /^[A-Za-z0-9_.:-]+$/;
-const COMMENT_RE = /<!--\s*venus:doc:([A-Za-z0-9_.:-]+)\s*-->/g;
+const COMMENT_RE = /<!--\s*venus:doc:([A-Za-z0-9_.:-]+)(?:\s+missing)?\s*-->/g;
 
 /**
  * @typedef {{ inbound: Record<string, string[]>, outbound: Record<string, string[]> }} LinkIndex

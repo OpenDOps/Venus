@@ -24,6 +24,8 @@ test('Flush chrome is host App, not mount-editor; no store.readonly', () => {
   expect(bar).toMatch(/sidecarUrl.*\/flush/);
   expect(bar).toMatch(/\/git\/log\?path=/);
   expect(bar).toMatch(/void fetch\(`\$\{sidecarUrl\}\/flush`/);
+  expect(bar).toMatch(/\/flush\/status/);
+  expect(bar).toMatch(/data-testid=["']venus-flush-error["']/);
   expect(bar).not.toMatch(/async function onFlush/);
   expect(bar).not.toMatch(/await fetch/);
   expect(app).not.toMatch(/store\.readonly/);

@@ -16,6 +16,7 @@ pub const CODE_INVALID_DOC: &str = "invalid_doc";
 pub const CODE_EXPORT_HTTP_DISABLED: &str = "export_http_disabled";
 pub const CODE_LEASE_HELD: &str = "lease_held";
 pub const CODE_STORE_FAILED: &str = "store_failed";
+pub const CODE_ROOM_FULL: &str = "room_full";
 
 pub const GRPC_SERVICE: &str = "venus.hub.v1.Hub";
 pub const GRPC_LISTEN_ENV: &str = "HUB_GRPC_LISTEN";

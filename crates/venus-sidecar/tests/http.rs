@@ -43,6 +43,21 @@ fn flush_empty_body_is_bound_wiki() {
 }
 
 #[tokio::test]
+async fn flush_status_without_pool_is_503() {
+    let app = router(None);
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/flush/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
 async fn flush_without_pool_is_503() {
     let app = router(None);
     let res = app

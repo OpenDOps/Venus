@@ -1,7 +1,7 @@
 //! After claim: REPEATABLE READ copy of dirty set S into the pin Map.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -27,6 +27,7 @@ struct PageBins {
 struct CutBins {
     pages: Vec<PageBins>,
     blobs: Vec<(String, Vec<u8>)>,
+    walk: Option<catalog::CatalogWalk>,
 }
 
 /// Copy this wiki's dirty pages (and workspace blobs) into `pins`, then COMMIT.
@@ -39,11 +40,18 @@ pub async fn cut_workspace(
     pins: &mut PinMap,
     wiki_dir: Option<&Path>,
 ) -> Result<()> {
-    let bins = match load_cut_bins(pool, workspace_id, wiki_dir).await {
+    let link_index = match wiki_dir {
+        Some(dir) => {
+            let old = catalog::load_old_pages(pool, workspace_id).await?;
+            Some(links::index_from_committed(dir, &old)?)
+        }
+        None => None,
+    };
+    let bins = match load_cut_bins(pool, workspace_id, link_index.as_ref()).await {
         Ok(bins) => bins,
         Err(e) if is_retryable_tx(&e) => {
             tracing::warn!(error = %e, workspace_id, "cut serialization/deadlock; retry once");
-            load_cut_bins(pool, workspace_id, wiki_dir)
+            load_cut_bins(pool, workspace_id, link_index.as_ref())
                 .await
                 .context("cut retry")?
         }
@@ -69,14 +77,21 @@ pub async fn cut_workspace(
             },
         );
     }
+    let mut walk = bins.walk;
+    if walk.is_none() {
+        if let Some(bytes) = pins.get(CATALOG_DOC_ID).map(|entry| entry.bytes.clone()) {
+            walk = Some(walk_pin(&bytes).context("walk catalog pin")?);
+        }
+    }
+    pins.set_catalog_walk(walk);
     Ok(())
 }
 
 async fn load_cut_bins(
     pool: &PgPool,
     workspace_id: &str,
-    wiki_dir: Option<&Path>,
-) -> Result<CutBins, sqlx::Error> {
+    link_index: Option<&links::LinkIndex>,
+) -> Result<CutBins> {
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         .execute(&mut *tx)
@@ -110,7 +125,7 @@ async fn load_cut_bins(
             pages.push(page);
         }
     }
-    pin_convert_set_extras(&mut tx, workspace_id, wiki_dir, &mut pages).await?;
+    let walk = pin_convert_set_extras(&mut tx, workspace_id, link_index, &mut pages).await?;
 
     let blobs: Vec<(String, Vec<u8>)> =
         sqlx::query_as("SELECT hash, bytes FROM blob WHERE workspace_id = $1::uuid")
@@ -119,7 +134,7 @@ async fn load_cut_bins(
             .await?;
 
     tx.commit().await?;
-    Ok(CutBins { pages, blobs })
+    Ok(CutBins { pages, blobs, walk })
 }
 
 async fn load_page_bins(
@@ -180,44 +195,25 @@ async fn load_catalog_if_present(
 async fn pin_convert_set_extras(
     tx: &mut Transaction<'_, Postgres>,
     workspace_id: &str,
-    wiki_dir: Option<&Path>,
+    link_index: Option<&links::LinkIndex>,
     pages: &mut Vec<PageBins>,
-) -> Result<(), sqlx::Error> {
-    let Some(wiki_dir) = wiki_dir else {
-        return Ok(());
+) -> Result<Option<catalog::CatalogWalk>> {
+    let Some(index) = link_index else {
+        return Ok(None);
     };
     let Some(idx) = pages.iter().position(|p| p.doc_id == CATALOG_DOC_ID) else {
-        return Ok(());
+        return Ok(None);
     };
     let cat = &pages[idx];
-    let Ok(bytes) = hydrate_page(cat.snap.as_deref(), &cat.trail) else {
-        return Ok(());
-    };
-    let Ok(walk) = walk_pin(&bytes) else {
-        return Ok(());
-    };
-    let old = match catalog::load_old_pages_exec(&mut **tx, workspace_id).await {
-        Ok(o) => o,
-        Err(e) => {
-            tracing::warn!(error = %e, "cut skipped convert-set extras; page_identity");
-            return Ok(());
-        }
-    };
-    let path_to_doc: HashMap<String, String> = walk
-        .pages
-        .iter()
-        .map(|p| (p.git_path.clone(), p.doc_id.clone()))
-        .collect();
-    let index = match links::load(wiki_dir) {
-        Some(idx) => idx,
-        None => links::rebuild_from_wiki(wiki_dir, &path_to_doc).unwrap_or_default(),
-    };
+    let bytes = hydrate_page(cat.snap.as_deref(), &cat.trail).context("hydrate catalog pin")?;
+    let walk = walk_pin(&bytes).context("walk catalog pin")?;
+    let old = catalog::load_old_pages_exec(&mut **tx, workspace_id).await?;
     let dirty_sql: HashSet<String> = pages
         .iter()
         .filter(|p| p.doc_id != CATALOG_DOC_ID)
         .map(|p| p.doc_id.clone())
         .collect();
-    let need = convert_set(&walk, &old, &dirty_sql, &index);
+    let need = convert_set(&walk, &old, &dirty_sql, index);
     let pinned: HashSet<String> = pages.iter().map(|p| p.doc_id.clone()).collect();
     let extras: Vec<String> = need
         .into_iter()
@@ -231,7 +227,7 @@ async fn pin_convert_set_extras(
         }
         pages.push(page);
     }
-    Ok(())
+    Ok(Some(walk))
 }
 
 async fn load_page_clock(
@@ -285,9 +281,49 @@ fn apply_snapshot(bin: &[u8]) -> Doc {
     }
 }
 
-fn is_retryable_tx(err: &sqlx::Error) -> bool {
-    match err {
-        sqlx::Error::Database(db) => matches!(db.code().as_deref(), Some("40001" | "40P01")),
-        _ => false,
+fn is_retryable_tx(err: &anyhow::Error) -> bool {
+    for cause in err.chain() {
+        let Some(sqlx::Error::Database(db)) = cause.downcast_ref::<sqlx::Error>() else {
+            continue;
+        };
+        return matches!(db.code().as_deref(), Some("40001" | "40P01"));
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn convert_extras_do_not_read_the_wiki() {
+        let src = include_str!("cut.rs");
+        let extras = src
+            .split("async fn pin_convert_set_extras")
+            .nth(1)
+            .expect("fn");
+        let body = extras
+            .split("async fn load_page_clock")
+            .next()
+            .expect("body");
+        assert!(!body.contains("pages.yaml"), "{body}");
+        assert!(!body.contains("rebuild_from_wiki"), "{body}");
+        assert!(!body.contains("read_dir"), "{body}");
+        assert!(!body.contains("fs::"), "{body}");
+        assert!(!body.contains("skipped convert-set"), "{body}");
+        assert!(body.contains("walk_pin"), "{body}");
+        assert!(body.contains("load_old_pages_exec"), "{body}");
+    }
+
+    #[test]
+    fn cut_returns_link_index_errors() {
+        let src = include_str!("cut.rs");
+        let start = src.find("pub async fn cut_workspace").expect("cut");
+        let end = src.find("async fn load_cut_bins").expect("load");
+        let body = &src[start..end];
+        assert!(
+            !body.contains("unwrap_or_default"),
+            "page_identity and the link index must fail the cut"
+        );
+        assert!(body.contains("index_from_committed"));
+        assert!(body.contains("set_catalog_walk"), "{body}");
     }
 }

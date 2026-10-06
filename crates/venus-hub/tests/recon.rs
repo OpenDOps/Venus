@@ -200,8 +200,8 @@ fn api_map_m4_catalog_actuals() {
     );
     let http = include_str!("../src/http.rs");
     assert!(
-        http.contains("fn take_doc_id") && http.contains("attach_doc"),
-        "hub HTTP must bind ?doc= via take_doc_id + attach_doc"
+        http.contains("fn take_doc_id") && http.contains("room.attach_from("),
+        "hub HTTP must bind ?doc= via take_doc_id + attach_from (peer for the per-IP cap)"
     );
     assert!(
         !http.contains("/collaboration/:workspace_id/:doc"),

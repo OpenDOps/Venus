@@ -23,7 +23,10 @@ test('foo/bar becomes file foo_bar; empty stem uses fallback', () => {
   );
 });
 
-test('sibling clash appends _1 then _2', () => {
+test('sibling clash is case-insensitive and appends _1 then _2', () => {
+  expect(
+    filenameFromDocname('notes', { fallback: 'x', taken: ['Notes'] }),
+  ).toBe('notes_1');
   expect(
     filenameFromDocname('protocol', { fallback: 'x', taken: ['protocol'] }),
   ).toBe('protocol_1');

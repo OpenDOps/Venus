@@ -255,10 +255,14 @@ async fn persist_not_paused_during_convert() {
 fn convert_sleep_is_after_cut_not_in_hub() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let queue = fs::read_to_string(root.join("src/queue.rs")).expect("queue.rs");
-    let cut_at = queue
-        .find("cut_workspace(pool, &claim.workspace_id, pins)")
-        .expect("flush_claimed must cut");
-    let sleep_at = queue
+    let body_at = queue
+        .find("async fn flush_claimed_inner(")
+        .expect("flush_claimed_inner");
+    let body = &queue[body_at..];
+    let cut_at = body
+        .find("cut_workspace(")
+        .expect("flush_claimed_inner must cut");
+    let sleep_at = body
         .find("if !convert_sleep.is_zero()")
         .expect("SNAPSHOT_CONVERT_SLEEP_MS hook");
     assert!(

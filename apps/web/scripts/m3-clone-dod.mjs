@@ -23,7 +23,8 @@ if (!existsSync(join(wiki, '.git'))) {
 }
 
 rmSync(dest, { recursive: true, force: true });
-execFileSync('git', ['clone', '--', wiki, dest], { stdio: 'inherit' });
+// Hardlinked objects become unreadable to the Compose sidecar (Docker Desktop bind mount).
+execFileSync('git', ['clone', '--no-hardlinks', '--', wiki, dest], { stdio: 'inherit' });
 
 const home = join(dest, 'spec/home.md');
 const bytes = readFileSync(home);

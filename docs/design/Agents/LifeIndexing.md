@@ -218,7 +218,7 @@ Do not write an LLM sentence onto snapshot commits. That would look like a revie
 
 ## Store and clocks
 
-Not Yjs. Not markdown in Postgres. Not keck. Postgres may hold **index rows** the same way HA holds `dirty` / `jobs` / `last_flushed` (Venus tables, not `jwst` blobs).
+Not Yjs. Not markdown in Postgres. Not keck. **Graph rows live in SurrealDB** ([SemanticGraph](../SemanticGraph/README.md)): in-document extract, direct links, semantic binds. Postgres holds **`graph_jobs`** only (after `last_flushed`; not the flush `jobs` row). Do not put edges in `crdt_*`.
 
 ```text
 last_flushed[docId]   = { clock, gitSha }     LiveSnapshot
@@ -267,3 +267,4 @@ Host chat that **pins a selection then expands this pack** is **AB2** ([agentic-
 | [datamodel git](../datamodel/git.md) | `wiki/` + `.venus/ids`; index is not live truth |
 | [MDGate subset](../MDGate/subset.md) | Headings, linked-doc comments |
 | [glossary](../glossary.md) | Pin, dirty set, LifeIndexing |
+| [SemanticGraph](../SemanticGraph/README.md) | SurrealDB store, in-document extract, direct + semantic edges |

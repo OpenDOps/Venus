@@ -205,13 +205,51 @@ export function posixRelativeFromFiles(fromFile, toFile) {
   }
   const rel = [
     ...Array.from({ length: fromParts.length - i }, () => '..'),
-    ...toParts.slice(i),
+    ...toParts.slice(i).map(encodeHrefSegment),
   ];
-  return rel.join('/') || String(toFile);
+  if (rel.length === 0) return encodeHrefSegment(String(toFile));
+  return rel.join('/');
 }
 
-function escapeLinkText(name) {
-  return String(name).replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+/** Same bytes as Rust `escape_link_text`: marker escapes, then controls to spaces, then trim. */
+export function escapeLinkText(name) {
+  const escaped = String(name).replace(/[\\`*_\[\]<>]/g, (ch) => `\\${ch}`);
+  return escaped.replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ').trim();
+}
+
+function encodeHrefSegment(seg) {
+  if (seg === '..' || seg === '.') return seg;
+  const bytes = new TextEncoder().encode(seg);
+  let out = '';
+  for (const b of bytes) {
+    const plain =
+      (b >= 0x41 && b <= 0x5a) ||
+      (b >= 0x61 && b <= 0x7a) ||
+      (b >= 0x30 && b <= 0x39) ||
+      b === 0x2d ||
+      b === 0x2e ||
+      b === 0x5f ||
+      b === 0x7e;
+    if (plain) out += String.fromCharCode(b);
+    else out += `%${b.toString(16).toUpperCase().padStart(2, '0')}`;
+  }
+  return out;
+}
+
+/**
+ * Struck label for a linked doc whose target is gone. Same bytes as Rust
+ * `missing_linked_doc`. Never a `./workspace/` URL.
+ *
+ * @param {string} pageId
+ * @param {string} [name]
+ * @returns {string | null}
+ */
+export function missingLinkedDocExport(pageId, name) {
+  if (!isSafePageId(pageId)) return null;
+  const raw = typeof name === 'string' && name.length > 0 ? name : pageId;
+  let label = escapeLinkText(raw);
+  if (label.length === 0) label = escapeLinkText(pageId);
+  return `~~${label}~~\n<!-- venus:doc:${pageId} missing -->`;
 }
 
 /**
@@ -233,14 +271,50 @@ export function catalogLinkedDocLink(pageId, catalogLinks) {
   return { link: `[${escapeLinkText(name)}](${href})`, href };
 }
 
-function findLinkedDocInsert(markdown, pageId, from, expectedHref) {
+function findLinkOpen(markdown, from) {
   let search = from;
   while (search < markdown.length) {
     const open = markdown.indexOf('](', search);
+    if (open === -1) return -1;
+    if (open > 0 && markdown[open - 1] === '\\') {
+      search = open + 2;
+      continue;
+    }
+    return open;
+  }
+  return -1;
+}
+
+/** Destination after `](`. `%HH` stays inside, so `%29` is not the closer. */
+function readLinkDestination(markdown, start) {
+  if (markdown[start] === '<') {
+    const end = markdown.indexOf('>', start + 1);
+    if (end === -1 || markdown[end + 1] !== ')') return null;
+    return { url: markdown.slice(start + 1, end), close: end + 1 };
+  }
+  let i = start;
+  while (i < markdown.length) {
+    if (markdown[i] === '%') {
+      i += 3;
+      continue;
+    }
+    if (markdown[i] === ')') return { url: markdown.slice(start, i), close: i };
+    i += 1;
+  }
+  return null;
+}
+
+function findLinkedDocInsert(markdown, pageId, from, expectedHref) {
+  let search = from;
+  while (search < markdown.length) {
+    const open = findLinkOpen(markdown, search);
     if (open === -1) return null;
-    const close = markdown.indexOf(')', open + 2);
-    if (close === -1) return null;
-    const url = markdown.slice(open + 2, close);
+    const dest = readLinkDestination(markdown, open + 2);
+    if (!dest) {
+      search = open + 2;
+      continue;
+    }
+    const { url, close } = dest;
     if (urlMentionsPageId(url, pageId) || (expectedHref && url === expectedHref)) {
       const nl = markdown.indexOf('\n', close);
       return {
@@ -293,18 +367,45 @@ function injectVenusLinkedDocComments(markdown, models, catalogLinks) {
   return chunks.join('');
 }
 
+function stripWorkspaceLink(markdown, pageId) {
+  const id = String(pageId);
+  const encoded = encodeURIComponent(id);
+  return markdown.replace(/\[[^\]]*\]\(([^)\s]+)\)/g, (match, url) => {
+    const href = String(url);
+    if (!href.includes('./workspace/')) return match;
+    if (href.includes(id) || (encoded !== id && href.includes(encoded))) return '';
+    return match;
+  });
+}
+
 function rewriteAdapterLinkedDocs(markdown, models, catalogLinks) {
-  if (!catalogLinks?.pages) return markdown;
   let out = markdown;
   for (const { model } of models) {
     if (model.flavour !== 'affine:embed-linked-doc') continue;
     const pageId = model.props?.pageId;
+    if (!isSafePageId(pageId)) {
+      out = stripWorkspaceLink(out, pageId);
+      continue;
+    }
+    if (!catalogLinks?.pages) continue;
     const rewritten = catalogLinkedDocLink(pageId, catalogLinks);
-    if (!rewritten) continue;
-    const m2 = new RegExp(
+    const linkRe = new RegExp(
       `\\[[^\\]]*\\]\\(\\.\\/workspace\\/[^\\s)]+\\/${escapeRegExp(pageId)}\\)`,
+      'g',
     );
-    out = out.replace(m2, rewritten.link);
+    if (rewritten) {
+      out = out.replace(linkRe, rewritten.link);
+      continue;
+    }
+    const missing = missingLinkedDocExport(pageId, catalogLinks.missing?.[pageId]);
+    if (!missing) continue;
+    if (!linkRe.test(out)) continue;
+    linkRe.lastIndex = 0;
+    out = out.replace(linkRe, missing.split('\n')[0]);
+    out = out.replace(
+      new RegExp(`<!-- venus:doc:${escapeRegExp(pageId)} -->`, 'g'),
+      `<!-- venus:doc:${pageId} missing -->`,
+    );
   }
   return out;
 }
@@ -328,9 +429,14 @@ async function ownMarkdownFromSnapshot(adapter, snapshot, catalogLinks) {
   const file = result?.file ?? '';
   if (snapshot.flavour === 'affine:embed-linked-doc') {
     const pageId = snapshot.props?.pageId;
+    if (!isSafePageId(pageId)) return '';
     const rewritten = catalogLinkedDocLink(pageId, catalogLinks);
     if (rewritten) {
       return withVenusLinkedDocComment(`${rewritten.link}\n`, pageId);
+    }
+    if (catalogLinks?.pages && isSafePageId(pageId)) {
+      const missing = missingLinkedDocExport(pageId, catalogLinks.missing?.[pageId]);
+      if (missing) return `${missing}\n`;
     }
     return withVenusLinkedDocComment(file, pageId);
   }
@@ -398,7 +504,11 @@ function buildRanges(markdown, items, titleRange) {
   const placed = new Array(items.length);
   let cursor = leadingStart;
   for (let i = 0; i < items.length; i += 1) {
-    const { model, slice, listDepth } = items[i];
+    const { model, slice, listDepth, omitted } = items[i];
+    if (omitted) {
+      placed[i] = { start: cursor, end: cursor };
+      continue;
+    }
     if (isEmptyParagraph(model, slice)) {
       placed[i] = 'empty';
       continue;
@@ -480,10 +590,14 @@ export async function fromDoc(store, workspace, catalogLinks) {
 
   const items = await Promise.all(
     models.map(async ({ model, listDepth }) => {
-      const slice = isEmptyTextParagraphSnapshot(model)
-        ? ''
-        : await ownMarkdownFromSnapshot(adapter, model, catalogLinks);
-      return { model, listDepth, slice };
+      const omitted =
+        model.flavour === 'affine:embed-linked-doc' &&
+        !isSafePageId(model.props?.pageId);
+      const slice =
+        isEmptyTextParagraphSnapshot(model) || omitted
+          ? ''
+          : await ownMarkdownFromSnapshot(adapter, model, catalogLinks);
+      return { model, listDepth, slice, omitted };
     }),
   );
 

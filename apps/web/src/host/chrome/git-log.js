@@ -28,6 +28,19 @@ export function parseGitLog(data) {
  * @param {GitLogEntry[]} a
  * @param {GitLogEntry[]} b
  */
+/**
+ * Mount loads the log once. The first status observation records `sha` and
+ * does not load again. A later status whose `sha` changed does.
+ *
+ * @param {{ seen: boolean, sha: string | null }} state
+ * @param {string | null} sha
+ * @returns {{ seen: boolean, sha: string | null, refresh: boolean }}
+ */
+export function nextGitLogPoll(state, sha) {
+  if (!state.seen) return { seen: true, sha, refresh: false };
+  return { seen: true, sha, refresh: state.sha !== sha };
+}
+
 export function sameGitLogShas(a, b) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {

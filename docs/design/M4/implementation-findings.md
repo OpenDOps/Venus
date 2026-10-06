@@ -4,7 +4,7 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 
 **Review date:** 2026-10-06. It was run against the uncommitted working tree on branch `M4`.
 **Method:** I read the code paths end to end (host → hub → SQL → sidecar cut → convert → git) and checked them against the live `wiki/` repo, which has 36 Flush commits.
-**Scope:** logic gaps, leftover code and documentation, logic mistakes, performance, and security. The review itself changed no product code. Follow-up on this file: **C1** is deferred to the gateway, and **H1** is fixed.
+**Scope:** logic gaps, leftover code and documentation, logic mistakes, performance, and security. The review itself changed no product code. Follow-up on this file: **C1** and **L8** are deferred to the gateway, **L4** is accepted (commit text is written by an AI that analyzes the changes, not by the sidecar), **L9** is accepted (this wiki never runs on Windows), and **H1**, **H2**, **H3**, **H4**, **H5**, **H6**, **M1**, **M2**, **M3**, **M4**, **M6**, **M7**, **M8**, **L1**, **L2**, **L3**, **L5**, **L6**, and **L7** are fixed.
 
 | Severity | Meaning |
 |---|---|
@@ -17,41 +17,41 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 
 | # | Sev | Kind | Finding |
 |---|---|---|---|
-| <a id="summary-c1"></a>[C1](#c1) | Critical | Security | **Deferred (gateway).** The sidecar trusts catalog `gitName`, which allows path traversal into the filesystem and into `wiki/.git` |
-| <a id="summary-h1"></a>[H1](#h1) | High | Security / logic | **Fixed.** All workspaces flush into the same `wiki/` directory |
-| <a id="summary-h2"></a>[H2](#h2) | High | Logic | A page that is created but never opened is dead everywhere |
-| <a id="summary-h3"></a>[H3](#h3) | High | Logic | After a reload, linked-doc cards render as deleted and write that state back to the CRDT |
-| <a id="summary-h4"></a>[H4](#h4) | High | Logic | Path collisions inside one Flush cause a permanent `git mv would overwrite` error or overwrite a file |
-| <a id="summary-h5"></a>[H5](#h5) | High | Logic / ops | A Flush that fails the same way every time is retried every 2 minutes forever, and nobody sees it |
-| <a id="summary-h6"></a>[H6](#h6) | High | Logic | `VenusHubProvider` does not reconnect, so edits after a hub restart are silently lost |
-| <a id="summary-m1"></a>[M1](#m1) | Medium | Logic | Concurrent delete or reparent leaves orphan or cyclic nodes that are hidden in the tree but published to git |
-| <a id="summary-m2"></a>[M2](#m2) | Medium | Logic | Deleting a link target leaves a dangling href in git, later followed by a `./workspace/` URL |
-| <a id="summary-m3"></a>[M3](#m3) | Medium | Logic | Exported hrefs are not URL-encoded, and JS and Rust escape link text differently |
-| <a id="summary-m4"></a>[M4](#m4) | Medium | Logic | The `pages.yaml` writer can emit invalid YAML, and the reader that parses it is line-based |
-| <a id="summary-m5"></a>[M5](#m5) | Medium | Logic | Home and `spec` can be renamed, but the sidecar hard-codes `spec/home.md` |
-| <a id="summary-m6"></a>[M6](#m6) | Medium | Logic | Flush edits the working tree before committing, and its database updates are not atomic |
-| <a id="summary-m7"></a>[M7](#m7) | Medium | Concurrency | The job lease is never renewed, and `delete_job` does not check the owner |
-| <a id="summary-m8"></a>[M8](#m8) | Medium | Perf / DoS | The hub keeps every opened `?doc=` in memory for the whole life of the room |
-| <a id="summary-l1"></a>[L1](#l1) | Low | Perf / logic | Rebuilding `links.json` does filesystem I/O inside the database transaction, and its errors are swallowed |
-| <a id="summary-l2"></a>[L2](#l2) | Low | Perf | The catalog is decoded and walked several times in one Flush |
-| <a id="summary-l3"></a>[L3](#l3) | Low | Perf | The debug bar triggers a full git history walk every 2 seconds |
-| <a id="summary-l4"></a>[L4](#l4) | Low | Logic | Commit messages are `snapshot: Venus` or an empty `snapshot:` for most catalog Flushes |
-| <a id="summary-l5"></a>[L5](#l5) | Low | Security | Test hooks on `window.__VENUS_*` are shipped in every build |
-| <a id="summary-l6"></a>[L6](#l6) | Low | Perf | Every catalog event rebuilds the whole tree, and the header renames on every keystroke |
-| <a id="summary-l7"></a>[L7](#l7) | Low | Security | Untrusted names and `pageId`s are written into markdown without full escaping |
-| <a id="summary-l8"></a>[L8](#l8) | Low | Security | `POST /flush` can be triggered cross-site and accepts any workspace |
-| <a id="summary-l9"></a>[L9](#l9) | Low | Residual | `.venus/ids/doc:home.json` contains a colon, which Windows does not allow in filenames |
-| <a id="summary-l10"></a>[L10](#l10) | Low | Residual | Test and documentation gaps (assertions in `m4-link`, `tsc` errors, a dangling README link, stale `links.json` edges) |
+| [C1](#c1) | Critical | Security | **Deferred (gateway).** The sidecar trusts catalog `gitName`, which allows path traversal into the filesystem and into `wiki/.git` |
+| [H1](#h1) | High | Security / logic | **Fixed.** All workspaces flush into the same `wiki/` directory |
+| [H2](#h2) | High | Logic | **Fixed.** A page that is created but never opened is dead everywhere |
+| [H3](#h3) | High | Logic | **Fixed.** After a reload, linked-doc cards render as deleted and write that state back to the CRDT |
+| [H4](#h4) | High | Logic | **Fixed.** Path collisions inside one Flush cause a permanent `git mv would overwrite` error or overwrite a file |
+| [H5](#h5) | High | Logic / ops | **Fixed.** A Flush that fails the same way every time is retried every 2 minutes forever, and nobody sees it |
+| [H6](#h6) | High | Logic | **Fixed.** `VenusHubProvider` does not reconnect, so edits after a hub restart are silently lost |
+| [M1](#m1) | Medium | Logic | **Fixed.** Concurrent delete or reparent leaves orphan or cyclic nodes that are hidden in the tree but published to git |
+| [M2](#m2) | Medium | Logic | **Fixed.** Deleting a link target leaves a dangling href in git, later followed by a `./workspace/` URL |
+| [M3](#m3) | Medium | Logic | **Fixed.** Exported hrefs are not URL-encoded, and JS and Rust escape link text differently |
+| [M4](#m4) | Medium | Logic | **Fixed.** The `pages.yaml` writer can emit invalid YAML, and the reader that parses it is line-based |
+| [M5](#m5) | Medium | Logic | **Decided (b).** Home and `spec` can be renamed, but the sidecar hard-codes `spec/home.md` |
+| [M6](#m6) | Medium | Logic | **Fixed.** Flush edits the working tree before committing, and its database updates are not atomic |
+| [M7](#m7) | Medium | Concurrency | **Fixed.** The job lease is never renewed, and `delete_job` does not check the owner |
+| [M8](#m8) | Medium | Perf / DoS | **Fixed.** The hub keeps every opened `?doc=` in memory for the whole life of the room |
+| [L1](#l1) | Low | Perf / logic | **Fixed.** A failed link index becomes an empty convert set, and the fallback still reads the working tree |
+| [L2](#l2) | Low | Perf | **Fixed.** The catalog is decoded and walked several times in one Flush |
+| [L3](#l3) | Low | Perf | **Fixed.** The debug bar triggers a full git history walk every 2 seconds |
+| [L4](#l4) | Low | Logic | **Accepted.** Commit messages are `snapshot: Venus` or an empty `snapshot:` for most catalog Flushes |
+| [L5](#l5) | Low | Security | **Fixed.** Test hooks on `window.__VENUS_*` are shipped in every build |
+| [L6](#l6) | Low | Perf | **Fixed.** Every catalog event rebuilds the whole tree, and the header renames on every keystroke |
+| [L7](#l7) | Low | Security | **Fixed.** Untrusted names and `pageId`s are written into markdown without full escaping |
+| [L8](#l8) | Low | Security | **Deferred (gateway).** `POST /flush` can be triggered cross-site |
+| [L9](#l9) | Low | Residual | **Accepted.** `.venus/ids/doc:home.json` contains a colon, which Windows does not allow in filenames |
+| [L10](#l10) | Low | Residual | Test and documentation gaps (assertions in `m4-link`, `tsc` errors, a dangling README link, stale `links.json` edges) |
 
 ---
 
 ## Critical
 
-<a id="c1"></a>
+### C1
 
-### C1. Catalog `gitName` is trusted by the sidecar: path traversal into the filesystem and into `wiki/.git`
+**Catalog `gitName` is trusted by the sidecar: path traversal into the filesystem and into `wiki/.git`**
 
-[↑ Summary](#summary-c1)
+[↑ Summary](#summary)
 
 **Status:** `deferred` — gateway. Checking catalog `gitName` before it becomes a filesystem path belongs to the gateway, which is a separate component. It is not implemented in the sidecar or in this M4 slice. The problem and the checks below stay as the brief for that component.
 
@@ -81,13 +81,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 
 ## High
 
-<a id="h1"></a>
+### H1
 
-### H1. Every workspace flushes into the same `wiki/` directory
+**Every workspace flushes into the same `wiki/` directory**
 
-[↑ Summary](#summary-h1)
+[↑ Summary](#summary)
 
-**Status:** `fixed` (2026-10-06). One sidecar process publishes one workspace. `WIKI_WORKSPACE_ID` (unset → the M0 uuid `77e4a2b1-8b40-5979-a73c-fd4477216d00`) is the only id the observer enqueues and the only id a worker claims. `POST /flush` returns 400 for a bad shape and 404 for any other uuid. The first Flush writes `.venus/workspace`; a later Flush for a different id refuses before it writes pages. The hub allowlist is `HUB_WORKSPACES` (same default): HTTP and gRPC reject other ids with 404 / NotFound before a room, a lease, or a blob row. `Hub::new` and `WikiConfig::new` stay unbound so tests can still use a fresh uuid per case. Compose sets both env vars on `hub` and `sidecar`.
+**Status:** `fixed` (2026-10-06). One sidecar process publishes one workspace. `WIKI_WORKSPACE_ID` (unset → the M0 uuid `77e4a2b1-8b40-5979-a73c-fd4477216d00`) is the only id the observer enqueues and the only id a worker claims. `POST /flush` returns 400 for a bad shape and 404 for any other uuid. The first Flush commits `.venus/workspace` and checkout writes it; a later Flush for a different id refuses before it writes pages. (Until 2026-10-06 the stamp was written to the working tree before the commit, so checkout left it out of the index and `git status` showed it deleted and untracked. Checkout now also resets the index to HEAD, which heals such a wiki on its next Flush.) The hub allowlist is `HUB_WORKSPACES` (same default): HTTP and gRPC reject other ids with 404 / NotFound before a room, a lease, or a blob row. `Hub::new` and `WikiConfig::new` stay unbound so tests can still use a fresh uuid per case. Compose sets both env vars on `hub` and `sidecar`.
 
 **Problem.** The hub accepts **any** UUID-shaped workspace id (`workspace_id_ok` only checks the shape). The sidecar observer creates jobs for **every** workspace that has dirty rows, and `POST /flush?workspace=<any uuid>` creates a job for any id. Each job is then flushed into the single configured `WikiConfig.dir`. The design says there is one wiki per workspace. The code does not enforce that.
 
@@ -109,11 +109,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 2. In the hub, add an optional `HUB_WORKSPACES` allowlist. Until M5 auth exists, reject other workspace ids at upgrade time with a close code.
 3. Stamp the workspace in the wiki (`.venus/workspace`). Before writing, `commit_catalog_walk` checks the stamp and refuses on a mismatch.
 
-<a id="h2"></a>
+### H2
 
-### H2. A page that is created but never opened is dead everywhere
+**A page that is created but never opened is dead everywhere**
 
-[↑ Summary](#summary-h2)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). The creating tab connects the new page, drops the handshake's late sync step 2, seeds, and waits until a following step 2 contains that page. Only then does it insert the catalog node and disconnect. A failed seed leaves no tree row. `createDoc` in `ops.js` still seeds only in memory for unit tests. The tree and the Playwright hook call `createPublishedDoc`. Pages created before the fix stay dead: on 2026-10-06 `pnpm wiki:verify` reports the four listed below as `H2 legacy page` (no `.md`, home links three). Delete them in the tree and Flush ([runbook M4 Baseline](../../runbook.md#manual-testing-m4-close-out)). Proposed fix 3 (the sidecar leaves a body-less page out of `pages.yaml` and hrefs) is not done.
 
 **Problem.** `ops.createDoc` adds the catalog node and calls `ensureWorkspaceDoc`, which runs `workspace.createDoc(uuid)` and then `seedEmptyPageIfNeeded`. This happens **only in the creator's tab and without a socket**. The seed reaches the hub only if that tab later opens the page, because `openWorkspaceDoc` connects the existing Y.Doc. If the user never opens it, the hub has catalog rows but no page rows for that uuid.
 
@@ -134,11 +136,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 3. In the sidecar, when a walked page has **no rows at all** and is not pinned, either write a stub `.md` file (an empty page with H1 = catalog name) or leave it out of `pages.yaml` and export the inbound link as plain text plus the `venus:doc` comment. Never point an href at a file that does not exist.
 4. Stronger e2e: after Flush, assert `git ls-files` contains the target path. Open the created page from a second browser context and expect no `EmptyPageSyncError`.
 
-<a id="h3"></a>
+### H3
 
-### H3. After a reload, linked-doc cards render as deleted and write that state back to the CRDT
+**After a reload, linked-doc cards render as deleted and write that state back to the CRDT**
 
-[↑ Summary](#summary-h3)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). `listenCatalogHost` projects every catalog `kind:doc` into the local workspace: `createDoc` with no seed and no `load`, then `setDocMeta` title = catalog name. A doc that leaves the catalog is removed, except the page that is open. The card's `getStore({ id })` on an empty stub reports a stand-in root and a `load` that does not write blocks, so the card is not deleted and does not push a blank page onto the hub. `getStore()` with no arguments stays the real store.
 
 **Problem.** BlockSuite's `EmbedLinkedDocBlockComponent` decides whether the target exists with `std.workspace.getDoc(pageId)`, and takes its title from `linkedDoc.meta.title`. A fresh tab only creates workspace docs for the pages it opens. Nothing turns catalog `kind:doc` nodes into workspace docs or `docMetas` at boot, and `workspace.meta` is not connected to the hub, so `setDocMeta` in `ops.setDocTitle` stays in the local tab. In every tab except the creator's, every card whose target has not been opened is treated as **deleted**.
 
@@ -157,11 +161,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 3. Short-term guard: a host-level block-update filter (or `store.readonly` for embed cards) that drops `style` / `xywh` writes coming from `updated()` when the target id is in the catalog.
 4. e2e: after the reload, assert the card is not in the deleted style and its title equals the catalog name. Open two contexts and assert home's clock does not move while both are idle.
 
-<a id="h4"></a>
+### H4
 
-### H4. Path collisions inside one Flush: permanent `git mv would overwrite` or a silent overwrite
+**Path collisions inside one Flush: permanent `git mv would overwrite` or a silent overwrite**
 
-[↑ Summary](#summary-h4)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). `walk_doc` keeps published paths unique by case-folded path: the lowest `doc_id` keeps the name, and the others are published as `name-<id8>.md` without editing the CRDT. Flush deletes removed pages first (leaving a markdown file that a live page still has to move), parks every rename under `.venus/tmp/<uuid>`, then moves each file to its final path and deletes the temp directory. The host compares sibling names case-insensitively, and `listenCatalogHost` repairs a merged duplicate `gitName` on a microtask with the same suffix.
 
 **Problem.** Sibling `gitName`s are made unique only in the local tab, at the moment of the operation (`uniqueGitName`, using a case-sensitive "taken" set). In `commit_catalog_walk` the sidecar processes pages in walk order and runs each move straight away. It never checks whether the new paths are unique, and it never orders the moves.
 
@@ -180,11 +186,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 3. In the host, compare case-insensitively in `uniqueGitName`. After a remote merge, run a repair pass that renames duplicate siblings deterministically, so the tree shows what git will contain.
 4. Tests: delete P, rename Q to P's name, then Flush. Swap two names, then Flush. Two concurrent docs rename to the same name, then Flush. Each Flush must succeed, and every page must exist exactly once in git.
 
-<a id="h5"></a>
+### H5
 
-### H5. A Flush that fails the same way every time is retried every 2 minutes forever, and nobody sees it
+**A Flush that fails the same way every time is retried every 2 minutes forever, and nobody sees it**
 
-[↑ Summary](#summary-h5)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). A failed attempt stores `last_error`, increments `attempts`, and clears the lease. Database errors and I/O timeouts back off (2s, doubling, capped at 2 minutes) and stop after 5 attempts. Validation and collision errors (`no home doc`, `git mv would overwrite`, and the same class) mark the job `failed` on the first attempt. `GET /flush/status` returns the last commit, the error, and the attempt count. `POST /flush` returns `409` with that error while the job is failed. The debug bar shows the error. The observer reopens a failed job only when a dirty clock is newer than the one recorded at the failure. Per-page quarantine of a bad path stays with the gateway (C1).
 
 **Problem.** `flush_claimed` deletes the job only when it succeeds. Any error that repeats on every attempt leaves the job in place, and it is claimed again when the 2-minute lease runs out. Examples: H4's `git mv would overwrite`, `catalog pin has no home doc` (a client deleted the home node), `ENAMETOOLONG` (C1), a broken YAML parse, or a disk-full error. The browser's Flush button gets `204` from `POST /flush` regardless, and the debug bar's git log simply stops changing. No new commit will ever be made for that workspace.
 
@@ -197,11 +205,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 2. Add `GET /flush/status?workspace=` (last success sha, last error, attempts). The debug bar shows an error badge. `POST /flush` should return `409` with `last_error` when the job is in `failed`.
 3. Split errors into two groups: **transient** (database or I/O timeouts, which keep retrying) and **deterministic** (validation or collision errors). Deterministic errors fail fast, and where possible they are skipped per page instead of per workspace, as in C1 fix 1 and H4 fix 1.
 
-<a id="h6"></a>
+### H6
 
-### H6. `VenusHubProvider` does not reconnect: edits after a hub restart are silently lost
+**`VenusHubProvider` does not reconnect: edits after a hub restart are silently lost**
 
-[↑ Summary](#summary-h6)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). After the first sync, a dropped socket sets that session and the provider unsynced and opens the same URL again with jittered backoff. The reopen sends sync step 1, then any updates typed while the socket was down. The header shows `reconnecting` and `beforeunload` warns until the hub's next step 2. Edits are not written to IndexedDB, so a reload before the socket is back can still drop them.
 
 **Problem.** Each document session opens one WebSocket. The `close` and `error` listeners only act **before** the first sync (`if (… || session.synced) return`). After that, a closed socket is ignored. `onUpdate` drops local updates while `ws.readyState !== OPEN`, `provider.synced` stays `true`, and nothing reconnects. Since M4 step 2, every open page, the catalog, and home each hold their own socket, so a hub restart or proxy idle timeout breaks all of them at once.
 
@@ -219,11 +229,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 
 ## Medium
 
-<a id="m1"></a>
+### M1
 
-### M1. Concurrent delete or reparent leaves orphan or cyclic nodes that are hidden in the tree but published to git
+**Concurrent delete or reparent leaves orphan or cyclic nodes that are hidden in the tree but published to git**
 
-[↑ Summary](#summary-m1)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). `listenCatalogHost` moves an orphan to the root, and breaks each parent cycle by moving the greatest id to the root. Every tab computes the same parents, so the repairs converge. Until that write lands, the tree lists orphans under **Unfiled** instead of omitting them. The sidecar publishes the same parents and logs each repair. It does not edit the catalog CRDT.
 
 **Problem.** `deleteNode` only refuses a non-empty folder based on the **local** `hasChild`. `reparent` only refuses a cycle based on the **local** `assertNotCycle`. Neither check holds across tabs once the CRDT merges.
 
@@ -239,11 +251,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 2. In the sidecar, apply the same rule (orphan → root, cycle broken at the greatest id) so git agrees with the repaired tree, and log each repair.
 3. Show orphans in the tree under "Unfiled" instead of pruning them.
 
-<a id="m2"></a>
+### M2
 
-### M2. Deleting a link target leaves a dangling href in git, later followed by a `./workspace/` URL
+**Deleting a link target leaves a dangling href in git, later followed by a `./workspace/` URL**
 
-[↑ Summary](#summary-m2)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). `convert_set` also converts inbound sources of every page in `old_pages` that the walk dropped, so the delete Flush rewrites those files. A missing target exports as `~~name~~` plus `<!-- venus:doc:<id> missing -->` (the page id is the label when the last name is unknown). JS and Rust emit the same bytes. A catalog-less export still uses the M2 `./workspace/` golden.
 
 **Problem.** The convert set is: dirty bodies ∪ inbound sources of pages whose path or name changed ∪ pages whose own directory changed and that have outbound links. It does **not** include inbound sources of a **deleted** target.
 
@@ -255,11 +269,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 1. In `convert_set`, add `inbound[d]` for every `d` in `old_pages − walk`.
 2. Define a stable export for a missing target, for example the plain text `~~name~~ <!-- venus:doc:<id> missing -->`, or `[name](<last known path>)` with a `missing` marker. Never write `./workspace/`. Use the same form in JS and Rust and add a parity test for it.
 
-<a id="m3"></a>
+### M3
 
-### M3. Exported hrefs are not URL-encoded, and JS and Rust escape link text differently
+**Exported hrefs are not URL-encoded, and JS and Rust escape link text differently**
 
-[↑ Summary](#summary-m3)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). Each href segment is percent-encoded (` ` → `%20`, `(` `)` → `%28` `%29`, other bytes outside the unreserved set too, including non-ASCII). `..` stays literal. Link text in both languages escapes `\ ` * _ [ ] < >`. The shared fixture is `apps/web/src/host/mdgate/goldens/catalog-link-escape.md`. Comment placement reads a percent-encoded destination, so `%29` is not treated as the end of the URL.
 
 **Problem.** Filenames can contain spaces and parentheses (`spec/Renamed venus page.md` is in the live wiki). `posix_relative` / `posixRelativeFromFiles` output is inserted into `[text](href)` as-is. CommonMark does not allow spaces in a bare link destination, and an unbalanced `)` ends it early. As a result, a link to `Renamed venus page.md` renders as literal text on any markdown viewer, and M6 apply (remark) will not parse it as a link. Separately, Rust `escape_text` escapes `` \ ` * _ [ ] < > `` while JS `escapeLinkText` only escapes `\ [ ]`. For a name like `my_page`, the pane (JS) and git (Rust) produce different text.
 
@@ -269,11 +285,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 1. Percent-encode each path segment (space → `%20`, `(` `)` → `%28` `%29`, plus non-ASCII if needed), or use the angle-bracket form `[text](<path with spaces.md>)`. Do this in both JS and Rust, and make `findLinkedDocInsert` understand the chosen form.
 2. Use one escaping table for link text in both languages, and extend the JS↔Rust parity fixture with names containing `_ * ( ) [ ]` and spaces.
 
-<a id="m4"></a>
+### M4
 
-### M4. The `pages.yaml` writer can emit invalid YAML, and the reader that parses it is line-based
+**The `pages.yaml` writer can emit invalid YAML, and the reader that parses it is line-based**
 
-[↑ Summary](#summary-m4)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). `pages.yaml` is written and read with `serde_yaml`. The Flush cut builds its path-to-doc map from `page_identity` and does not read the wiki while the database transaction is open. A catalog `name` loses control characters before it is published. The full C1 path check stays with the gateway.
 
 **Problem.** `needs_yaml_quotes` misses newlines, a leading `-` / `?` / `!`, YAML 1.1 booleans and nulls (`yes`, `no`, `on`, `off`, `true`, `null`, `~`), and values that look numeric (`1e3`, `0x10`). `yaml_quoted` does not escape `\n` either. A catalog `name` such as `"a\nb"` breaks the document. A name `true` is read back as a boolean. `links::path_to_doc_id_from_pages_yaml` parses this file **line by line**, so a quoted key or a multi-line value gives the wrong `path → doc` map, and the convert set then misses inbound rewrites.
 
@@ -284,11 +302,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 2. Read it with the same library. Even better, build `path_to_doc` from `page_identity` (SQL, already loaded as `old_pages`) and stop reading the working tree inside the cut.
 3. Reject control characters in `name` on the sidecar side (same check as C1).
 
-<a id="m5"></a>
+### M5
 
-### M5. Home and `spec` can be renamed, but the sidecar hard-codes `spec/home.md`
+**Home and `spec` can be renamed, but the sidecar hard-codes `spec/home.md`**
 
-[↑ Summary](#summary-m5)
+[↑ Summary](#summary)
+
+**Decision:** (b), matching [page-identity — Home](../datamodel/page-identity.md#home). Home’s identity stays `doc:home`. Delete and reparent stay forbidden, so `parentId` stays `folder:spec`. Rename still changes the display `name` and the filename, and renaming the `spec` folder may change home’s derived path. The published path is whatever the catalog walk produces. `spec/home.md` is only the seed path. `git/log?doc=doc:home` must resolve the current path through `page_identity` and follow history across renames. `GIT_PATH` comes out of `cut` and `ensure_repo`. This is not implemented yet.
 
 **Problem.** `reparent` and `deleteNode` refuse to touch home (`home_protected`), but `rename` does not. The tree and the header title input both allow renaming home or the `spec` folder. The sidecar still assumes `GIT_PATH = spec/home.md` in several places: `cut` sets `pins.git_path`, `commit_home_only` uses it, `ensure_repo` always creates `spec/`, `is_catalog_log_path` only accepts `spec/home.md`, and the debug bar polls `CATALOG_GIT_LOG_PATH`.
 
@@ -300,11 +320,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 1. Decide on the product rule. Either (a) home's `gitName` is fixed (rename only changes `name`, and the sidecar always publishes home to `spec/home.md`), or (b) home can move and the sidecar resolves its path from the walk.
 2. For (b): `git/log?doc=doc:home` resolves the path through `page_identity` and uses `--follow` semantics (walk the history across renames). Remove `GIT_PATH` from `cut` and `ensure_repo`.
 
-<a id="m6"></a>
+### M6
 
-### M6. Flush edits the working tree before committing, and its database updates are not atomic
+**Flush edits the working tree before committing, and its database updates are not atomic**
 
-[↑ Summary](#summary-m6)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). A Flush builds the next tree in memory from HEAD (`Index::read_tree`), commits that tree, and then `checkout_head(force)`, including when the tree already matches HEAD so a crash between the commit and checkout is healed on the next Flush. Stray files and dirty working-tree edits are not staged. `page_identity` and `last_flushed` commit in one SQL transaction. If HEAD `.venus/pages.yaml` disagrees with `page_identity`, the table is rebuilt from that blob before `old_pages` is loaded. A file that does not parse leaves the table as it is.
 
 **Problem.** `commit_catalog_walk` runs `git_mv`, `write_page`, `git_rm_page`, `pages.yaml`, `links.json`, and blob writes directly in `wiki/`, then `add_all` + `update_all` + commit. If any step fails part-way, the half-applied tree stays on disk. The next successful Flush commits it with `add_all`, together with any stray file in `wiki/`. After the commit, `replace_page_identity` and `upsert_last_flushed` run as separate statements. If the process crashes between the git commit and those writes, `old_pages` no longer matches git. A later rename back to the old path then leaves the moved file behind (`git_mv` skips because `src` does not exist), and it stays tracked forever.
 
@@ -314,11 +336,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 1. Build the commit from the git **index or tree** (`git2::TreeBuilder` based on HEAD) instead of mutating the working tree, then `checkout_head(force)` once the commit succeeds. Alternatively, stage only the paths this Flush touched (no `add_all ["."]`) and run `git reset --hard HEAD` + `clean` at the start of every Flush.
 2. Write `page_identity` and `last_flushed` in **one** SQL transaction. At the start of a Flush, if HEAD's `.venus/pages.yaml` and `page_identity` disagree, rebuild `page_identity` from HEAD (git is the record of what was published).
 
-<a id="m7"></a>
+### M7
 
-### M7. The job lease is never renewed, and `delete_job` does not check the owner
+**The job lease is never renewed, and `delete_job` does not check the owner**
 
-[↑ Summary](#summary-m7)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). The lease is not extended. A Flush has the same two-minute budget as `lease_until`. When that budget is spent, the Flush returns `flush timed out after 2 minutes` and the job is `failed` until a newer dirty clock reopens it. The in-flight database step is dropped, and the git commit is not started. A second worker waits until the current commit has returned, and does not start its own if its budget is already spent. The failure update clears `owner` and `lease_until` only while this worker still owns the row. A successful finish deletes the job only for that same owner.
 
 **Problem.** `CLAIM_SQL` sets `lease_until = now() + 2 min` and nothing extends it. A Flush that takes longer than 2 minutes (a large wiki, `rebuild_from_wiki`, a slow disk) is claimed by a second worker (`SNAPSHOT_WORKERS=2`) **while the first is still writing to the same `wiki/`**, and the two corrupt the working tree and index. `delete_job` deletes by `workspace_id` only, so the slower worker deletes the newer job. A `POST /flush` that arrives during a running Flush updates `not_before` on the same row, and that row is then deleted on success, so the request is lost until the observer's idle timer runs out.
 
@@ -329,11 +353,13 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 2. `DELETE FROM jobs WHERE workspace_id = $1 AND owner = $2 AND requested_at <= $cut_time`. A `POST /flush` during a run bumps `requested_at`, so the row survives and runs again.
 3. Hold a per-wiki filesystem lock (`flock` on `wiki/.venus/lock`) for the whole commit as a second safeguard.
 
-<a id="m8"></a>
+### M8
 
-### M8. The hub keeps every opened `?doc=` in memory for the whole life of the room
+**The hub keeps every opened `?doc=` in memory for the whole life of the room**
 
-[↑ Summary](#summary-m8)
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). A non-home document is dropped when no client is attached, its persist buffer is empty, nothing else still holds it, and it has been idle for the room's lease TTL. The heartbeat does this while the room itself stays up. Home is never dropped that way. A room keeps at most 64 non-home documents and 32 sockets from one address. At the document cap, idle empty documents are dropped even if the TTL has not elapsed; a document with a client, unflushed updates, or a hydration still waiting for its socket (15 seconds) is kept, and the next open is refused (`room_full`, HTTP 429). The optional catalog-membership check was not implemented: a well-formed uuid is still accepted, bounded by those caps.
 
 **Problem.** `Room::ensure_doc` / `extra_or_empty` insert an `ExtraSpace` (a hydrated `Doc` plus a persistence buffer) for every `doc_id` any client connects to. They are removed only when the whole room is idle (`is_idle`). Any well-formed uuid is accepted, including ones that are not in the catalog. One client can loop over random `?doc=` uuids and each one stays in memory. In normal use, every page a user ever opened during the room's lifetime also stays resident.
 
@@ -348,97 +374,185 @@ This review covers the M4 work that is already marked `done` in [plan.md](./plan
 
 ## Low
 
-<a id="l1"></a>
+### L1
 
-### L1. Rebuilding `links.json` does filesystem I/O inside the database transaction, and its errors are swallowed
+**A failed link index becomes an empty convert set, and the fallback still reads the working tree**
 
-[↑ Summary](#summary-l1)
+[↑ Summary](#summary)
 
-When `.venus/links.json` is missing, `pin_convert_set_extras` calls `links::rebuild_from_wiki`, which reads every `.md` file under `wiki/` while the repeatable-read cut transaction is still open. `.unwrap_or_default()` turns any I/O error into an empty index, so the convert set silently misses inbound rewrites. Also, an error loading the extras (`warn!("cut skipped convert-set extras")`) skips them, and the Flush commits stale hrefs without any signal. **Where:** `crates/venus-sidecar/src/cut.rs` (`pin_convert_set_extras`, ~180–215). **Fix:** read `links.json` / `pages.yaml` (or rebuild the index) **before** `BEGIN`, since they only depend on HEAD. Return the error instead of defaulting, or mark the Flush `degraded` in the job status (H5).
+**Status:** `fixed` (2026-10-06). `load_old_pages` and a git read error fail the cut. A missing or unparsed `.venus/links.json` blob is rebuilt from HEAD markdown. An empty index is returned only when that blob is absent and there are no pages to index. The catalog walk error and the `page_identity` error fail the cut instead of skipping the convert set.
 
-<a id="l2"></a>
+**Problem.** The cut loads the link index before `BEGIN`, which is the right place. What it does with a failure is still wrong. `load_old_pages(...).unwrap_or_default()` turns a database error into no previous pages. If `.venus/links.json` is missing, `index_from_committed` then rebuilds by reading every markdown file in the working tree, and a read error is logged and replaced with an empty index. `pin_convert_set_extras` also returns success when the catalog pin does not walk or when `page_identity` fails to load. The Flush continues, the convert set misses inbound pages, and git keeps stale hrefs. Nothing is recorded on the job.
 
-### L2. The catalog is decoded and walked several times in one Flush
+**Where.** `crates/venus-sidecar/src/cut.rs` (`cut_workspace`, `pin_convert_set_extras`). `crates/venus-sidecar/src/links.rs` (`index_from_committed`, `rebuild_mapped`).
 
-[↑ Summary](#summary-l2)
+**Proposed fixes.**
+1. A `load_old_pages` error fails the cut. An empty `page_identity` is a real empty history. A database error is not.
+2. When `links.json` is missing or does not parse, rebuild the index from the HEAD tree blobs (the same source `compose_flush_bytes` already uses), not from the working tree. A rebuild I/O error fails the Flush. The only successful empty index is a repository with no committed pages and no `links.json`.
+3. `pin_convert_set_extras` returns the catalog walk error and the `page_identity` error. It does not skip the extras and continue. H5 then stores `last_error` and backs off. Do not add a separate `degraded` state.
 
-`cut` decodes the catalog to build the convert set, `flush_claimed` runs `walk_pin` again, and `convert_pins_catalog` builds `catalog_ctx` from the walk for each page. This is cheap now but grows with the size of the catalog multiplied by the number of converted pages. **Fix:** walk once in `cut` and store the `CatalogWalk` on `PinMap`. Build `catalog_ctx.pages` once and share it (`Arc`) across pages.
+### L2
 
-<a id="l3"></a>
+**The catalog is decoded and walked several times in one Flush**
 
-### L3. The debug bar triggers a full git history walk every 2 seconds
+[↑ Summary](#summary)
 
-[↑ Summary](#summary-l3)
+**Status:** `fixed` (2026-10-06). The cut stores its `CatalogWalk` on the pin map. Flush uses that walk, and calls `walk_pin` only when a catalog pin is present and the cut did not store one. Convert builds the docId → name/path map once and shares it with every page.
 
-`VenusDebugBar` polls `GET /git/log?path=spec/home.md` every 2 s. `git::log_path` walks the whole revision history and compares trees for each commit. **Fix:** add a `limit` parameter (default 50), cache by HEAD sha (return early when HEAD is unchanged), or switch to a server-sent event on commit.
+**Problem.** One Flush decodes the catalog pin to decide the convert set, then `flush_claimed_inner` calls `walk_pin` on the same bytes again. Each converted page then builds its own `catalog_ctx`, which clones every page's name and path. The cost is the catalog size times the number of converted pages. It is small on this wiki and grows with it.
 
-<a id="l4"></a>
+**Where.** `crates/venus-sidecar/src/cut.rs` (`pin_convert_set_extras`). `crates/venus-sidecar/src/queue.rs` (`flush_claimed_inner`, `convert_pins_stopping`). `crates/venus-sidecar/src/from_doc/mod.rs` (`catalog_ctx`).
 
-### L4. Commit messages are `snapshot: Venus` or an empty `snapshot:`
+**Proposed fixes.**
+1. Keep the `CatalogWalk` from the cut on `PinMap`. `flush_claimed_inner` uses that walk. It calls `walk_pin` only when the cut did not have a catalog pin.
+2. Build `catalog_ctx.pages` once per Flush and pass `Arc` into each page. `from_pinned_bytes_catalog_missing` stops cloning the map per pin.
+3. Do not walk again inside `convert_pins_stopping`. The walk is an argument, as it is today, but it is the same value the cut stored.
 
-[↑ Summary](#summary-l4)
+### L3
 
-`autocomment` uses the page H1 only when **exactly one** page was converted. Convert-set extras (inbound rewrites) make that rare. Created pages have no H1, so they fall back to `Venus`. The live wiki log shows `snapshot: Venus` (×7) and an empty `snapshot:`. **Where:** `git.rs` `autocomment`, `snapshot_title`. **Fix:** build the subject from the **catalog name** of the dirty pages (not the extras), for example `snapshot: protocol (+2 link rewrites)`, and fall back to the page path.
+**The debug bar triggers a full git history walk every 2 seconds**
 
-<a id="l5"></a>
+[↑ Summary](#summary)
 
-### L5. Test hooks on `window.__VENUS_*` are shipped in every build
+**Status:** `fixed` (2026-10-06). `GET /git/log` stops after 50 commits that touch the path (or `?limit=`). The sidecar caches that list by HEAD and limit, and an unchanged HEAD does not walk. The debug bar still polls `/flush/status` every 2 seconds. It loads the git log once on mount, then again only when that status reports a new sha.
 
-[↑ Summary](#summary-l5)
+**Problem.** `VenusDebugBar` polls `GET /git/log?path=spec/home.md` every 2 seconds, and polls `/flush/status` on the same timer. `git::log_path` revwalks from HEAD and diffs every commit against its parent. The debug bar only needs the recent subjects, and it already ignores a response whose shas did not change.
 
-`App.tsx` installs `__VENUS_CATALOG_OPS__` (attachCatalogTestHooks), `__VENUS_OPEN_DOC__`, and `__VENUS_INSERT_LINKED_DOC__` with no condition. Any script on the page (an extension, or an XSS in rendered markdown) can mass-create, delete, or move catalog nodes and insert blocks through them. That is not much more than it could already do through the DOM, but it makes scripted damage trivial and it adds to the product surface. **Fix:** register them only when `testidsFromEnv()` or a dedicated `VITE_E2E_HOOKS` is set (Playwright already sets `VITE_TESTIDS`).
+**Where.** `apps/web/src/host/chrome/VenusDebugBar.tsx`. `crates/venus-sidecar/src/git.rs` (`log_path`). `crates/venus-sidecar/src/http.rs` (`git_log`).
 
-<a id="l6"></a>
+**Proposed fixes.**
+1. Add `limit` to `GET /git/log` (default 50). Stop the revwalk once that many commits touch the path. Keep the path check that allows only `spec/home.md` until M5's rename work makes the path come from `page_identity`.
+2. Cache the last result in the sidecar process, keyed by HEAD oid and limit. An unchanged HEAD returns the cached list and does not walk.
+3. The debug bar keeps the 2-second `/flush/status` poll. It refetches `/git/log` only when that status reports a new sha, plus once on mount. No server-sent event.
 
-### L6. Every catalog event rebuilds the whole tree, and the header renames on every keystroke
+### L4
 
-[↑ Summary](#summary-l6)
+**Commit messages are `snapshot: Venus` or an empty `snapshot:`**
 
-`listenCatalogHost` runs one `observeDeep` and does a **full** `rebuildTree` plus `applyCatalogHostChrome` for each event. Typing in the header title calls `onTitleChange` → `ops.rename` **for every keystroke**, which means one catalog transaction (a `name` and `gitName` write), one hub frame, one full rebuild in every tab, and a `uniqueGitName` probe each time. Each intermediate name also becomes CRDT history. **Fix:** debounce the header rename (commit on blur, Enter, or after 300 ms), batch rebuilds with `requestAnimationFrame`, and update only the changed subtree when the event's `keysChanged` touches a single node.
+[↑ Summary](#summary)
 
-<a id="l7"></a>
+**Status:** `accepted` (2026-10-06). Autocomment is not changed in this slice. Commit text is written by an AI that analyzes the changes, not by the sidecar from the catalog name. The subject rules below are not implemented.
 
-### L7. Untrusted names and `pageId`s are written into markdown without full escaping
+**Problem.** `autocomment` uses the page H1 only when exactly one pin was converted. Inbound rewrites make that rare, so most commits get `snapshot:` with an empty title. A newly created page has no H1, so the one-page case falls back to the seed word `Venus`. The catalog name the user typed is not consulted.
 
-[↑ Summary](#summary-l7)
+**Where.** `crates/venus-sidecar/src/git.rs` (`autocomment`, `snapshot_title`). The converted list and the catalog walk are both in hand at `commit_pins`.
 
-The Rust export escapes a few characters in link text but not newlines. A catalog `name` containing `\n# Injected` breaks out of the link into a new block in `home.md`. In the Rust `./workspace/` fallback, `page_id` (from the card's CRDT `pageId`) is inserted without validation. JS checks it with `isSafePageId`. **Where:** `from_doc/markdown.rs` (`linked_doc_inline`, `escape_text`). **Fix:** strip or replace control characters in names (C1 check), and validate `page_id` with the uuid check in Rust as JS does.
+**Proposed fixes.**
+1. Pass the catalog walk and the pre-extra dirty doc ids into `autocomment`. The subject is built from those dirty pages only. Convert-set extras are a count, not titles.
+2. One dirty page: `snapshot: {catalog name}`. Several: `snapshot: {first name} (+N)`. When extras were also converted, append ` (+M link rewrites)`. An empty catalog name uses that page's published path. The subject is never `snapshot:` and never the bare seed word `Venus`.
+3. Replace newlines and other control characters in the name with a space, trim, and cap the subject at 72 bytes so a catalog name cannot add a second commit-message line.
+4. Leave `snapshot_title` for callers that only have markdown. The Flush subject does not use it.
 
-<a id="l8"></a>
+### L5
 
-### L8. `POST /flush` can be triggered cross-site and accepts any workspace
+**Test hooks on `window.__VENUS_*` are shipped in every build**
 
-[↑ Summary](#summary-l8)
+[↑ Summary](#summary)
 
-An empty `POST` is a CORS "simple request", so any website the developer visits can trigger Flushes. H1 now returns 404 for a workspace this wiki is not bound to; a request that omits `?workspace=` still flushes the bound wiki and returns 204. **Fix:** require a custom header (`X-Venus-Flush: 1`, which forces a preflight), and return `202` with the job state.
+**Status:** `fixed` (2026-10-06). Catalog ops and the page-open hooks are installed only when `VITE_TESTIDS` is set. Unmount, and a later call with the flag off, deletes them. `__VENUS_FROM_DOC__` stays behind `__VENUS_E2E__`. Provider kind, hub transport, and page flavour stay available for the M1 checks.
 
-<a id="l9"></a>
+**Problem.** `App.tsx` always installs `__VENUS_OPEN_DOC__`, `__VENUS_OPEN_VECTOR__`, and `__VENUS_INSERT_LINKED_DOC__`. Catalog open always installs `__VENUS_CATALOG_OPS__` and `__VENUS_CATALOG_READY__`. Any script on the page can create, delete, or move nodes and insert blocks without going through the UI. That is close to what the DOM already allows, and it makes the script one call. `__VENUS_FROM_DOC__` is already limited to `__VENUS_E2E__`.
 
-### L9. `.venus/ids/doc:home.json` contains a colon
+**Where.** `apps/web/src/App.tsx`. `apps/web/src/host/catalog/open.js` (`attachCatalogTestHooks`).
 
-[↑ Summary](#summary-l9)
+**Proposed fixes.**
+1. Install those hooks only when `testidsFromEnv()` is true (`VITE_TESTIDS`). Playwright already sets that flag. A production build leaves the properties unset. Do not add a second env flag.
+2. The cleanup that deletes the properties on unmount stays. A flag that turns off at runtime must not leave the previous functions in place.
+3. Test: with the flag off, `window.__VENUS_OPEN_DOC__` and `window.__VENUS_CATALOG_OPS__` are undefined. With the flag on, the existing e2e helpers still find them.
 
-The sidecar file for home is named `doc:home.json`. Windows (and some sync tools) do not allow `:` in filenames, so `git clone` of the wiki on Windows fails to check it out. **Where:** `git.rs` `sidecar_rel`. **Fix:** key sidecar files by the SQL uuid (`395cd07b-….json`), or encode `:` as `%3A`. Migrate with a `git mv` during a Flush.
+### L6
 
-<a id="l10"></a>
+**Every catalog event rebuilds the whole tree, and the header renames on every keystroke**
 
-### L10. Test and documentation gaps
+[↑ Summary](#summary)
 
-[↑ Summary](#summary-l10)
+**Status:** `fixed` (2026-10-06). The title input keeps a local draft and writes the catalog on blur, on Enter, and after 300 ms idle. Blur commits that draft. One committed name is one catalog transaction, and `gitName` is derived once inside it. Catalog `onChange` schedules a single tree rebuild per animation frame. Updating one row in place when a deep event is only `name`, `gitName`, or `tags` is still the follow-up in fix 4.
 
-- `e2e/m4-link.spec.ts` does not assert that the link target file exists in git (it would have caught H2), the card title after the reload (H3), or the card style.
-- `pnpm tsc` still reports `drop.test.ts(102)` "o1 / o2 possibly undefined". This came from an earlier step.
-- [README.md](./README.md) links to `step-3-findings.md`, which does not exist and is not in git history.
-- `links::persist_on_flush` upserts outbound edges for converted pages that are not in the walk (created and deleted between two Flushes, so never in `old_pages`). Those edges are never removed, and `links.json` keeps edges to a source that does not exist. They are harmless today because inbound sources are filtered through `doc_to_sql`, but they grow without limit. **Fix:** drop `converted` ids that are not in `walk` before `persist_on_flush`.
-- Deleted pages keep their CRDT rows in SQL forever and can still be opened by uuid (`__VENUS_OPEN_DOC__`, hub `?doc=`). **Fix:** add a tombstone flag in `page_identity` and have the hub refuse it, plus a GC job, after M5 decides how long deleted pages are kept.
+**Problem.** `listenCatalogHost` runs one `observeDeep`. Each event rebuilds the whole tree, reprojects catalog docs, and refreshes the header. The header title input calls `onTitleChange` on every `change`, and that calls `ops.rename`. One keystroke is one catalog transaction (`name` and `gitName`), one hub frame, one rebuild in every tab, and one `uniqueGitName` probe. Each intermediate name stays in the CRDT history.
+
+**Where.** `apps/web/src/host/catalog/listen.js` (`listenCatalogHost`). `apps/web/src/host/chrome/VenusHeader.tsx` (the title `onChange`). `apps/web/src/App.tsx` (`onPageTitleChange`).
+
+**Proposed fixes.**
+1. The title input updates local draft state on `change`. It writes the catalog on blur, on Enter, and after 300 ms without another key. Blur must commit the draft. Today blur copies the last catalog title back over the input, which would throw away the name if the write moved off `change`.
+2. One committed name is one catalog transaction. `gitName` is derived once from that name.
+3. `onChange` from the catalog schedules a single `rebuildTree` per animation frame. Events in the same frame share that rebuild.
+4. When the `observeDeep` events touch one node and the keys are `name`, `gitName`, or `tags`, update that row in place. A parent change, a create, or a delete still rebuilds the whole tree. Land the frame batch first. The in-place update is the follow-up, because a deep event is not always a single key.
+
+### L7
+
+**Untrusted names and `pageId`s are written into markdown without full escaping**
+
+[↑ Summary](#summary)
+
+**Status:** `fixed` (2026-10-06). Link labels in Rust and the host escape markdown markers, turn control characters into spaces, and trim. A page id that fails the safe-id check publishes no URL. A safe id with no catalog still uses `./workspace/`.
+
+**Problem.** `escape_link_text` and `escape_text` escape markdown markers and leave newlines and other control characters in place. A catalog `name` of `\n# Injected` breaks out of the link into a new block. The missing-target path already turns controls into spaces. The normal catalog link does not. When the page id is not a safe id, `linked_doc_inline` still interpolates it into a `./workspace/…` URL.
+
+**Where.** `crates/venus-sidecar/src/links.rs` (`escape_link_text`, `catalog_linked_doc_link`). `crates/venus-sidecar/src/from_doc/markdown.rs` (`linked_doc_inline`, `escape_text`). The host copy is `escapeLinkText` in `apps/web/src/host/mdgate/from-doc.js`.
+
+**Proposed fixes.**
+1. One escape used by both languages. After the marker escapes, replace every control character, including newline and tab, with a space, then trim. `missing_linked_doc` uses that same function instead of its own control scan.
+2. `linked_doc_inline` emits a link only for a page id that passes `is_safe_page_id` (the same character rule the host uses). Anything else emits no URL. It does not fall through to `./workspace/{workspace}/{pageId}`.
+3. Test: a catalog name of `a\n# Injected` publishes as a single-line link label. A `pageId` of `../x` publishes no `./workspace/` href.
+
+### L8
+
+**`POST /flush` can be triggered cross-site**
+
+[↑ Summary](#summary)
+
+**Status:** `deferred` — gateway. Cross-site access to `POST /flush` belongs to the standalone gateway, the same component as C1. The custom flush header is not added to the sidecar or the debug bar in this M4 slice. The problem and the checks below stay as the brief for that component.
+
+**Problem.** An empty `POST` is a CORS simple request, so any site the developer visits can POST to the sidecar. H1 already returns 404 when `?workspace=` is not this wiki. A request that omits `?workspace=` still flushes the bound wiki and returns 204, with no job body.
+
+**Where.** `crates/venus-sidecar/src/http.rs` (`flush`, `cors_layer`). `apps/web/src/host/chrome/VenusDebugBar.tsx` (`onFlush`).
+
+**Proposed fixes.**
+1. Require `X-Venus-Flush: 1`. A POST without it returns 400 and does not enqueue. Add that header to `allow_headers` so the app's preflight succeeds. A cross-site page cannot set it without a preflight the sidecar will not allow for an unlisted origin.
+2. The debug bar sends the header. No other product caller posts `/flush`.
+3. Return `202` and the same JSON body as `GET /flush/status` (sha, last error, attempts, failed). Keep `409` when the job is already `failed`. A bound wiki with no `?workspace=` is still the one that flushes.
+
+### L9
+
+**`.venus/ids/doc:home.json` contains a colon**
+
+[↑ Summary](#summary)
+
+**Status:** `accepted` (2026-10-06). This wiki does not run on Windows, and it will not. The home sidecar file stays `.venus/ids/doc:home.json`. The rename below is not implemented.
+
+**Problem.** Home's sidecar file is `.venus/ids/doc:home.json`. Windows, and some sync tools, reject `:` in a file name, so `git clone` of the wiki fails the checkout on those systems. Other pages already use a uuid in that directory.
+
+**Where.** `crates/venus-sidecar/src/git.rs` (`sidecar_rel`). The home doc id is `doc:home`. Its SQL uuid is `395cd07b-bdb1-5f54-ada8-e9a3fabb6a20`.
+
+**Proposed fixes.**
+1. Name every sidecar file by the page's SQL uuid: `.venus/ids/395cd07b-bdb1-5f54-ada8-e9a3fabb6a20.json` for home, and the page uuid for every other page. Do not percent-encode the colon. The uuid is already a safe file name.
+2. On the next Flush, if HEAD has `.venus/ids/doc:home.json` and not the uuid path, copy that blob onto the uuid path and remove the colon path in the same index commit M6 already builds. Do not `git mv` in the working tree before the commit.
+3. Test: a repository whose tree contains the colon path gets a commit that has the uuid path and does not have `doc:home.json`. A checkout of that commit contains no colon in `.venus/ids/`.
+
+### L10
+
+**Test, documentation, and leftover-edge gaps**
+
+[↑ Summary](#summary)
+
+**Problem.** Five leftovers. The link e2e never checks that the target file is in git, that the card title survives a reload, or that the card is the linked-doc style. `pnpm tsc` still reports `drop.test.ts(102)` (`o1` / `o2` possibly undefined), from an earlier step. [README.md](./README.md) links to `step-3-findings.md`, which is not in the tree or in git history. `compose_flush_bytes` and `persist_on_flush` upsert outbound edges for converted pages that are not in the walk (created and deleted between two Flushes, so absent from `old_pages` too). Those edges are never removed. Inbound lookup ignores a source that is not in `doc_to_sql`, so they are unused, and they grow. Deleted pages keep their CRDT rows in SQL and can still be opened by uuid. M5 decided how home is renamed. It did not decide how long a deleted page is kept.
+
+**Where.** `apps/web/e2e/m4-link.spec.ts`. `apps/web/src/host/catalog/drop.test.ts`. `docs/design/M4/README.md`. `crates/venus-sidecar/src/links.rs` (`compose_flush_bytes`, `persist_on_flush`). `page_identity` and `Room::ensure_doc`.
+
+**Proposed fixes.**
+1. Extend `m4-link.spec.ts` with three assertions: the target path exists in the wiki git tree after Flush, the card title after reload is the catalog name, and the card has the linked-doc style rather than the deleted style.
+2. In `drop.test.ts`, bind `o1` and `o2` only after the lookup has found them, so `tsc` sees a definite value. Do not change the drop behavior.
+3. Remove the `step-3-findings.md` row from `docs/design/M4/README.md`. This file is the review record for steps 1–7.
+4. In both `compose_flush_bytes` and `persist_on_flush`, ignore converted ids that are not in the walk before upserting outbound edges. A source that is not published does not get an edge. Add a test where a page is converted and absent from the walk, and the written `links.json` has no outbound entry for it.
+5. Add a tombstone on `page_identity` when a page leaves the walk. `ensure_doc` returns 404 for a tombstoned uuid. Do not delete the CRDT rows in this change. A GC job waits until a retention rule says how long a deleted page can still be opened.
 
 ---
 
 ## Suggested order
 
-1. **C1** is deferred to the gateway (separate component). **H1** (workspace binding) is fixed.
-2. **H5** (job attempts, status, backoff), so the remaining failures can be seen instead of looping.
-3. **H4** (sidecar-owned uniqueness plus two-phase moves) and **M2** (inbound of deleted targets).
-4. **H2** and **H3** together: seed on create, and project the catalog into the workspace docs and `docMetas`. Extend `m4-link` to check the target file, the title, and the style after a reload.
-5. **H6** reconnect before step 8. The SharedWorker in step 8 will reuse this provider, so it should be fixed there first.
-6. The remaining Medium and Low items as cleanup before M4 exits.
+1. **C1** and **L8** (cross-site `POST /flush`) are deferred to the gateway (separate component). **H1** (workspace binding) is fixed.
+2. **H5** (job attempts, status, backoff) is fixed.
+3. **H4** (sidecar-owned uniqueness plus two-phase moves) is fixed. **M2** (inbound of deleted targets, missing-target export) is fixed.
+4. **H2** and **H3** are fixed: seed on create, and project the catalog into the workspace docs and `docMetas`.
+5. **H6** (reconnect) is fixed. Step 8's SharedWorker should reuse this provider.
+6. **M1** (orphan and cycle repair) is fixed. **M3** (encoded hrefs and one link-text escape table) is fixed. **M4** (`serde_yaml` for `pages.yaml`, path-to-doc from `page_identity`) is fixed. **M5** is decided: home may be renamed, and git follows the walk (b). **M6** (commit from HEAD, then one SQL transaction for identity and `last_flushed`) is fixed. **M7** (a Flush that reaches the two-minute lease fails, stops, and releases that lease) is fixed. **M8** (per-document eviction, plus caps on open documents and sockets per address) is fixed. **L1** (a failed link index fails the Flush; a missing blob is rebuilt from HEAD) is fixed. **L2** (one catalog walk per Flush, shared with every converted page) is fixed. **L3** (`/git/log` is capped and cached; the debug bar refetches it when the flush sha changes) is fixed. **L4** (commit subjects) is accepted: autocomment stays as it is, and an AI that analyzes the changes writes the commit text. **L5** (catalog and page-open hooks install only when `VITE_TESTIDS` is set) is fixed. **L6** (the title commits on blur, Enter, and 300 ms idle; one catalog rebuild per animation frame) is fixed. The in-place tree row update is still the follow-up. **L7** (link labels fold control characters, and an unsafe page id publishes no URL) is fixed. **L9** (the colon in `doc:home.json`) is accepted: this wiki never runs on Windows, so the file is not renamed. The remaining Medium and Low items are cleanup before M4 exits. M5's rename is decided and not implemented. M8's optional catalog-membership check is not implemented.

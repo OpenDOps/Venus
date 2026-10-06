@@ -1,4 +1,5 @@
 /** Direct hub (Vite / `pnpm test:e2e:m1`). Compose web uses same-origin :8080. */
+import type { BrowserContext } from '@playwright/test';
 import { COLLABORATION_PATH, WORKSPACE_ID } from '../src/host/ids.js';
 
 export { WORKSPACE_ID };
@@ -10,6 +11,16 @@ export function expectedCollaborationWs(): string {
   const u = new URL(base);
   const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${u.host}${COLLABORATION_PATH}`;
+}
+
+/**
+ * Hide `SharedWorker` so every tab opens its own wire A sockets. Specs that
+ * read `page.on('websocket')` need this: worker sockets are not page sockets.
+ */
+export async function forceTabSockets(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    Reflect.deleteProperty(window, 'SharedWorker');
+  });
 }
 
 /** Fail if nothing listens, or if `:3000` is keck rather than `venus-hub`. */

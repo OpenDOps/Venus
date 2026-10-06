@@ -209,40 +209,72 @@ export function seedOnce(catalog, workspace) {
 }
 
 /**
+ * Mint a page id. Does not write the catalog or the page body.
+ * Live creates use this, seed on the hub, then `commitNewDoc`.
+ *
  * @param {import('yjs').Doc} catalog
- * @param {unknown} workspace
- * @param {{ createAt: string | null }} options
+ * @param {string | null | undefined} createAt
  */
-export function createDoc(catalog, workspace, options) {
-  const createAt = options?.createAt;
+export function mintDocId(catalog, createAt) {
   if (createAt === undefined) {
     throw new CatalogError('invalid_parent', 'createDoc requires createAt');
   }
   requireFolderParent(catalog, createAt);
-  const uuid = crypto.randomUUID();
+  return crypto.randomUUID();
+}
+
+/**
+ * Insert the catalog node. `gitName` and `order` are taken at this moment
+ * so a sibling created while the page seed was syncing is visible.
+ * The page body must already exist when this is the live path.
+ *
+ * @param {import('yjs').Doc} catalog
+ * @param {unknown} workspace
+ * @param {{ id: string, createAt: string | null }} stage
+ */
+export function commitNewDoc(catalog, workspace, stage) {
+  const { id, createAt } = stage;
   const index = childrenIndex(catalog);
-  const filename = filenameFromDocname(uuid, {
-    fallback: uuid,
+  const filename = filenameFromDocname(id, {
+    fallback: id,
     taken: siblingFilenames(catalog, createAt, undefined, index),
   });
   const gitName = gitNameFromStem(filename, KIND_DOC);
   const order = orderBetween(catalog, createAt, { index });
   catalog.transact(() => {
     putNode(catalog, {
-      id: uuid,
+      id,
       kind: KIND_DOC,
-      name: uuid,
+      name: id,
       parentId: createAt,
       order,
-      docId: uuid,
+      docId: id,
       gitName,
     });
   });
-  ensureWorkspaceDoc(workspace, uuid);
-  setDocTitle(workspace, uuid, uuid);
-  const node = getNode(catalog, uuid);
+  setDocTitle(workspace, id, id);
+  const node = getNode(catalog, id);
   if (!node) throw new CatalogError('invalid_parent', 'createDoc failed');
   return node;
+}
+
+/**
+ * Catalog node plus a local empty page. No socket.
+ * Product creates go through `createPublishedDoc`, which seeds on the hub
+ * before this node's insert.
+ *
+ * @param {import('yjs').Doc} catalog
+ * @param {unknown} workspace
+ * @param {{ createAt: string | null }} options
+ */
+export function createDoc(catalog, workspace, options) {
+  const createAt = options?.createAt;
+  const id = mintDocId(catalog, createAt);
+  ensureWorkspaceDoc(workspace, id);
+  return commitNewDoc(catalog, workspace, {
+    id,
+    createAt: createAt ?? null,
+  });
 }
 
 /**

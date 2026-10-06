@@ -926,7 +926,10 @@ fn catalog_walk_is_rust_not_from_doc() {
     assert!(!catalog.contains("MarkdownAdapter"));
     assert!(catalog.contains("y_octo"));
     assert!(!git.contains("from_doc"));
-    assert!(git.contains("git_mv"));
+    // A rename is the old path removed and the new path added on an index
+    // read from HEAD; git history pairs them (`head_renames` tests).
+    assert!(git.contains("fn index_from_head"));
+    assert!(git.contains("index_remove(&mut index, &old.git_path)"));
 }
 
 fn links_json(dir: &Path) -> serde_json::Value {

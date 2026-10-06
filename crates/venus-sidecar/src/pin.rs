@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use crate::catalog::CatalogWalk;
+
 /// Frozen CRDT bytes for one flush: `Map<docId, { bytes, clock }>`.
 #[derive(Debug, Default)]
 pub struct PinMap {
@@ -10,6 +12,8 @@ pub struct PinMap {
     blobs: HashMap<String, Vec<u8>>,
     /// Catalog v0 path, set in the same collect as the page bytes.
     pub git_path: Option<String>,
+    /// Walk taken while the cut decided the convert set. Flush reuses it.
+    catalog_walk: Option<CatalogWalk>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,9 +60,32 @@ impl PinMap {
         self.blobs.insert(hash, bytes);
     }
 
+    pub fn catalog_walk(&self) -> Option<&CatalogWalk> {
+        self.catalog_walk.as_ref()
+    }
+
+    pub fn set_catalog_walk(&mut self, walk: Option<CatalogWalk>) {
+        self.catalog_walk = walk;
+    }
+
     pub fn clear(&mut self) {
         self.docs.clear();
         self.blobs.clear();
         self.git_path = None;
+        self.catalog_walk = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_drops_the_catalog_walk() {
+        let mut pins = PinMap::new();
+        pins.set_catalog_walk(Some(CatalogWalk::default()));
+        assert!(pins.catalog_walk().is_some());
+        pins.clear();
+        assert!(pins.catalog_walk().is_none());
     }
 }

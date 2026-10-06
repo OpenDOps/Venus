@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectedCollaborationWs, assertHubOn3000 } from './hub-ws';
+import {
+  expectedCollaborationWs,
+  assertHubOn3000,
+  forceTabSockets,
+} from './hub-ws';
 
 const NOTE = 'affine-note affine-paragraph rich-text';
 const HUB_WS = expectedCollaborationWs();
@@ -33,6 +37,10 @@ test.beforeAll(async () => {
   await assertHubOn3000();
 });
 
+test.beforeEach(async ({ context }) => {
+  await forceTabSockets(context);
+});
+
 test('venus kind and AFFiNE websocket when VITE_SYNC_URL is set', async ({
   page,
 }) => {
@@ -58,7 +66,7 @@ test('venus kind and AFFiNE websocket when VITE_SYNC_URL is set', async ({
   );
 
   await expect
-    .poll(() => wsUrls.find((u) => u.includes(HUB_WS)))
+    .poll(() => wsUrls.find((u) => u === HUB_WS))
     .toBe(HUB_WS);
 
   const protocols = await page.evaluate(() => window.__VENUS_WS_PROTOCOLS__);

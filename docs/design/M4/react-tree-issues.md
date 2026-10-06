@@ -4,40 +4,46 @@ Review of [step-tree](./plan.md#5-step-tree) after it shipped: `CatalogTree` + `
 
 **Code:** `apps/web/src/App.tsx`, `apps/web/src/host/catalog/CatalogTree.tsx`, `drop.js`, `schema.js`, `apps/web/src/host/workspace.js`, `apps/web/src/host/providers/venus-hub-provider.js`. `@headless-tree/react` `useTree` (1.7.0) calls `setConfig` every render; the tree instance is stable.
 
-**Status check:** 2026-10-06 against that code. **16 fixed**, **0 open**, **2 product** (leave as-is).
+**Status check:** 2026-10-06 against that code. **17 fixed**, **0 open**, **1 product** (leave as-is).
 
-| Status | Meaning |
-|---|---|
-| `fixed` | Proposed fix is in the tree/open code |
-| `open` | Not implemented |
+
+| Status    | Meaning                                                           |
+| --------- | ----------------------------------------------------------------- |
+| `fixed`   | Proposed fix is in the tree/open code                             |
+| `open`    | Not implemented                                                   |
 | `product` | Matches the M4 plan / wire A; not a bug to ship in this follow-up |
 
-**What holds (do not “fix”):** headless-tree is a view — custom `onDrop` writes catalog ops, not `createOnDropHandler`. Home cannot change parent (`canCatalogDrop` / `home_protected`). `createDoc` does not open a page socket. Click opens via `openWorkspaceDoc`; home + catalog stay connected. Header undo binds the open `Store` (`canUndo$` / `canRedo$`). Outline is still headings. Wire A: disconnect the previous extra page except home. SharedWorker is [step 8](./plan.md#8-step-shared-worker), not a one-tab cache.
 
-| # | Sev | Kind | Status | Issue |
-|---|---|---|---|---|
-| [1](#1-failed-open-impersonates-a-missing-doc) | High | Logic + net | `fixed` | Failed open impersonates a missing doc |
-| [2](#2-abandoned-opens-keep-opening-sockets) | High | Network | `fixed` | Abandoned opens keep opening sockets |
-| [3](#3-retry-storms-the-hub-hydrate-path) | Med | Network | `fixed` | Retry storms the hub hydrate path |
-| [4](#4-empty-hydrate-can-seed-a-blank-page) | Med | Network | `fixed` | Empty hydrate can seed a blank page onto the hub |
-| [5](#5-multi-select-drop-reuses-one-dest-slot) | Med | Logic | `fixed` | Multi-select drop reuses one dest slot |
-| [6](#6-drop-is-n-catalog-transactions) | Med | Logic | `fixed` | Drop is N catalog transactions |
-| [7](#7-three-observedeep-listeners) | Med | React | `fixed` | Three `observeDeep` listeners, two `setState` |
-| [8](#8-setrev-plus-rebuildtree) | Med | React | `fixed` | `setRev` plus `rebuildTree` is a double render |
-| [9](#9-inline-onopendoc-no-memo) | Med | React | `fixed` | Inline `onOpenDoc`, no memo |
-| [10](#10-getchildren-full-scans-and-gitpath) | Med | Perf | `fixed` | `getChildren` full-scans nodes and joins `gitPath` |
-| [11](#11-debug-git-log-poll-redraws-the-tree) | Med | React | `fixed` | Debug git-log poll redraws the tree |
-| [12](#12-every-leaverevisit-is-a-new-page-ws) | Med | Network | `product` | Every leave/revisit is a new page WS |
-| [13](#13-missing-node-rendered-as-a-folder-stub) | Low | Logic | `fixed` | Missing node rendered as a folder stub |
-| [14](#14-folder-left-click-toggles-expand) | Low | Logic | `fixed` | Folder left-click toggles expand |
-| [15](#15-per-row-style-objects) | Low | React | `fixed` | Per-row style objects and `className` joins |
-| [16](#16-full-editor-remount-on-page-switch) | Low | React | `product` | Full editor remount on every page switch |
-| [17](#17-waituntilsynced-is-provider-global) | Low | Network | `fixed` | `waitUntilSynced` is provider-global |
-| [18](#18-haschild-scans-the-map-every-render) | Low | Perf | `fixed` | `hasChild` scans the map every render |
+**What holds (do not “fix”):** headless-tree is a view — custom `onDrop` writes catalog ops, not `createOnDropHandler`. Home cannot change parent (`canCatalogDrop` / `home_protected`). `createDoc` does not open a page socket. Click opens via `openWorkspaceDoc`; home + catalog stay connected. Header undo binds the open `Store` (`canUndo$` / `canRedo$`). Outline is still headings. Wire A: home + catalog stay connected; `PageSessions` keeps the open page + one previous ([#12](#12-every-leaverevisit-is-a-new-page-ws)). SharedWorker is [step 8](./plan.md#8-step-shared-worker), not a one-tab cache.
 
-**Fix order:** [#1](#1-failed-open-impersonates-a-missing-doc)–[#11](#11-debug-git-log-poll-redraws-the-tree) and Low leftover [#13](#13-missing-node-rendered-as-a-folder-stub)–[#15](#15-per-row-style-objects), [#17](#17-waituntilsynced-is-provider-global), [#18](#18-haschild-scans-the-map-every-render) are done. [#12](#12-every-leaverevisit-is-a-new-page-ws) and [#16](#16-full-editor-remount-on-page-switch) stay product.
+
+| #                                                | Sev  | Kind        | Status    | Issue                                              |
+| ------------------------------------------------ | ---- | ----------- | --------- | -------------------------------------------------- |
+| [1](#1-failed-open-impersonates-a-missing-doc)   | High | Logic + net | `fixed`   | Failed open impersonates a missing doc             |
+| [2](#2-abandoned-opens-keep-opening-sockets)     | High | Network     | `fixed`   | Abandoned opens keep opening sockets               |
+| [3](#3-retry-storms-the-hub-hydrate-path)        | Med  | Network     | `fixed`   | Retry storms the hub hydrate path                  |
+| [4](#4-empty-hydrate-can-seed-a-blank-page)      | Med  | Network     | `fixed`   | Empty hydrate can seed a blank page onto the hub   |
+| [5](#5-multi-select-drop-reuses-one-dest-slot)   | Med  | Logic       | `fixed`   | Multi-select drop reuses one dest slot             |
+| [6](#6-drop-is-n-catalog-transactions)           | Med  | Logic       | `fixed`   | Drop is N catalog transactions                     |
+| [7](#7-three-observedeep-listeners)              | Med  | React       | `fixed`   | Three `observeDeep` listeners, two `setState`      |
+| [8](#8-setrev-plus-rebuildtree)                  | Med  | React       | `fixed`   | `setRev` plus `rebuildTree` is a double render     |
+| [9](#9-inline-onopendoc-no-memo)                 | Med  | React       | `fixed`   | Inline `onOpenDoc`, no memo                        |
+| [10](#10-getchildren-full-scans-and-gitpath)     | Med  | Perf        | `fixed`   | `getChildren` full-scans nodes and joins `gitPath` |
+| [11](#11-debug-git-log-poll-redraws-the-tree)    | Med  | React       | `fixed`   | Debug git-log poll redraws the tree                |
+| [12](#12-every-leaverevisit-is-a-new-page-ws)    | Med  | Network     | `fixed`   | Every leave/revisit is a new page WS               |
+| [13](#13-missing-node-rendered-as-a-folder-stub) | Low  | Logic       | `fixed`   | Missing node rendered as a folder stub             |
+| [14](#14-folder-left-click-toggles-expand)       | Low  | Logic       | `fixed`   | Folder left-click toggles expand                   |
+| [15](#15-per-row-style-objects)                  | Low  | React       | `fixed`   | Per-row style objects and `className` joins        |
+| [16](#16-full-editor-remount-on-page-switch)     | Low  | React       | `product` | Full editor remount on every page switch           |
+| [17](#17-waituntilsynced-is-provider-global)     | Low  | Network     | `fixed`   | `waitUntilSynced` is provider-global               |
+| [18](#18-haschild-scans-the-map-every-render)    | Low  | Perf        | `fixed`   | `hasChild` scans the map every render              |
+
+
+**Fix order:** [#1](#1-failed-open-impersonates-a-missing-doc)–[#15](#15-per-row-style-objects), [#17](#17-waituntilsynced-is-provider-global), [#18](#18-haschild-scans-the-map-every-render) are done ([#12](#12-every-leaverevisit-is-a-new-page-ws) 2026-10-06). [#16](#16-full-editor-remount-on-page-switch) stays product.
 
 ---
+
+
 
 ## 1. Failed open impersonates a missing doc
 
@@ -88,6 +94,8 @@ The e2e “click the uuid, header stayed home” failure is this class (hub `ens
 
 ---
 
+
+
 ## 2. Abandoned opens keep opening sockets
 
 **Status:** `fixed` — `openPageStore` in `workspace.js` takes `AbortSignal`; App aborts the previous controller on a new `openDoc` (and on unmount). Abort during wait or backoff does not start another `connect`. Same-id in-flight clicks coalesce. Vitest: `openPageStore does not connect when signal is already aborted`, `abort during wait does not retry connect`, `abort during backoff does not reconnect`, `openDoc aborts in-flight openPageStore when navigating away`.
@@ -124,6 +132,8 @@ Do this **before** adding more retries.
 
 ---
 
+
+
 ## 3. Retry storms the hub hydrate path
 
 **Status:** `fixed` (client). `openPageStore` retries only transport timeout / `ECONNREFUSED`, with `OPEN_PAGE_RETRY_MS` (2s) backoff. Websocket error/close (how hub hydrate failure shows up) is one `connect`. Hub `ensure_doc` nested transaction is still a hub bug; the client no longer hammers it. Vitest: `isOpenPageTransportError`, `does not retry websocket close`, `does not retry hub websocket error`, `retries transport timeout until success`, `retries ECONNREFUSED then succeeds`.
@@ -154,6 +164,8 @@ Client looks “flaky”; hub logs a storm. A later attempt can succeed and hide
 - Hub: `ensure_doc` must not start a nested transaction during blob/hydrate of another doc in the same Room. Client retries must not be the fix for that.
 
 ---
+
+
 
 ## 4. Empty hydrate can seed a blank page onto the hub
 
@@ -187,6 +199,8 @@ Memory provider: `synced` is already true; seed-empty is the intended first-open
 
 ---
 
+
+
 ## 5. Multi-select drop reuses one dest slot
 
 **Status:** `fixed` — `applyCatalogDrop` walks first-to-last and sets `afterId` to the just-placed node so each key is in a new gap. Vitest: `applyCatalogDrop multi-item uses a fresh dest slot per id`, `applyCatalogDrop multi-item reparent keeps drag order and distinct keys`.
@@ -219,6 +233,8 @@ Second item never uses “after P1” as the new gap.
 
 ---
 
+
+
 ## 6. Drop is N catalog transactions
 
 **Status:** `fixed` — `applyCatalogDrop` wraps the loop in one `catalog.transact`; nested `setOrder` / `reparent` txs join. Vitest: `applyCatalogDrop multi-item is one catalog transaction`.
@@ -246,6 +262,8 @@ Remote tab B sees P1 move, then P2; never one atomic drop.
 - One update, one rebuild, one hub persist tick for the drop.
 
 ---
+
+
 
 ## 7. Three `observeDeep` listeners
 
@@ -278,6 +296,8 @@ Three subscriptions also mean three `unobserveDeep` on unmount / `openDocId` cha
 
 ---
 
+
+
 ## 8. `setRev` plus `rebuildTree`
 
 **Status:** `fixed` — `setRev` is gone. Catalog mutations update the tree only via `rebuildTree` (`rebuildRef`). `CatalogTree` is `React.memo` with `onOpenDoc={openDoc}` so header `setPageTitle` does not render the tree again. Title `setState` bails when the string is unchanged. Vitest: `memo(function CatalogTree)`, `onOpenDoc={openDoc}`.
@@ -303,9 +323,11 @@ catalog tx
 
 - Delete `setRev`. Call only `tree.rebuildTree()` in the observer. **Shipped** (with #7).
 - If a render is needed without rebuild (toolbar `hasChild`), read catalog in render; Y.Doc is mutable and the rebuild already scheduled an update.
-- Title `setState` must not render CatalogTree again: **`React.memo` + stable `onOpenDoc={openDoc}`**.
+- Title `setState` must not render CatalogTree again: `React.memo` **+ stable** `onOpenDoc={openDoc}`.
 
 ---
+
+
 
 ## 9. Inline `onOpenDoc`, no memo
 
@@ -341,6 +363,8 @@ Page title `setState` after a rename of the **open** node does the same.
 
 ---
 
+
+
 ## 10. `getChildren` full-scans and `gitPath`
 
 **Status:** `fixed` — CatalogTree rebuild refreshes one `childrenIndex` and passes it to every `getChildren`. Index / tree `getItem` skip `withGitPath`. Missing `getItem` is an `unknown` leaf, not a wiki-root folder clone. Vitest: `childrenIndex skips gitPath join; getNode still joins`, `CatalogTree rebuild uses one childrenIndex and skips gitPath join`.
@@ -371,6 +395,8 @@ observeDeep → rebuildTree
 
 ---
 
+
+
 ## 11. Debug git-log poll redraws the tree
 
 **Status:** `fixed` — `VenusDebugBar` owns git-log state and the 2s poll. `sameGitLogShas` skips `setState` when the sha list is unchanged. App/CatalogTree do not subscribe. Vitest: `git-log.test.ts`, `chrome.test.ts`.
@@ -391,6 +417,8 @@ VITE_DEBUG && SIDECAR_URL
     App render → CatalogTree → setConfig
 ```
 
+
+
 ### Proposed fix
 
 - Skip `setGitLog` when sha list is equal (compare joined shas). **Shipped:** `sameGitLogShas`.
@@ -399,15 +427,17 @@ VITE_DEBUG && SIDECAR_URL
 
 ---
 
+
+
 ## 12. Every leave/revisit is a new page WS
 
-**Status:** `product` — leave as-is for M4. `extraDocIdRef` still disconnects the previous extra except home. SharedWorker is step 8.
+**Status:** `fixed` — `PageSessions` (`catalog/page-sessions.js`, `KEEP_PAGE_SESSIONS = 2`) keeps the open page and the one visited before it connected. Going home disconnects nothing. A revisit of a kept page binds its Store with no `connect`. The third page disconnects the oldest. A kept page that leaves the catalog is released in `projectCatalogDocs` `beforeRemove` / `listenCatalogHost` `onRemoveDoc`, before `workspace.removeDoc`. Unmount disposes all. Works on the per-tab path and under the SharedWorker. Vitest: `page-sessions.test.ts`, `project-docs.test.ts` `onRemoveDoc while its Y.Doc is still in the workspace`. e2e: `m4-tree` `revisit reuses the kept page socket; a third page or delete releases one`.
 
-**Where:** `App.tsx` `extraDocIdRef`; plan: disconnect previous extra except home.
+**Where:** `App.tsx` `openDoc` (`pages.has` / `pages.touch`); `catalog/page-sessions.js`; `project-docs.js` `beforeRemove`.
 
 ### Problem
 
-Matches [step-tree](./plan.md#5-step-tree) / wire A. Cost: A → home → A is a full handshake + hydrate every time. There is no in-memory “keep last page socket” cache. SharedWorker (step 8) shares sockets **across tabs**, not across toggles in one tab.
+Matched [step-tree](./plan.md#5-step-tree) / wire A before the fix. Cost: A → home → A was a full handshake + hydrate every time. There was no in-memory “keep last page socket” cache. SharedWorker (step 8) shares sockets **across tabs**, not across toggles in one tab: a tab leaving A still closed the worker's A socket when no other tab had it.
 
 ### Flow
 
@@ -419,13 +449,27 @@ open A     connect(A) again, waitUntilSynced, seed-or-load
 
 `openWorkspaceDoc` reuses `workspace.getDoc` (Y.Doc in the collection) but **always** `connect`s a new WS (`connect` disconnects that id first).
 
+After the fix:
+
+```text
+open A     connect(A), pages=[A]
+open home  no disconnect; editor=homeStore; A keeps syncing while hidden
+open A     pages.has(A) → getDoc(A).getStore(), no connect
+open B     connect(B), pages=[A, B]
+open C     connect(C), pages=[B, C], disconnect(A)
+delete B   projectCatalogDocs beforeRemove(B) → disconnect(B), then removeDoc
+```
+
 ### Proposed fix
 
-- **Do not change the product rule** for M4 (one extra page socket).
-- Optional later: keep the last extra session connected until a third page is opened (LRU of 1). Not SharedWorker.
-- Step 8: worker holds the same A URLs; leaving a page in the tab may still drop the tab’s `Y.Doc` listener — design then, not in this tree pass.
+- **Shipped:** keep a bounded LRU of page sessions (the open page + one previous), owned by `PageSessions`, not an `App` ref. Replaces the M4 rule “disconnect the previous extra page except home”.
+- **Shipped:** release on LRU overflow, catalog delete (before `removeDoc`), and unmount. A failed or aborted open is never kept.
+- Not chosen: worker linger (worker-only, timer, still resyncs) or a state-vector resync for late joiners (hub hello always sends the full doc on the tab path).
+- Cost: one hub socket per kept page on the per-tab path (home + catalog + 2 pages per tab, under `MAX_CONNECTIONS_PER_IP = 32`). M5 freeze must apply to kept Stores, not only the visible one.
 
 ---
+
+
 
 ## 13. Missing node rendered as a folder stub
 
@@ -448,6 +492,8 @@ deleteNode(id) / remote delete
   next rebuild: id gone
 ```
 
+
+
 ### Proposed fix
 
 - `getItem`: return `getNode` or a dedicated “unknown” leaf; do not clone wiki root. **Shipped** with #10.
@@ -455,6 +501,8 @@ deleteNode(id) / remote delete
 - `rebuildTree` then `getChildren` from a fresh index so the id is not listed. **Shipped** with #10 (`childrenIndexRef`).
 
 ---
+
+
 
 ## 14. Folder left-click toggles expand
 
@@ -483,6 +531,8 @@ Right-click path: `item.select()` + `setContextCreateAt`, no toggle.
 
 ---
 
+
+
 ## 15. Per-row style objects
 
 **Status:** `fixed` — `data-level` + CSS `--level`; no per-row `paddingLeft` style object. Chevron is a sibling, not nested in the row button.
@@ -503,12 +553,16 @@ every CatalogTree render
     <button {...item.getProps()} />
 ```
 
+
+
 ### Proposed fix
 
 - CSS `--level` / `padding-inline-start: calc(var(--level) * 16px)` on a data attribute. **Shipped:** `.venus-tree-row[data-level]`.
 - Memoize a `TreeRow` on `item.getKey()` + rename/select/open flags if the wiki grows. Not urgent.
 
 ---
+
+
 
 ## 16. Full editor remount on page switch
 
@@ -528,12 +582,16 @@ openStore changes A → B
   mountEditor(el, B), mountMdPane, waitForEditorHost → mountOutline
 ```
 
+
+
 ### Proposed fix
 
 - Optional: keep the editor element and `editor.doc = store` (or equivalent) instead of tearing down. Re-subscribe header `$` on the new store (already keyed by `store`).
 - Do this after [#1](#1-failed-open-impersonates-a-missing-doc)/[#2](#2-abandoned-opens-keep-opening-sockets). Not required for step-tree DoD.
 
 ---
+
+
 
 ## 17. `waitUntilSynced` is provider-global
 
@@ -563,6 +621,8 @@ If catalog were reconnecting at the same moment, `Promise.all` waits for catalog
 
 ---
 
+
+
 ## 18. `hasChild` scans the map every render
 
 **Status:** `fixed` — toolbar `hasChild(catalog, id, loadChildrenIndex())`. Home still skipped (`isHome`). `deleteNode` keeps the map scan (no tree index).
@@ -591,6 +651,8 @@ Runs again on dummy `setRev` and on App re-renders.
 - Skip the walk when selection is home (`isHome` already hides Delete). **Already true.**
 
 ---
+
+
 
 ## Source
 

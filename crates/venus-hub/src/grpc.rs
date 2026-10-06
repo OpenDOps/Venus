@@ -15,8 +15,8 @@ use crate::db;
 use crate::http::{bind_doc_id, workspace_id_ok};
 use crate::room::Hub;
 use crate::rpc::{
-    CODE_INVALID_DOC, CODE_INVALID_WORKSPACE, CODE_STORE_FAILED, CODE_UNKNOWN_WORKSPACE,
-    GRPC_LISTEN_DEFAULT, GRPC_LISTEN_ENV, GRPC_SERVICE,
+    CODE_INVALID_DOC, CODE_INVALID_WORKSPACE, CODE_ROOM_FULL, CODE_STORE_FAILED,
+    CODE_UNKNOWN_WORKSPACE, GRPC_LISTEN_DEFAULT, GRPC_LISTEN_ENV, GRPC_SERVICE,
 };
 use crate::{CATALOG_DOC_ID, PAGE_DOC_ID};
 
@@ -127,6 +127,15 @@ fn parse_export_doc_id(raw: Option<&str>) -> Result<String, Status> {
 }
 
 fn status_store(workspace_id: &str, e: anyhow::Error) -> Status {
+    if crate::room::is_capacity(&e) {
+        let message = e.to_string();
+        return status_error(
+            Code::ResourceExhausted,
+            CODE_ROOM_FULL,
+            &message,
+            workspace_id,
+        );
+    }
     tracing::error!(workspace_id = %workspace_id, error = %e, "grpc store");
     status_error(
         Code::Internal,

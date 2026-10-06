@@ -64,13 +64,35 @@ CREATE TABLE IF NOT EXISTS dirty_wiki (
 
 -- One pending job per wiki. Sidecar observer writes rows; the hub and
 -- this trigger must not. Unclaimed: owner and lease_until are null.
+-- `state = failed` is not claimed again until a newer dirty clock clears it.
 CREATE TABLE IF NOT EXISTS jobs (
     workspace_id UUID PRIMARY KEY,
     reason TEXT NOT NULL CHECK (reason IN ('idle', 'flush', 'lease')),
     not_before TIMESTAMPTZ NOT NULL,
     owner TEXT,
-    lease_until TIMESTAMPTZ
+    lease_until TIMESTAMPTZ,
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT,
+    last_error_at TIMESTAMPTZ,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'failed')),
+    failed_clock BIGINT
 );
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_error TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_error_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS failed_clock BIGINT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'jobs_state_check'
+  ) THEN
+    ALTER TABLE jobs
+      ADD CONSTRAINT jobs_state_check CHECK (state IN ('pending', 'failed'));
+  END IF;
+END $$;
 
 -- Durable pin clocks after a git commit. Sidecar writes; hub does not.
 CREATE TABLE IF NOT EXISTS last_flushed (

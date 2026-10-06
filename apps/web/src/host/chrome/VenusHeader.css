@@ -17,6 +17,13 @@
   opacity: 0.45;
 }
 
+.venus-connection {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--affine-error-color, #b42318);
+  white-space: nowrap;
+}
+
 .venus-page-title {
   flex: 1;
   min-width: 0;

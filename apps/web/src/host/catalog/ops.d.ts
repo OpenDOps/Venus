@@ -8,6 +8,17 @@ export class CatalogError extends Error {
 
 export function seedOnce(catalog: Doc, workspace?: unknown): void;
 
+export function mintDocId(
+  catalog: Doc,
+  createAt: string | null | undefined,
+): string;
+
+export function commitNewDoc(
+  catalog: Doc,
+  workspace: unknown,
+  stage: { id: string; createAt: string | null },
+): CatalogNode;
+
 export function createDoc(
   catalog: Doc,
   workspace: unknown,

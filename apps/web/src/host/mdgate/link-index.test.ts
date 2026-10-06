@@ -96,6 +96,9 @@ function walkJs(dir: string, acc: string[] = []) {
 
 test('build + query: inbound/outbound from venus:doc comments only', () => {
   expect(targetsInMarkdown(HOME_MD)).toEqual([TARGET]);
+  expect(
+    targetsInMarkdown(`~~protocol~~\n<!-- venus:doc:${TARGET} missing -->\n`),
+  ).toEqual([TARGET]);
   expect(targetsInMarkdown(THIRD_MD)).toEqual([]);
   expect(targetsInMarkdown(`[x](spec/${TARGET}.md)\n`)).toEqual([]);
 

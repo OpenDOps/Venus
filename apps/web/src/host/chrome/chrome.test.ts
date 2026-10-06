@@ -7,6 +7,7 @@ import {
   testidProps,
   testidsFromEnv,
 } from '../providers/from-env.js';
+import { TITLE_COMMIT_MS, createTitleCommit } from './title-commit.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -19,6 +20,13 @@ test('VenusHeader subscribes to canUndo$ / canRedo$, does not poll', () => {
   expect(src).toMatch(/store\.redo\(\)/);
   expect(src).toMatch(/venus-page-title/);
   expect(src).toMatch(/onTitleChange/);
+  expect(src).toMatch(/createTitleCommit/);
+  expect(src).toMatch(/\.push\(/);
+  expect(src).toMatch(/\.flush\(\)/);
+  expect(src).not.toMatch(/onBlur=\{\(\) => \{\s*focusedRef\.current = false;\s*setDraft\(title\)/);
+  expect(src).toMatch(/reconnecting/);
+  expect(src).toMatch(/beforeunload/);
+  expect(src).toMatch(/venus-connection/);
   expect(src).toMatch(/<input/);
   expect(src).not.toMatch(/setInterval/);
   expect(src).not.toMatch(/store\.canUndo[^.]/);
@@ -55,7 +63,8 @@ test('git-log poll is not App state; debug bar is a sibling of the tree columns'
   expect(app).not.toMatch(/\/git\/log/);
   expect(app).toMatch(/onOpenDoc=\{openDoc\}/);
   expect(tree).toMatch(/memo\(function CatalogTree/);
-  expect(bar).toMatch(/setInterval/);
+  expect(bar).toMatch(/setInterval\(loadFlushStatus, 2000\)/);
+  expect(bar).toMatch(/nextGitLogPoll/);
   expect(bar).toMatch(/sameGitLogShas/);
   expect(bar).toMatch(/venus-flush/);
   expect(bar).toMatch(/venus-git-log/);
@@ -73,6 +82,43 @@ test('editor host files stay ignorant of chrome and catalog', () => {
     expect(src, name).not.toMatch(/venus-header/);
     expect(src, name).not.toMatch(/store\.history/);
   }
+});
+
+test('title draft commits once on blur, Enter, or idle', () => {
+  expect(TITLE_COMMIT_MS).toBe(300);
+  const written: string[] = [];
+  const pending: Array<() => void> = [];
+  const commit = createTitleCommit((text) => {
+    written.push(text);
+    return text;
+  }, {
+    later(fn) {
+      pending.push(fn);
+      return pending.length;
+    },
+    cancel(id) {
+      pending[Number(id) - 1] = () => {};
+    },
+  });
+  commit.push('p');
+  commit.push('pr');
+  commit.push('pro');
+  expect(written).toEqual([]);
+  expect(pending).toHaveLength(3);
+  commit.flush();
+  expect(written).toEqual(['pro']);
+  pending[2]();
+  expect(written).toEqual(['pro']);
+
+  commit.push('proto');
+  commit.flush();
+  commit.flush();
+  expect(written).toEqual(['pro', 'proto']);
+
+  commit.push('a');
+  commit.push('ab');
+  pending[pending.length - 1]();
+  expect(written).toEqual(['pro', 'proto', 'ab']);
 });
 
 test('VITE_DEBUG / VITE_TESTIDS flags', () => {

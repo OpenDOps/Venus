@@ -15,6 +15,7 @@
     "test:e2e:m4": "pnpm --filter @venus/web test:e2e:m4",
     "test:e2e:m3:live": "pnpm --filter @venus/web test:e2e:m3:live",
     "wiki:clone": "pnpm --filter @venus/web exec node ./scripts/m3-clone-dod.mjs",
+    "wiki:verify": "pnpm --filter @venus/web exec node ./scripts/m4-verify-wiki.mjs",
     "sync:up": "docker compose up --build postgres hub",
     "sync:down": "docker compose down",
     "compose:up": "docker compose up --build",

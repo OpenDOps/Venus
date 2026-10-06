@@ -13,6 +13,15 @@ export function applyCatalogHostChrome(
   },
 ): void;
 
+export function batchOnAnimationFrame(
+  run: () => void,
+  raf?: (cb: () => void) => unknown,
+  cancel?: (id: unknown) => void,
+): {
+  schedule: () => void;
+  cancel: () => void;
+};
+
 export function listenCatalogHost(
   catalog: Doc,
   getOpenDocId: () => string,
@@ -20,5 +29,8 @@ export function listenCatalogHost(
     onTitle: (title: string) => void;
     onMissingOpen: () => void;
     onChange: () => void;
+    /** A doc left the catalog and is about to be removed from the workspace. */
+    onRemoveDoc?: (id: string) => void;
   },
+  workspace?: object,
 ): () => void;

@@ -95,6 +95,13 @@ test('createDoc then rename: uuid.md then protocol.md; slash and sibling _1', as
   const clash = createDoc(catalog, workspace, { createAt: FOLDER_SPEC_ID });
   const clashed = rename(catalog, workspace, clash.id, 'protocol');
   expect(clashed.gitPath).toBe('spec/protocol_1.md');
+
+  const notes = createDoc(catalog, workspace, { createAt: FOLDER_SPEC_ID });
+  rename(catalog, workspace, notes.id, 'Notes');
+  const notesLower = createDoc(catalog, workspace, { createAt: FOLDER_SPEC_ID });
+  const notesCase = rename(catalog, workspace, notesLower.id, 'notes');
+  expect(notesCase.name).toBe('notes');
+  expect(notesCase.gitPath).toBe('spec/notes_1.md');
 });
 
 test('createDoc mints a workspace doc and does not connect a page socket', async () => {
@@ -118,6 +125,21 @@ test('createDoc mints a workspace doc and does not connect a page socket', async
   expect(connected).toEqual(before);
   expect(connected).not.toContain(created.id);
   expect(workspace.getDoc?.(created.id) ?? workspace.docs.has(created.id)).toBeTruthy();
+});
+
+test('rename writes name and gitName in one catalog transaction', async () => {
+  const { catalog, workspace } = await seededCatalog();
+  const created = createDoc(catalog, workspace, { createAt: FOLDER_SPEC_ID });
+  let transactions = 0;
+  const onTx = () => {
+    transactions += 1;
+  };
+  catalog.on('afterTransaction', onTx);
+  rename(catalog, workspace, created.id, 'protocol');
+  catalog.off('afterTransaction', onTx);
+  expect(transactions).toBe(1);
+  expect(getNode(catalog, created.id)?.name).toBe('protocol');
+  expect(getNode(catalog, created.id)?.gitName).toBe('protocol.md');
 });
 
 test('rename empty / whitespace keeps the previous name', async () => {

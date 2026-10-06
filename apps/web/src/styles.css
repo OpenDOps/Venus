@@ -40,6 +40,17 @@ body,
   cursor: pointer;
 }
 
+.host-chrome-error {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--affine-error-color, #b42318);
+}
+
 .host-chrome-log {
   display: flex;
   flex-wrap: wrap;

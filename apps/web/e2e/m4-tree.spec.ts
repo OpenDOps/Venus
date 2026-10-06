@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { CATALOG_SQL_ID, PAGE_DOC_ID, collaborationSocketUrl } from '../src/host/ids.js';
-import { expectedCollaborationWs, assertHubOn3000 } from './hub-ws';
+import {
+  expectedCollaborationWs,
+  assertHubOn3000,
+  forceTabSockets,
+} from './hub-ws';
 
 const NOTE = 'affine-note affine-paragraph rich-text';
 const HUB_WS = expectedCollaborationWs();
@@ -58,6 +62,10 @@ test.beforeAll(async () => {
   await assertHubOn3000();
 });
 
+test.beforeEach(async ({ context }) => {
+  await forceTabSockets(context);
+});
+
 test('A createDoc appears on B catalog without reload', async ({
   page,
   context,
@@ -103,6 +111,14 @@ test('A createDoc appears on B catalog without reload', async ({
   expect(seedB.homeParent).toBe('folder:spec');
   expect(seedB.homeGitPath).toMatch(/home\.md$/);
 
+  const pageSockets: { url: string; closed: boolean }[] = [];
+  pageA.on('websocket', (ws) => {
+    const rec = { url: ws.url(), closed: ws.isClosed() };
+    ws.on('close', () => {
+      rec.closed = true;
+    });
+    pageSockets.push(rec);
+  });
   const created = await pageA.evaluate(() => {
     const ops = window.__VENUS_CATALOG_OPS__;
     if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
@@ -112,12 +128,20 @@ test('A createDoc appears on B catalog without reload', async ({
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   );
   expect(created.gitPath).toBe(`spec/${created.id}.md`);
+  const seededUrl = collaborationSocketUrl(HUB_WS, created.id);
   expect(
-    wsA.find((u) => u === collaborationSocketUrl(HUB_WS, created.id)),
-    'createDoc must not open a page hub websocket (step 5 openWorkspaceDoc)',
-  ).toBeUndefined();
+    wsA.find((u) => u === seededUrl),
+    'create seeds the new page on the hub before the catalog node',
+  ).toBe(seededUrl);
+  await expect
+    .poll(
+      () => pageSockets.find((s) => s.url === seededUrl)?.closed ?? false,
+      { timeout: 5_000 },
+    )
+    .toBe(true);
   expect(
-    wsB.find((u) => u === collaborationSocketUrl(HUB_WS, created.id)),
+    wsB.find((u) => u === seededUrl),
+    'the other tab must not open the new page socket',
   ).toBeUndefined();
 
   await expect
@@ -286,11 +310,11 @@ test('drop reparents via published drop API; home stays under spec', async ({
   const pageB = await context.newPage();
   await waitForCatalog(pageB);
 
-  const created = await pageA.evaluate(() => {
+  const created = await pageA.evaluate(async () => {
     const ops = window.__VENUS_CATALOG_OPS__;
     if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
     const folder = ops.createFolder(null, `design-${Date.now()}`);
-    const doc = ops.createDoc('folder:spec');
+    const doc = await ops.createDoc('folder:spec');
     return {
       folderId: folder.id,
       folderGitPath: folder.gitPath,
@@ -339,6 +363,95 @@ test('drop reparents via published drop API; home stays under spec', async ({
     },
     { pageId: created.docId, folderId: created.folderId },
   );
+});
+
+test('revisit reuses the kept page socket; a third page or delete releases one', async ({
+  page,
+  context,
+}) => {
+  const sockets = new Map<string, { opens: number; closed: boolean }>();
+  page.on('websocket', (ws) => {
+    const rec = sockets.get(ws.url()) ?? { opens: 0, closed: false };
+    rec.opens += 1;
+    rec.closed = false;
+    sockets.set(ws.url(), rec);
+    ws.on('close', () => {
+      rec.closed = true;
+    });
+  });
+  const live = (id: string) => {
+    const rec = sockets.get(collaborationSocketUrl(HUB_WS, id));
+    return rec ? { opens: rec.opens, closed: rec.closed } : null;
+  };
+  const open = async (target: Page, id: string) => {
+    await target.evaluate((docId) => window.__VENUS_OPEN_DOC__?.(docId), id);
+    await expectOpenDoc(target, id);
+  };
+
+  await waitForCatalog(page);
+  const ids = await page.evaluate(async () => {
+    const ops = window.__VENUS_CATALOG_OPS__;
+    if (!ops) throw new Error('missing __VENUS_CATALOG_OPS__');
+    const out: string[] = [];
+    for (let i = 0; i < 3; i++) out.push((await ops.createDoc('folder:spec')).id);
+    return out;
+  });
+  const [a, b, c] = ids as [string, string, string];
+  // createDoc seeds each page on its own short socket; count opens after that.
+  await expect
+    .poll(() => ids.every((id) => live(id)?.closed === true), { timeout: 5_000 })
+    .toBe(true);
+  sockets.clear();
+
+  await open(page, a);
+  expect(live(a)).toEqual({ opens: 1, closed: false });
+  await open(page, PAGE_DOC_ID);
+  await expect(page.getByTestId('venus-page-title')).toHaveValue('home');
+  expect(live(a), 'leaving a page keeps its socket').toEqual({
+    opens: 1,
+    closed: false,
+  });
+
+  const pageB = await context.newPage();
+  await waitForCatalog(pageB);
+  await open(pageB, a);
+  await pageB.locator(NOTE).first().click();
+  const typed = `kept-${Date.now()}`;
+  await pageB.keyboard.type(typed);
+
+  await open(page, a);
+  await expect(
+    page.locator(NOTE).first(),
+    'the hidden page kept syncing; revisit shows B’s edit',
+  ).toContainText(typed, { timeout: 10_000 });
+  expect(live(a), 'revisit does not open a new socket').toEqual({
+    opens: 1,
+    closed: false,
+  });
+
+  await open(page, b);
+  await open(page, a);
+  await open(page, b);
+  expect(live(a)?.opens).toBe(1);
+  expect(live(b)?.opens).toBe(1);
+
+  await open(page, c);
+  await expect.poll(() => live(a)?.closed, { timeout: 5_000 }).toBe(true);
+  expect(live(b), 'the page before the open one stays').toEqual({
+    opens: 1,
+    closed: false,
+  });
+
+  await page.evaluate((id) => window.__VENUS_CATALOG_OPS__?.deleteNode(id), b);
+  await expect.poll(() => live(b)?.closed, { timeout: 5_000 }).toBe(true);
+  await expectOpenDoc(page, c);
+  expect(live(c)).toEqual({ opens: 1, closed: false });
+
+  await open(page, PAGE_DOC_ID);
+  await page.evaluate((list) => {
+    for (const id of list) window.__VENUS_CATALOG_OPS__?.deleteNode(id);
+  }, [a, c]);
+  await expect.poll(() => live(c)?.closed, { timeout: 5_000 }).toBe(true);
 });
 
 test('delete is hidden on spec; deleting an open leaf switches to home', async ({

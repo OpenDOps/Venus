@@ -2,6 +2,7 @@
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 use y_octo::{Any, Array, Doc, Map, Text, TextDeltaOp, TextInsert, Value};
@@ -78,7 +79,10 @@ pub struct BlockTree {
 #[derive(Debug, Clone)]
 pub struct CatalogLinkCtx {
     pub source_git_path: String,
-    pub pages: HashMap<String, (String, String)>,
+    /// Shared across every page in one Flush. docId → (name, gitPath).
+    pub pages: Arc<HashMap<String, (String, String)>>,
+    /// Last catalog name for a target that is no longer in the walk.
+    pub missing: Arc<HashMap<String, String>>,
 }
 
 impl BlockTree {

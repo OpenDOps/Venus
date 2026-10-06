@@ -77,6 +77,115 @@ test('Seam holds: editor host files do not import live sync clients', () => {
     expect(src, name).not.toMatch(/git2|simple-git|isomorphic-git/);
     expect(src, name).not.toMatch(/catalog\//);
     expect(src, name).not.toMatch(/CatalogTree/);
+    expect(src, name).not.toMatch(/SharedWorker/);
+    expect(src, name).not.toMatch(/hub-shared-worker|shared-worker-socket|hub-relay/);
+    expect(src, name).not.toMatch(/serviceWorker/);
+  }
+});
+
+test('Seam holds: the hub worker relays bytes and never holds a Y.Doc', () => {
+  const providers = join(hostDir, 'providers');
+  for (const name of ['hub-shared-worker.js', 'hub-relay.js']) {
+    const src = readFileSync(join(providers, name), 'utf8');
+    expect(src, name).not.toMatch(importOf('yjs'));
+    expect(src, name).not.toMatch(importOf('y-protocols'));
+    expect(src, name).not.toMatch(importOf('@blocksuite'));
+    expect(src, name).not.toMatch(/serviceWorker/);
+  }
+  const fromEnv = readFileSync(join(providers, 'from-env.js'), 'utf8');
+  expect(fromEnv).not.toMatch(/serviceWorker/);
+});
+
+test('Memory has no worker: unset VITE_SYNC_URL constructs no SharedWorker', async () => {
+  const constructed: unknown[] = [];
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
+  Object.defineProperty(globalThis, 'SharedWorker', {
+    configurable: true,
+    value: class {
+      constructor(...args: unknown[]) {
+        constructed.push(args);
+        throw new Error('SharedWorker must not start without VITE_SYNC_URL');
+      }
+    },
+  });
+  try {
+    expect(providerFromEnv({})).toBeInstanceOf(MemoryNoopProvider);
+    const { provider } = await createM0Workspace();
+    expect(provider.kind).toBe('memory');
+    expect(constructed).toEqual([]);
+  } finally {
+    if (desc) Object.defineProperty(globalThis, 'SharedWorker', desc);
+    else Reflect.deleteProperty(globalThis, 'SharedWorker');
+  }
+});
+
+test('Fallback: no SharedWorker, or one that throws, is the per-tab socket path', () => {
+  const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  expect(typeof (globalThis as { SharedWorker?: unknown }).SharedWorker).toBe(
+    'undefined',
+  );
+  const plain = providerFromEnv({ VITE_SYNC_URL: url });
+  expect(plain).toBeInstanceOf(VenusHubProvider);
+  expect((plain as VenusHubProvider).transport).toBe('tab');
+
+  Object.defineProperty(globalThis, 'SharedWorker', {
+    configurable: true,
+    value: class {
+      constructor() {
+        throw new Error('blocked by policy');
+      }
+    },
+  });
+  try {
+    const threw = providerFromEnv({ VITE_SYNC_URL: url });
+    expect((threw as VenusHubProvider).transport).toBe('tab');
+  } finally {
+    Reflect.deleteProperty(globalThis, 'SharedWorker');
+  }
+});
+
+test('SharedWorker present: sessions open worker channels, not tab WebSockets', () => {
+  const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  const workers: Array<{ name: string; posted: unknown[] }> = [];
+  Object.defineProperty(globalThis, 'SharedWorker', {
+    configurable: true,
+    value: class {
+      port: MessagePort;
+      constructor(_script: URL, options: { name: string; type: string }) {
+        const posted: unknown[] = [];
+        workers.push({ name: options.name, posted });
+        this.port = {
+          addEventListener() {},
+          start() {},
+          postMessage(msg: unknown) {
+            posted.push(msg);
+          },
+        } as unknown as MessagePort;
+      }
+      addEventListener() {}
+    },
+  });
+  const Ws = globalThis.WebSocket;
+  const tabSockets: unknown[] = [];
+  // @ts-expect-error stub
+  globalThis.WebSocket = class {
+    constructor(...args: unknown[]) {
+      tabSockets.push(args);
+    }
+  };
+  try {
+    const provider = providerFromEnv({ VITE_SYNC_URL: url }) as VenusHubProvider;
+    expect(provider.transport).toBe('shared-worker');
+    expect(workers.map((w) => w.name)).toEqual([`venus-hub:${url}`]);
+    provider.connect(CATALOG_GUID, { on() {}, off() {} } as unknown as Doc);
+    expect(tabSockets).toEqual([]);
+    expect(workers[0]?.posted).toEqual([
+      { t: 'open', ch: 1, url: `${url}?doc=${CATALOG_SQL_ID}` },
+    ]);
+    provider.disconnect(CATALOG_GUID);
+  } finally {
+    globalThis.WebSocket = Ws;
+    Reflect.deleteProperty(globalThis, 'SharedWorker');
   }
 });
 

@@ -2,14 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CatalogTree } from './host/catalog/CatalogTree';
 import {
   applyCatalogHostChrome,
+  batchOnAnimationFrame,
   listenCatalogHost,
+  openNodeTitle,
 } from './host/catalog/listen.js';
+import { PageSessions } from './host/catalog/page-sessions.js';
+import { projectCatalogDocs } from './host/catalog/project-docs.js';
 import { resolveOpenDocId } from './host/catalog/open-doc.js';
 import {
   attachCatalogTestHooks,
+  clearPageTestHooks,
   createCatalogDoc,
   detachCatalogTestHooks,
   disposeCatalog,
+  installPageTestHooks,
   openCatalog,
 } from './host/catalog/open.js';
 import { rename } from './host/catalog/ops.js';
@@ -25,11 +31,14 @@ import {
   blobSourcesFromEnv,
   sidecarUrlFromEnv,
 } from './host/providers/from-env.js';
+import { VenusHubProvider } from './host/providers/venus-hub-provider.js';
 import { seedMarkdownDemo } from './host/seed.js';
 import { createM0Workspace, openPageStore } from './host/workspace.js';
+import * as Y from 'yjs';
 
 type Session = Awaited<ReturnType<typeof createM0Workspace>> & {
   catalog: import('yjs').Doc;
+  pages: PageSessions;
 };
 type PageStore = Session['store'];
 
@@ -46,7 +55,6 @@ export function App() {
   const outlineRef = useRef<HTMLDivElement>(null);
   const mdPaneRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<Session | null>(null);
-  const extraDocIdRef = useRef<string | null>(null);
   const openGenRef = useRef(0);
   const openStoreRef = useRef<PageStore | null>(null);
   openStoreRef.current = openStore;
@@ -59,12 +67,12 @@ export function App() {
   const openDoc = useCallback(async (requestedId: string) => {
     const current = sessionRef.current;
     if (!current) return;
-    const { catalog, workspace, provider, store: homeStore } = current;
+    const { catalog, workspace, provider, store: homeStore, pages } = current;
     const nextId = resolveOpenDocId(catalog, requestedId);
 
     if (
       nextId !== PAGE_DOC_ID &&
-      extraDocIdRef.current !== nextId &&
+      !pages.has(nextId) &&
       openTargetRef.current === nextId &&
       openAbortRef.current
     ) {
@@ -78,27 +86,24 @@ export function App() {
     openTargetRef.current = nextId;
 
     if (nextId === PAGE_DOC_ID) {
-      const extra = extraDocIdRef.current;
-      if (extra) {
-        provider.disconnect(extra);
-        extraDocIdRef.current = null;
-      }
-      if (gen !== openGenRef.current) return;
       setOpenDocId(PAGE_DOC_ID);
       setOpenStore(homeStore);
       return;
     }
 
-    if (extraDocIdRef.current === nextId) {
-      if (gen !== openGenRef.current) return;
-      setOpenDocId(nextId);
+    if (pages.has(nextId)) {
       const existing =
         typeof workspace.getDoc === 'function'
           ? workspace.getDoc(nextId)
           : null;
       const store = existing?.getStore?.();
-      if (store) setOpenStore(store);
-      return;
+      if (store) {
+        pages.touch(nextId);
+        setOpenDocId(nextId);
+        setOpenStore(store);
+        return;
+      }
+      pages.release(nextId);
     }
 
     try {
@@ -109,9 +114,7 @@ export function App() {
         if (openTargetRef.current !== nextId) provider.disconnect(nextId);
         return;
       }
-      const prev = extraDocIdRef.current;
-      if (prev && prev !== nextId) provider.disconnect(prev);
-      extraDocIdRef.current = nextId;
+      pages.touch(nextId);
       setOpenDocId(nextId);
       setOpenStore(opened.store);
     } catch (err) {
@@ -120,7 +123,7 @@ export function App() {
         return;
       }
       console.error(err);
-      if (extraDocIdRef.current !== nextId) provider.disconnect(nextId);
+      if (!pages.has(nextId)) provider.disconnect(nextId);
       // WS/hydrate failure is not a missing catalog node. Stay on the
       // last good page.
     }
@@ -128,12 +131,14 @@ export function App() {
 
   const onPageTitleChange = useCallback((next: string) => {
     const current = sessionRef.current;
-    if (!current) return;
+    if (!current) return next;
+    const id = openDocIdRef.current;
     try {
-      rename(current.catalog, current.workspace, openDocIdRef.current, next);
+      rename(current.catalog, current.workspace, id, next);
     } catch {
-      // Missing node: listenCatalogHost restores the last catalog name.
+      // Missing node: the returned catalog name replaces the draft.
     }
+    return openNodeTitle(current.catalog, id);
   }, []);
 
   useEffect(() => {
@@ -172,9 +177,18 @@ export function App() {
           return;
         }
         window.__VENUS_PROVIDER_KIND__ = created.provider.kind;
+        if (created.provider instanceof VenusHubProvider) {
+          const hub = created.provider;
+          window.__VENUS_HUB_TRANSPORT__ = hub.transport;
+          window.__VENUS_HUB_STATS__ = () => hub.hubStats();
+        }
         window.__VENUS_PAGE_FLAVOUR__ = created.store.root?.flavour;
-        attachCatalogTestHooks(catalog, created.workspace);
-        const next = { ...created, catalog };
+        attachCatalogTestHooks(catalog, created.workspace, created.provider);
+        const next = {
+          ...created,
+          catalog,
+          pages: new PageSessions(created.provider),
+        };
         sessionRef.current = next;
         setOpenDocId(PAGE_DOC_ID);
         setOpenStore(created.store);
@@ -197,9 +211,7 @@ export function App() {
       detachCatalogTestHooks();
       const current = sessionRef.current;
       if (current) {
-        const extra = extraDocIdRef.current;
-        if (extra) current.provider.disconnect(extra);
-        extraDocIdRef.current = null;
+        current.pages.dispose();
         disposeCatalog(current.provider, current.catalog, current.docId);
         sessionRef.current = null;
       }
@@ -208,29 +220,41 @@ export function App() {
 
   useEffect(() => {
     if (!session) return;
-    window.__VENUS_OPEN_DOC__ = (id) => {
-      void openDoc(id);
-    };
-    window.__VENUS_OPEN_DOC_ID__ = openDocId;
-    window.__VENUS_INSERT_LINKED_DOC__ = (pageId) => {
-      const store = openStoreRef.current;
-      const note = store?.root?.children?.find(
-        (c: { flavour: string }) => c.flavour === 'affine:note',
-      );
-      if (!store || !note) {
-        throw new Error('no open note');
-      }
-      return store.addBlock('affine:embed-linked-doc', { pageId }, note.id);
-    };
+    installPageTestHooks({
+      openDoc: (id) => {
+        void openDoc(id);
+      },
+      openDocId,
+      openVector: () => {
+        const doc = openStoreRef.current?.spaceDoc;
+        if (!doc) return '';
+        const bytes = Y.encodeStateVector(doc);
+        let out = '';
+        for (const byte of bytes) out += String.fromCharCode(byte);
+        return btoa(out);
+      },
+      insertLinkedDoc: (pageId) => {
+        const store = openStoreRef.current;
+        const note = store?.root?.children?.find(
+          (c: { flavour: string }) => c.flavour === 'affine:note',
+        );
+        if (!store || !note) {
+          throw new Error('no open note');
+        }
+        return store.addBlock('affine:embed-linked-doc', { pageId }, note.id);
+      },
+    });
     return () => {
-      delete window.__VENUS_OPEN_DOC__;
-      delete window.__VENUS_OPEN_DOC_ID__;
-      delete window.__VENUS_INSERT_LINKED_DOC__;
+      clearPageTestHooks();
     };
   }, [session, openDoc, openDocId]);
 
   useEffect(() => {
     if (!session) return;
+    projectCatalogDocs(session.catalog, session.workspace, {
+      keepId: openDocId,
+      beforeRemove: (id) => session.pages.release(id),
+    });
     applyCatalogHostChrome(session.catalog, openDocId, {
       onTitle: (title) => {
         setPageTitle((prev) => (prev === title ? prev : title));
@@ -243,17 +267,30 @@ export function App() {
 
   useEffect(() => {
     if (!session) return;
-    return listenCatalogHost(session.catalog, () => openDocIdRef.current, {
-      onTitle: (title) => {
-        setPageTitle((prev) => (prev === title ? prev : title));
-      },
-      onMissingOpen: () => {
-        void openDoc(PAGE_DOC_ID);
-      },
-      onChange: () => {
-        rebuildTreeRef.current?.();
-      },
+    const rebuilds = batchOnAnimationFrame(() => {
+      rebuildTreeRef.current?.();
     });
+    const stop = listenCatalogHost(
+      session.catalog,
+      () => openDocIdRef.current,
+      {
+        onTitle: (title) => {
+          setPageTitle((prev) => (prev === title ? prev : title));
+        },
+        onMissingOpen: () => {
+          void openDoc(PAGE_DOC_ID);
+        },
+        onChange: () => {
+          rebuilds.schedule();
+        },
+        onRemoveDoc: (id) => session.pages.release(id),
+      },
+      session.workspace,
+    );
+    return () => {
+      rebuilds.cancel();
+      stop();
+    };
   }, [session, openDoc]);
 
   useEffect(() => {
@@ -299,6 +336,7 @@ export function App() {
         store={openStore}
         title={pageTitle}
         onTitleChange={onPageTitleChange}
+        provider={session.provider}
       />
       {SHOW_DEBUG ? <VenusDebugBar sidecarUrl={SIDECAR_URL} /> : null}
       <div className="m0-columns">
@@ -306,6 +344,7 @@ export function App() {
           <CatalogTree
             catalog={session.catalog}
             workspace={session.workspace}
+            provider={session.provider}
             selectedDocId={openDocId}
             rebuildRef={rebuildTreeRef}
             onOpenDoc={openDoc}

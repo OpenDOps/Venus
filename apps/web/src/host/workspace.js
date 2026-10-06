@@ -124,8 +124,9 @@ function seedEmptyPage(store) {
 }
 
 /**
- * Local empty page for a minted uuid. No SyncProvider — catalog create
- * must not open a socket. First hub connect then syncs this seed up.
+ * Empty `affine:page` for a minted uuid. Memory creates seed here with no
+ * socket. A live create calls this only after the page socket is open, then
+ * waits until the hub's next sync step 2 contains the page.
  *
  * @param {{ load: Function, resetHistory: Function, root?: { flavour?: string }, doc?: { yBlocks?: { values: () => Iterable<{ get: (k: string) => unknown }> } } }} store
  * @returns {boolean} true if a seed ran
@@ -244,7 +245,8 @@ export async function createM0Workspace(provider, options = {}) {
  * uuid / BlockSuite `createDoc` id (wire A `?doc=`). Connects that Y.Doc;
  * seeds an empty `affine:page` only in memory (or `seedIfEmpty`). Hub
  * empty after sync is hydrate failure — throw, do not broadcast a blank
- * page. Catalog `createDoc` seeds locally so a minted uuid still has a root.
+ * page. A live catalog create seeds on its own socket before the node exists;
+ * `createDoc` still seeds locally for tests and the memory provider.
  * Do not call from App boot — home is still `createM0Workspace`.
  */
 export async function openWorkspaceDoc(workspace, provider, uuid, options = {}) {

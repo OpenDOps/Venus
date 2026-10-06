@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { testidProps } from '../providers/from-env.js';
+import type { SyncProvider } from '../sync-provider.js';
+import { createTitleCommit } from './title-commit.js';
 import './VenusHeader.css';
 
 type HistorySignal = {
@@ -19,10 +21,15 @@ export type HeaderStore = {
 type Props = {
   store: HeaderStore;
   title: string;
-  onTitleChange: (title: string) => void;
+  onTitleChange: (title: string) => string | void;
+  provider: SyncProvider;
 };
 
-export function VenusHeader({ store, title, onTitleChange }: Props) {
+function connectionOf(provider: SyncProvider) {
+  return provider.connection === 'reconnecting' ? 'reconnecting' : 'synced';
+}
+
+export function VenusHeader({ store, title, onTitleChange, provider }: Props) {
   const [canUndo, setCanUndo] = useState(() =>
     store.history.canUndo$.peek(),
   );
@@ -30,7 +37,34 @@ export function VenusHeader({ store, title, onTitleChange }: Props) {
     store.history.canRedo$.peek(),
   );
   const [draft, setDraft] = useState(title);
+  const [connection, setConnection] = useState(() => connectionOf(provider));
   const focusedRef = useRef(false);
+  const onTitleChangeRef = useRef(onTitleChange);
+  onTitleChangeRef.current = onTitleChange;
+  const commitRef = useRef<ReturnType<typeof createTitleCommit> | null>(null);
+  if (commitRef.current == null) {
+    commitRef.current = createTitleCommit((next) => {
+      const shown = onTitleChangeRef.current(next);
+      if (typeof shown === 'string') setDraft(shown);
+    });
+  }
+
+  useEffect(() => {
+    setConnection(connectionOf(provider));
+    return provider.on?.('connection', () => {
+      setConnection(connectionOf(provider));
+    });
+  }, [provider]);
+
+  useEffect(() => {
+    if (connection !== 'reconnecting') return;
+    const onLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onLeave);
+    return () => window.removeEventListener('beforeunload', onLeave);
+  }, [connection]);
 
   useEffect(() => {
     const undo$ = store.history.canUndo$;
@@ -46,7 +80,13 @@ export function VenusHeader({ store, title, onTitleChange }: Props) {
   }, [store]);
 
   useEffect(() => {
-    if (!focusedRef.current) setDraft(title);
+    return () => commitRef.current?.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (focusedRef.current) return;
+    commitRef.current?.cancel();
+    setDraft(title);
   }, [title]);
 
   return (
@@ -67,6 +107,15 @@ export function VenusHeader({ store, title, onTitleChange }: Props) {
       >
         Redo
       </button>
+      {connection === 'reconnecting' ? (
+        <span
+          className="venus-connection"
+          title="Offline. Reconnecting to the hub."
+          {...testidProps('venus-connection')}
+        >
+          reconnecting
+        </span>
+      ) : null}
       <input
         type="text"
         className="venus-page-title"
@@ -79,15 +128,16 @@ export function VenusHeader({ store, title, onTitleChange }: Props) {
         onChange={(event) => {
           const next = event.target.value;
           setDraft(next);
-          onTitleChange(next);
+          commitRef.current?.push(next);
         }}
         onBlur={() => {
           focusedRef.current = false;
-          setDraft(title);
+          commitRef.current?.flush();
         }}
         onKeyDown={(event) => {
           if (event.key !== 'Enter') return;
           event.preventDefault();
+          commitRef.current?.flush();
           event.currentTarget.blur();
         }}
         {...testidProps('venus-page-title')}
