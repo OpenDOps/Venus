@@ -1,6 +1,6 @@
 # Semantic graph
 
-**Status:** design. **Plan written, not started** — [plan.md](./plan.md), board [SG.state.yaml](./SG.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M5](../venus-implementation-plan.md#m5--lease--freeze-week). Does **not** delay `last_flushed`.
+**Status:** design. **Plan written, not started** — search cluster [search-scale/plan.md](./search-scale/plan.md), board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M5](../venus-implementation-plan.md#m5--lease--freeze-week). Does **not** delay `last_flushed`.
 
 Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeIndexing](../Agents/LifeIndexing.md). This folder is *how* that graph is built and where it is stored.
 
@@ -10,8 +10,9 @@ Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeInd
 | [extract.md](./extract.md) | In-document graph: tree-sitter, Aho–Corasick, regex, optional ONNX NER |
 | [connect.md](./connect.md) | Direct references between pages, then background semantic binds |
 | [store.md](./store.md) | SurrealDB graph schema, clocks, Compose |
-| [scale.md](./scale.md) | Graph namespace and search namespace. One process for dogfood. Split process and place by wiki when readers grow. |
-| [plan.md](./plan.md) | First board: graph process plus a two-node search cluster (2 primary shards, 1 replica each). Extractors are the next board. |
+| [scale.md](./scale.md) | Graph store vs search projection. Write order. |
+| [search-scale](./search-scale/README.md) | `surreal-search` cluster: shards, replicas, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
+| [plan.md](./plan.md) | Points at the search-scale board. Extractors are the next board. |
 
 ## What this is
 
