@@ -1,6 +1,6 @@
 # Data model
 
-**Status:** design. Product + data design (goal, hub stack, lease, git, agentic): [venus-design.md](../venus-design.md). Wire: [CRDT](../CRDT/README.md) (M1 keck; product [M3.0 hub](../M3.0/README.md)). Pin then git convert: [LiveSnapshot](../LiveSnapshot/README.md). Markdown projection: [MDGate](../MDGate/README.md) (RAM pane in [M2](../M2/README.md); git sidecar in M3). Workspace index (after SHA): [LifeIndexing](../Agents/LifeIndexing.md). Graph store: [SemanticGraph](../SemanticGraph/README.md).
+**Status:** design. Product + data design (goal, hub stack, lease, git, agentic): [venus-design.md](../venus-design.md). Wire: [CRDT](../CRDT/README.md) (M1 keck; product [M3.0 hub](../M3.0/README.md)). Pin then git convert: [LiveSnapshot](../LiveSnapshot/README.md). Markdown projection: [MDGate](../MDGate/README.md) (RAM pane in [M2](../M2/README.md); git sidecar in M3). Workspace index (after SHA): [LifeIndexing](../Agents/LifeIndexing.md). Graph store: [M5](../M5/README.md).
 
 This folder is **what is stored where**. Markdown is a **projection** of a block tree, not a second replica.
 
@@ -23,7 +23,7 @@ browsers ──Yjs──► hub ──► Postgres     published, catalog, revie
                      last_flushed
                           ▼
                     LifeIndexing        SurrealDB graph at that SHA
-                                        ([SemanticGraph](../SemanticGraph/README.md);
+                                        ([M5](../M5/README.md);
                                         async; not the spec)
 ```
 

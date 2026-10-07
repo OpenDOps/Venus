@@ -4,7 +4,7 @@
 |               |                                                                                     |
 | ------------- | ----------------------------------------------------------------------------------- |
 | **planId**    | `ss-cluster`                                                                        |
-| **Milestone** | First board of [SemanticGraph](../README.md). Search design: [README](./README.md). |
+| **Milestone** | First board of [M5](../README.md). Search design: [README](./README.md). |
 | **Duration**  | About 6 weeks. The replication layer and the layout (steps 4, 5, 9, and 10) are about half of it. |
 | **Board**     | [SS.state.yaml](./SS.state.yaml)                                                    |
 
@@ -14,6 +14,38 @@ Graph role, replication, and write order: [scale.md](../scale.md). Graph schema:
 This board builds everything [scale.md](../scale.md) designs: **surrealastic** (`crates/surrealastic`, replication and layout), the search cluster on it, three graph copies, recovery, failure detection, backups, and shard splits. Each search node is a full SurrealDB server with the **search schema only**. Every search shard and every wiki graph is a replica set of equal copies, written with a fence, a contiguous `lsn`, and a per-copy `_repl_log`. HA default is three search nodes and `replica_count = 1` ([README — high availability](./README.md#high-availability)).
 
 Steps 4–10 run on two search nodes and one graph node, so a search copy can be lost while writes and reads continue. Step 11 adds the third search node, so a replacement copy can land while the dead node is still gone. Step 12 gives the graph three copies acked on two. Step 13 adds backups and the log archive. Step 14 splits shards online.
+
+## Where the board is
+
+Steps 1–4 are done (2026-10-07). Steps 5–14 are not started. Step 7 waits until [M4](../../M4/README.md) is closed; the others do not. Detail per step is the [summary](#steps-summary) below.
+
+**Shipped.** Compose profile `graph` runs SurrealDB `v2.7.0`: one graph node (`:8000`, namespace `graph`, no `SEARCH` index) and two search nodes (`:8001`, `:8002`, namespace `search` only), one volume and a 1 GB cap each. Both search nodes have the BM25 indexes. Postgres holds `search_cluster` (`shard_count` 2, `replica_count` 1) and four `search_allocation` rows; step 6 moves those into `layout_db`. `crates/surrealastic` replicates any SurrealDB database: the `repl_*` map, a fenced writer lease, a guarded `_repl_log` in the same transaction as the data, fan-out with ack, rendezvous placement, and TLS. It has no page, doc, or shard type. Nothing writes a wiki page yet, and a shard is not a replica set yet.
+
+**Layers.** The same six as [scale.md](../scale.md#layers). Replication is the only one shipped.
+
+| Layer | Shipped | Still to build |
+|---|---|---|
+| **Venus** (`venus-graph`) | The crate exists. It does not call surrealastic. | [6](#6-step-project) one write per job. [7](#7-step-enqueue) `graph_jobs` after flush. [8](#8-step-query) the router. |
+| **Layout** (surrealastic) | — | [5](#5-step-layout) commit set, `_layout_item`, shard cursor, queued apply, refill, `schema` hook. [9](#9-step-recover) refill after a trimmed log, queue rebuild on takeover. [14](#14-step-split) split and rebuild. |
+| **Replication** (surrealastic) | [4](#4-step-repl-core) log, fence, fan-out, placement. | [9](#9-step-recover) catch-up, snapshot, takeover, divergence, retention. [12](#12-step-graph-copies) graph ack 2 of 3. |
+| **Graph commit set** | One node and the graph schema. | [6](#6-step-project) writes it. [12](#12-step-graph-copies) three copies. [13](#13-step-backup) archive and restore. |
+| **Search shards** | Two nodes, search schema, allocation rows. | [6](#6-step-project) items by `hkey`. [11](#11-step-third-node) the third node, replacement, `removed`. |
+| **Postgres** | `repl_lease`, `repl_node`, `repl_set`, `repl_copy`. Step 3’s `search_cluster`. | [5](#5-step-layout) `layout_db`. [6](#6-step-project) migrates `search_cluster` into it. [10](#10-step-monitor) node state. [11](#11-step-third-node) `repl_node_seq`. |
+
+**Further, by step.**
+
+| Step | Adds |
+|---|---|
+| [5](#5-step-layout) | The layout: one commit on the graph set, then each item on `key % shard_count`, with the cursor in that shard. |
+| [6](#6-step-project) | Venus on that layout. `hkey` is the key, `doc_id` is the item, one `layout.write` per job. |
+| [7](#7-step-enqueue) | `graph_jobs` after `last_flushed`. A down cluster does not fail a flush. Waits for M4. |
+| [8](#8-step-query) | Word search across shards: two choices, one hedge, failover, `min_commit`, hydrate from the graph. |
+| [9](#9-step-recover) | A copy that missed entries catches up; a wiped copy returns by snapshot; a new writer keeps every acked entry and rebuilds the shard queue. |
+| [10](#10-step-monitor) | Nodes go `suspect`, `down`, and `up`. Each set is green, yellow, or red. |
+| [11](#11-step-third-node) | A third search node. A node down past the delay gets a replacement. `replica_count` stays 1. A removed node keeps its id. |
+| [12](#12-step-graph-copies) | Three graph copies, acked on two. Losing one does not stop graph writes. |
+| [13](#13-step-backup) | The graph log is archived before trim. A graph restores to any archived `lsn`. |
+| [14](#14-step-split) | The fixture wiki goes from 2 shards to 4 while writes and reads continue. A shrink is a new `epoch`. |
 
 ## Shape
 
@@ -76,6 +108,7 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 | Semantic model, NER, HNSW                           | Later.                                                                        |
 | Surrealastic as its own proxy binary                | [scale.md](../scale.md#why-a-layer-not-a-surrealdb-patch) allows it without a design change. A library is enough now. |
 | SurrealDB Enterprise, Raft between SurrealDB nodes  | Postgres chooses the writer. The layer replicates the log.                    |
+| Tantivy instead of SurrealDB `SEARCH`               | The cluster can take that index later ([scale.md — compared with Elasticsearch](../scale.md#compared-with-elasticsearch)). This board keeps SurrealDB `SEARCH`. |
 
 
 
@@ -121,6 +154,7 @@ Every section of [scale.md](../scale.md) and the step that builds it.
 | Node ids from `repl_node_seq`, state `removed`  | 11   |
 | Restore, case by case                           | 9, 10, 11, 12, 13 |
 | Postgres tables, lease statement                | 4 (`repl_*`), 5 (`layout_db`) |
+| Compared with Elasticsearch; Tantivy upgrade    | Not this board. The index stays SurrealDB `SEARCH`. |
 
 
 

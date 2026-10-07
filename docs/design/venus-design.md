@@ -508,7 +508,7 @@ Planner ≠ DoD author ≠ implementer: **v1 warns**; hard refuse is later. On p
 
 Snapshot autocomments are *what moved*, not why. Do **not** sell the graph as shipped at AB1. Do **not** run LifeIndexing on the pin cut or on live `fromDoc`. Failure of the LLM job leaves git HEAD valid.
 
-Index nodes are **headings** (and page title), not 512-token chunks. Identity: `docId` + `blockId` at `wikiSha`. How it is extracted and stored (SurrealDB, after M4): [SemanticGraph](./SemanticGraph/README.md).
+Index nodes are **headings** (and page title), not 512-token chunks. Identity: `docId` + `blockId` at `wikiSha`. How it is extracted and stored (SurrealDB, after M4): [M5](./M5/README.md).
 
 ### Bound chat and chat-edit
 

@@ -1,6 +1,6 @@
-# Semantic graph
+# M5 — Semantic graph
 
-**Status:** design. **step-schema done** (graph schema, search indexes, allocation rows). Search cluster [search-scale/plan.md](./search-scale/plan.md), board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M5](../venus-implementation-plan.md#m5--lease--freeze-week). Does **not** delay `last_flushed`.
+**Status:** in progress — [search-scale](./search-scale/plan.md) steps 1–4 done (step 4, the replication core, 2026-10-07). Board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M7 — lease](../venus-implementation-plan.md#m7--lease--freeze-week). Does **not** delay `last_flushed`.
 
 Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeIndexing](../Agents/LifeIndexing.md). This folder is *how* that graph is built and where it is stored.
 
@@ -50,7 +50,7 @@ In-document work must stay autonomous and fast. Do not call an LLM to find a fun
 | Job | Choice | Rejected for this job |
 |---|---|---|
 | **Graph store** | **SurrealDB 2**, namespace `graph`. `RELATE` edges and exact mention keys. Rust SDK. | Postgres `crdt_*` (live Yjs, not a graph). A second graph engine. Embedding cosine stored as a bind. |
-| **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and copied by Venus ([scale](./scale.md), [search-scale — cluster](./search-scale/README.md#cluster)). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. |
+| **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and copied by surrealastic ([scale](./scale.md), [search-scale — cluster](./search-scale/README.md#cluster)). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. A Tantivy index is a later swap of `SEARCH`, same cluster ([scale — compared with Elasticsearch](./scale.md#compared-with-elasticsearch)). |
 | **In-doc code names** | **tree-sitter** on fenced code only | CodeGraph CLI and Aider. Those analyze the **product** repo at `productSha` ([code-bind](../Agents/code-bind.md)). They are not the wiki indexer. |
 | **Glossary / slang** | **`daachorse`** Aho–Corasick automaton compiled from `glossary.md` (plus page titles and unique headings) | An LLM pass over every paragraph. |
 | **Emails, phones, UUIDs, hashes, API paths** | **`regex`** (Rust engine, linear time) | NER for patterns that are regular. |

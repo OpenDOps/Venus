@@ -20,4 +20,4 @@ steps:
     state: pending
     breakpoint: human
     pr: null
-    note: "Board is docs/design/SemanticGraph/search-scale/plan.md"
+    note: "Board is docs/design/M5/search-scale/plan.md"

@@ -1,8 +1,8 @@
 # M6 — Venus docs in the wiki, indexed
 
-Venus’s own `docs/` becomes one wiki workspace, written by Venus. Each committed page is then indexed by the [SemanticGraph](../SemanticGraph/README.md) pipeline on the [M5](../venus-implementation-plan.md#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks) backend. Indexing covers titles and headings, cross-doc links, folders, a dictionary pass (glossary, titles, headings, keywords), tree-sitter on code snippets, regex patterns, optional NER, full-text search, and vector embeddings. Every pass is deterministic except the two ONNX models, and no pass calls an LLM.
+Venus’s own `docs/` becomes one wiki workspace, written by Venus. Each committed page is then indexed by the [M5](../M5/README.md) pipeline. Indexing covers titles and headings, cross-doc links, folders, a dictionary pass (glossary, titles, headings, keywords), tree-sitter on code snippets, regex patterns, optional NER, full-text search, and vector embeddings. Every pass is deterministic except the two ONNX models, and no pass calls an LLM.
 
-**Status:** not started. **Gate:** [M4](../M4/README.md) and M5 closed. Plan slice: [venus-implementation-plan — M6](../venus-implementation-plan.md#m6--venus-docs-in-the-wiki-indexed-23-weeks). Pass rules: [extract.md](../SemanticGraph/extract.md). Links and edges: [connect.md](../SemanticGraph/connect.md). Tables: [store.md](../SemanticGraph/store.md). A step board (`plan.md`, `M6.state.yaml`) is added here when M6 opens.
+**Status:** not started. **Gate:** [M4](../M4/README.md) and M5 closed. Plan slice: [venus-implementation-plan — M6](../venus-implementation-plan.md#m6--venus-docs-in-the-wiki-indexed-23-weeks). Pass rules: [extract.md](../M5/extract.md). Links and edges: [connect.md](../M5/connect.md). Tables: [store.md](../M5/store.md). A step board (`plan.md`, `M6.state.yaml`) is added here when M6 opens.
 
 ## No CodeGraph and no Aider on the wiki
 
@@ -36,7 +36,7 @@ Most API names (`layout.write`, `ensure`, `fence`) appear as inline code in pros
 
 ## Pipeline
 
-`graph_jobs` from that Flush runs on the committed SHA, one page per job, one `layout.write` per doc ([search-scale plan step 6](../SemanticGraph/search-scale/plan.md#6-step-project)). The passes run in this order on sidecar blocks. A later pass does not overwrite a span an earlier pass claimed, and the longest match wins inside a pass ([extract — pass order](../SemanticGraph/extract.md#pass-order)).
+`graph_jobs` from that Flush runs on the committed SHA, one page per job, one `layout.write` per doc ([search-scale plan step 6](../M5/search-scale/plan.md#6-step-project)). The passes run in this order on sidecar blocks. A later pass does not overwrite a span an earlier pass claimed, and the longest match wins inside a pass ([extract — pass order](../M5/extract.md#pass-order)).
 
 | # | Pass | Tool | Looks at | Emits |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@ A heading whose `body_hash`, dictionary id, and fence-language set are unchanged
 
 ### 1. Structure, links, folders
 
-As in [extract — structure](../SemanticGraph/extract.md#1-structure) and [connect — direct](../SemanticGraph/connect.md#direct--no-model). The page title comes from the catalog name. Each folder is a node, and `contains` runs folder → subfolder → page. A cross-doc link is a `links_to` edge at page and heading level when the target resolves (`venus:doc:` first, then path). Otherwise it is stored with `resolved = false` and never pointed at a page by guess.
+As in [extract — structure](../M5/extract.md#1-structure) and [connect — direct](../M5/connect.md#direct--no-model). The page title comes from the catalog name. Each folder is a node, and `contains` runs folder → subfolder → page. A cross-doc link is a `links_to` edge at page and heading level when the target resolves (`venus:doc:` first, then path). Otherwise it is stored with `resolved = false` and never pointed at a page by guess.
 
 ### 2. Dictionary — `daachorse`
 
@@ -69,16 +69,16 @@ One automaton per workspace, compiled with `daachorse` (`CharwiseDoubleArrayAhoC
 - **Word boundary.** A hit is dropped when the character on either side is a letter or a digit.
 - **Priority.** When one surface form has several sources, the order is `term`, then `title`, then `heading`.
 - **Dictionary id.** Hash of the glossary blob plus the sorted title and heading pattern sets. The automaton is rebuilt only when this hash changes. A change re-runs pass 2 on every page, not passes 1, 3, 4, or 5.
-- **Mentions of titles and headings** are not links. [connect](../SemanticGraph/connect.md) uses them as candidates for the background model. Only explicit links are `links_to`.
+- **Mentions of titles and headings** are not links. [connect](../M5/connect.md) uses them as candidates for the background model. Only explicit links are `links_to`.
 - **Keywords.** Per page, the 10 dictionary targets with the highest `count × idf`, where idf is taken across the workspace’s pages. Stored on `page.keywords` and projected to search as a boosted field. Not an edge.
 
 ### 3. Code snippets — tree-sitter
 
-As in [extract — code symbols](../SemanticGraph/extract.md#3-code-symbols--tree-sitter). Grammars for M6, matched to the docs above: `bash`/`sh`/`zsh`, `yaml`, `sql`, `json` (keys only, as `type` symbols at depth 1), `ts`/`typescript`, `tsx`, `rust`/`rs`. An unknown or missing info string (`text`, `surql`, `mermaid`) gets no symbol pass. A parse error skips that fence only. A symbol defined in a fence is linked to prose on the same page by the per-page symbol automaton. Cross-page symbol hits need a name of 4 or more characters with exactly one definition. No call graph.
+As in [extract — code symbols](../M5/extract.md#3-code-symbols--tree-sitter). Grammars for M6, matched to the docs above: `bash`/`sh`/`zsh`, `yaml`, `sql`, `json` (keys only, as `type` symbols at depth 1), `ts`/`typescript`, `tsx`, `rust`/`rs`. An unknown or missing info string (`text`, `surql`, `mermaid`) gets no symbol pass. A parse error skips that fence only. A symbol defined in a fence is linked to prose on the same page by the per-page symbol automaton. Cross-page symbol hits need a name of 4 or more characters with exactly one definition. No call graph.
 
 ### 4. Patterns — regex
 
-As in [extract — regular patterns](../SemanticGraph/extract.md#4-regular-patterns), crate `regex`.
+As in [extract — regular patterns](../M5/extract.md#4-regular-patterns), crate `regex`.
 
 | Kind | Accept | Reject |
 |---|---|---|
@@ -92,7 +92,7 @@ Join keys are normalized: UUID, email, and hash lower-case; endpoint without its
 
 ### 5. NER — optional
 
-As in [extract — NER](../SemanticGraph/extract.md#5-ner--optional-last).
+As in [extract — NER](../M5/extract.md#5-ner--optional-last).
 
 | Piece | Choice |
 |---|---|
@@ -108,7 +108,7 @@ M6 ships NER behind the flag and tests it on fixture sentences. It stays off on 
 
 ### 6. Full text
 
-The search shards hold BM25 rows for title, heading body, `page.keywords`, and mention text. The analyzer is the one from the [search-scale README schema](../SemanticGraph/search-scale/README.md#schema). Fresh reads pass the job’s commit as `min_commit` ([scale — read path](../SemanticGraph/scale.md#read-path)).
+The search shards hold BM25 rows for title, heading body, `page.keywords`, and mention text. The analyzer is the one from the [search-scale README schema](../M5/search-scale/README.md#schema). Fresh reads pass the job’s commit as `min_commit` ([scale — read path](../M5/scale.md#read-path)).
 
 ### 7. Vectors
 
@@ -168,4 +168,4 @@ The graph namespace gets no vector field and no index, the same rule as its no-`
 
 ## Not in M6
 
-The background model’s semantic binds ([connect — semantic](../SemanticGraph/connect.md#semantic--background-model)), bound chat (AB2), and code-bind on the product repo (AB5).
+The background model’s semantic binds ([connect — semantic](../M5/connect.md#semantic--background-model)), bound chat (AB2), and code-bind on the product repo (AB5).

@@ -602,6 +602,29 @@ No row returned: another process holds the lease. A writer that cannot renew sto
 
 Not taken: Raft between SurrealDB processes (the layer is the only writer; Postgres chooses it), gossip (membership is a few rows with `NOTIFY`), read repair and hinted handoff (one fenced writer per set, catch-up from the log), a fork of the SurrealDB server.
 
+## Compared with Elasticsearch
+
+Surrealastic takes Elasticsearch’s cluster and leaves Lucene. The process is Rust. The index on this board is SurrealDB `SEARCH` (BM25 on RocksDB), not Lucene. Rust removes the JVM. It does not, by itself, make a query faster than Lucene.
+
+| | Elasticsearch | Surrealastic |
+|---|---|---|
+| Unit of scale | A shard of documents | A shard of integer keys. Venus passes `hkey`. |
+| Copies | One extra copy by default. Two copies of the shard. | `replica_count = 1`. Two copies, distinct zones. |
+| Who takes a write | One copy accepts the index operation. The others apply it after. | Every in-sync copy applies the same log entry. Search returns when one copy has committed. Copies stay equal. |
+| Where a copy sits | Allocation, with a delay before a shard moves off a dead node. | Rendezvous. `REPL_REALLOCATE_DELAY_MS` (60 s) before a replacement copy. |
+| Query | A coordinator asks every shard and merges hits. | The router asks every shard, hedges one slow copy, merges hits. |
+| Score | BM25 inside one shard. Scores from two shards are not one scale. | The same. A new wiki has one shard, so the scale is the wiki. |
+| When a hit is visible | After the next refresh, about 1 s by default. | In the transaction that committed the log entry. |
+| Growing the index | Split, or build the index again, when the shard count must change. | Split by doubling. The layout replays current items onto the new shard sets. |
+| Membership | Master-eligible nodes publish cluster state. | Postgres holds the lease and the copy map. A search does not read Postgres. |
+| If every copy of a shard is gone | Restore a snapshot, or build the index again. | Replay `_layout_item` from the graph commit set. |
+
+**Faster here.** No JVM warmup and no garbage-collection pause on the router. A committed entry is searchable immediately. Search ack waits for the fastest copy, and the copies are written in parallel. A wiki that still has one shard pays no scatter across shards. Each search node has an explicit cap (1 GB, 64 MB block cache) instead of a JVM heap plus the page cache.
+
+**Still decided by the index.** Elasticsearch batches documents into immutable Lucene segments, then walks postings at query time. Surrealastic applies a guarded transaction of at most 256 docs on every in-sync copy. That costs more per document and buys a fresher, recoverable index. On a large corpus a Lucene query is still the faster query. SurrealDB BM25 is the index because the same engine holds the graph and a shard is an ordinary SurrealDB database that the layout can refill.
+
+**Tantivy later.** The layout does not read the body. It stores an item key, a tag, and statements, and it replicates those. A later shard can apply the same item to a Tantivy index instead of SurrealDB `SEARCH`. The commit set, the copies, the router, and the split stay. That is the upgrade that can pass Elasticsearch on the query. This board does not add that index. [search-scale](./search-scale/plan.md) keeps SurrealDB `SEARCH`.
+
 ## Do not
 
 - Let a SurrealDB copy open a connection to another copy.
