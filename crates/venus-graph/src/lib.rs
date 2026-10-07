@@ -25,11 +25,11 @@ pub const DEV_SHARD_COUNT: u32 = 2;
 pub const DEV_REPLICA_COUNT: u32 = 1;
 pub const DEV_SEARCH_NODES: u32 = 2;
 
-/// HA default, step 7: a third search node. `replica_count` stays 1.
+/// HA default, step 11: a third search node. `replica_count` stays 1.
 pub const HA_SEARCH_NODES: u32 = 3;
 pub const HA_REPLICA_COUNT: u32 = 1;
 
-/// Flush `jobs` primary key. One row per wiki. `graph_jobs` is step 6.
+/// Flush `jobs` primary key. One row per wiki. `graph_jobs` is step 7.
 pub const FLUSH_JOBS_PK: &str = "workspace_id";
 
 /// Flush `jobs.reason` check. Snapshotter reasons only.

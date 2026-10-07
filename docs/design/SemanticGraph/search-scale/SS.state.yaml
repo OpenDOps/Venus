@@ -26,13 +26,16 @@ steps:
         evidence: "2026-10-06 cargo test -p venus-graph --test recon binary — surrealdb/surrealdb:v2.7.0; client 2.7.0 default-features false, protocol-ws + rustls; Cargo.lock has no rocksdb crate; search nodes do not create namespace graph; no DEFINE INDEX on the graph client."
       - name: HA default
         status: pass
-        evidence: "2026-10-06 cargo test -p venus-graph --test recon ha_default — exit 7 is a third search node, replica_count still 1, shard_count still 2. replica_count = 2 stays a non-goal. Dev shape P=2, R=1, two nodes."
+        evidence: "2026-10-07 cargo test -p venus-graph --test recon ha_default — exit 7 is a third search node, replica_count still 1, shard_count still 2 (built in step 10). replica_count = 2 stays a non-goal. Dev shape P=2, R=1, two nodes."
       - name: Queue split
         status: pass
         evidence: "2026-10-06 cargo test -p venus-graph --test recon flush_jobs — jobs.workspace_id UUID PRIMARY KEY; reason IN ('idle', 'flush', 'lease'); schema.sql has no graph_jobs. Flush unchanged."
       - name: Copies
         status: pass
-        evidence: "2026-10-06 cargo test -p venus-graph --test recon copies — scale.md, README cluster, and plan steps 4–7 name no leader copy, no promotion, no role column. scale.md defines rendezvous, fence, seq, applied_seq, hkey % shard_count, ack on one copy, refill from the graph. Step 4 tests Placement, Fenced, Older seq, One copy down. Step 7 uses rendezvous and SEARCH_REALLOCATE_DELAY_MS."
+        evidence: "2026-10-07 cargo test -p venus-graph --test recon copies — scale.md, README cluster, and plan steps 4–13 name no leader copy, no promotion, no role column. scale.md defines rendezvous, fence, lsn, applied_lsn, _repl_log, hkey % shard_count; search acks on one copy, graph on 2 (majority); a search shard is refilled from the graph, never from a sibling shard. Step 4 tests Placement, Fenced, Gap, One copy down. Step 10 uses rendezvous and REPL_REALLOCATE_DELAY_MS. Step 11 tests Majority ack, No lost ack, Divergent."
+      - name: Coverage
+        status: pass
+        evidence: "2026-10-07 cargo test -p venus-graph --test recon coverage — every name in scale.md defaults appears in plan steps 4–13; non-goals defer no hedging, min_lsn, shard_count change, backups, or archive; steps 7, 8, 9, 12, 13 test Hedge, Divergent, Monitor, Point in time, No early flip."
   step-compose: # 2
     n: 2
     state: done
@@ -63,23 +66,65 @@ steps:
       - name: Allocation
         status: pass
         evidence: "2026-10-06 cargo test -p venus-graph --test schema allocation — search_cluster shard_count 2 replica_count 1. Four rows: shard 0 primary node 0 replica node 1; shard 1 primary node 1 replica node 0. Second migrate stays at two primaries."
-  step-project: # 4
+  step-repl-core: # 4
     n: 4
-    state: pending
+    state: done
     breakpoint: human
     pr: null
-  step-query: # 5
+    dodResults:
+      - name: Pure
+        status: pass
+        evidence: "2026-10-07 cargo test -p surrealastic --test pure — placement, weight, zones, draining, body rule."
+      - name: Live
+        status: pass
+        evidence: "2026-10-07 cargo test -p surrealastic --test live --features fault — lease, renew lost, fenced, gap, already, divergent, atomic, range read, ack policy, one copy down, one in flight, lag max, quiet map, TLS."
+  step-layout: # 5
     n: 5
     state: pending
     breakpoint: human
     pr: null
-  step-enqueue: # 6
+  step-project: # 6
     n: 6
     state: pending
     breakpoint: human
     pr: null
-  step-third-node: # 7
+  step-enqueue: # 7
     n: 7
+    state: pending
+    breakpoint: human
+    pr: null
+  step-query: # 8
+    n: 8
+    state: pending
+    breakpoint: human
+    pr: null
+  step-recover: # 9
+    n: 9
+    state: pending
+    breakpoint: human
+    pr: null
+  step-monitor: # 10
+    n: 10
+    state: pending
+    breakpoint: human
+    pr: null
+  step-third-node: # 11
+    n: 11
+    state: pending
+    breakpoint: human
+    pr: null
+  step-graph-copies: # 12
+    n: 12
+    state: pending
+    breakpoint: human
+    pr: null
+  step-backup: # 13
+    n: 13
+    state: pending
+    breakpoint: human
+    pr: null
+  step-split: # 14
+    n: 14
     state: pending
     breakpoint: human
     pr: null

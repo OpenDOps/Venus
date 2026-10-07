@@ -11,7 +11,7 @@ One page, one `pass` counter (see [store](./store.md#clocks)):
 | # | Pass | Where it looks | Emits |
 |---|---|---|---|
 | 1 | **Structure** | Sidecar + ATX headings, fenced code, markdown links, `<!-- venus:doc:<id> -->` | `heading` nodes, `contains`, `same_page`, link **candidates** |
-| 2 | **Glossary** | Prose slices (not inside fences) | `mention` kind `term` |
+| 2 | **Dictionary** | Prose slices and inline code (not inside fences) | `mention` kind `term` / `title` / `heading`, `page.keywords` |
 | 3 | **tree-sitter** | Each `affine:code` / fenced block, language from the info string | `symbol` nodes, `mention` kind `symbol` |
 | 4 | **regex** | Prose and fence text, skipping spans already claimed | `mention` kind `email` / `phone` / `uuid` / `hash` / `endpoint` |
 | 5 | **NER** | Only if the workspace flag `ner` is on, and only leftover sentences | `mention` kind `person` / `org` / `team` |
@@ -37,14 +37,14 @@ Code fences are located by sidecar blocks whose markdown is a fence, or by the f
 
 ## 2. Glossary — Aho–Corasick
 
-**Source of terms:** the catalog page whose `gitPath` basename is `GLOSSARY.md`. Each ATX heading, or each term in a definition list under it, is one term. The heading that introduces the term is the definition site (`defines`, source `glossary` — written in [connect.md](./connect.md), not by the model).
+**Source of terms:** the catalog page whose `gitPath` basename is `glossary.md`, case-insensitive. Each ATX heading, each term in a definition list, or the bold first cell (`**Term**`) of a table row under it is one term. The heading that introduces the term is the definition site (`defines`, source `glossary` — written in [connect.md](./connect.md), not by the model).
 
 If that page does not exist, the automaton is empty. Do not scrape every H1 in the wiki into the glossary.
 
-**Compile** the term list into one `aho-corasick` automaton (crate `aho-corasick`):
+**Compile** the term list into one automaton with crate `daachorse` (`CharwiseDoubleArrayAhoCorasick`). Page titles and unique multi-word heading texts go into the same automaton as kinds `title` and `heading`; their rules, and `page.keywords`, are in [M6 — dictionary](../M6/README.md#2-dictionary--daachorse).
 
-- Leftmost-longest, so `access token` wins over `token`.
-- Case-insensitive for glossary terms unless the glossary heading says the term is case-sensitive (a mark in that heading’s body: `` `case-sensitive` `` on the same line as the term). Default is insensitive.
+- `MatchKind::LeftmostLongest`, so `access token` wins over `token`.
+- Case-insensitive for glossary terms unless the glossary heading says the term is case-sensitive (a mark in that heading’s body: `` `case-sensitive` `` on the same line as the term). Default is insensitive. Fold ASCII only, on the patterns and on a scan copy of the text, so byte offsets stay those of the original; case-sensitive terms go into a second, exact automaton.
 - After each hit, require a Unicode word boundary on both sides. The automaton itself does not know boundaries; drop the hit if either side is a letter or number.
 - Store the automaton keyed by the glossary file’s git blob hash (`glossary_id`). Rebuild only when that hash changes.
 
@@ -146,9 +146,9 @@ Every hit, all kinds:
 ```text
 mention
   doc_id, block_id, start, end
-  kind          term | symbol | email | phone | uuid | hash | endpoint | person | org | team
+  kind          term | title | heading | symbol | email | phone | uuid | hash | endpoint | person | org | team
   text          surface form
-  target        term id or symbol id (empty for email, phone, uuid, hash, endpoint, person, org, team — other pages join on `norm`)
+  target        term id, docId (title), heading blockId, or symbol id (empty for email, phone, uuid, hash, endpoint, person, org, team — other pages join on `norm`)
   pass
   indexed_sha
 ```

@@ -10,7 +10,7 @@ Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeInd
 | [extract.md](./extract.md) | In-document graph: tree-sitter, Aho–Corasick, regex, optional ONNX NER |
 | [connect.md](./connect.md) | Direct references between pages, then background semantic binds |
 | [store.md](./store.md) | SurrealDB graph schema, clocks, Compose |
-| [scale.md](./scale.md) | Graph store vs search projection. Fenced, versioned writes to equal copies; rendezvous placement; catch-up from the graph; splits. |
+| [scale.md](./scale.md) | Graph store vs search projection. **Surrealastic** replicates each database and places integer keys across shards. Venus writes once per job. |
 | [search-scale](./search-scale/README.md) | `surreal-search` cluster: shards, copies, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
 | [plan.md](./plan.md) | Points at the search-scale board. Extractors are the next board. |
 
@@ -52,7 +52,7 @@ In-document work must stay autonomous and fast. Do not call an LLM to find a fun
 | **Graph store** | **SurrealDB 2**, namespace `graph`. `RELATE` edges and exact mention keys. Rust SDK. | Postgres `crdt_*` (live Yjs, not a graph). A second graph engine. Embedding cosine stored as a bind. |
 | **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and copied by Venus ([scale](./scale.md), [search-scale — cluster](./search-scale/README.md#cluster)). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. |
 | **In-doc code names** | **tree-sitter** on fenced code only | CodeGraph CLI and Aider. Those analyze the **product** repo at `productSha` ([code-bind](../Agents/code-bind.md)). They are not the wiki indexer. |
-| **Glossary / slang** | **`aho-corasick`** automaton compiled from `GLOSSARY.md` | An LLM pass over every paragraph. |
+| **Glossary / slang** | **`daachorse`** Aho–Corasick automaton compiled from `glossary.md` (plus page titles and unique headings) | An LLM pass over every paragraph. |
 | **Emails, phones, UUIDs, hashes, API paths** | **`regex`** (Rust engine, linear time) | NER for patterns that are regular. |
 | **Person / org / team** | Optional **ONNX** NER (`ort` + `tokenizers`), tiny model, **off** until a fixture shows the three tools above miss it | A Python NER service. A general LLM. |
 | **Semantic page↔page binds** | Cheap JSON completion, separate model key, **after** extract | BGE-M3 vectors as the edge. LanceDB as a second store. Cursor subscription as the completions API. |
@@ -72,8 +72,8 @@ Queue grain stays the wiki, on Postgres `graph_jobs` (not the flush `jobs` row),
             ([extract.md](./extract.md))
 3. Direct   links-to + catalog contains ([connect.md](./connect.md))
 4. Upsert   graph namespace. Replace this doc’s extractor edges only.
-4b. Project that doc into the search namespace ([scale.md](./scale.md)).
-            Failure retries the projection. It does not roll back step 4.
+4b. One `layout.write` for that doc ([scale.md](./scale.md)).
+            A shard that lags stays queued in the layout. It does not roll back step 4.
 5. Semantic enqueue dirty headings whose body hash changed
 6. Model    compact map + those headings → evidence edges on the graph
             Replace source = 'model' outbound only.

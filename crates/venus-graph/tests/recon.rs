@@ -1,8 +1,9 @@
 //! ss-cluster step-recon.
 //! Binary: search nodes are `surrealdb/surrealdb:v2` and do not create namespace `graph`.
-//! HA default: exit 7 is three nodes and `replica_count = 1`.
+//! HA default: exit 7 is three nodes and `replica_count = 1` (step 11).
+//! Coverage: every default in scale.md has a step; no designed part is a non-goal.
 //! Flush `jobs` stay the snapshotter queue.
-//! Copies: every copy of a shard is equal. No leader copy, no promotion.
+//! Copies: every copy of a replica set is equal. No leader copy, no promotion.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use venus_graph::{
@@ -124,14 +125,14 @@ fn ha_default() {
         "replica_count 2 stays a non-goal"
     );
 
-    let step7 = between(PLAN, "### 7. step-third-node", "## After this board");
+    let third = between(PLAN, "### 11. step-third-node", "### 12. step-graph-copies");
     assert!(
-        step7.contains("`shard_count` and `replica_count` stay 2 and 1"),
-        "step 7 keeps shard_count 2 and replica_count 1"
+        third.contains("`shard_count` and `replica_count` stay 2 and 1"),
+        "step 11 keeps shard_count 2 and replica_count 1"
     );
     assert!(
-        step7.contains("Set `replica_count` to 2."),
-        "step 7 must refuse replica_count 2"
+        third.contains("Set `replica_count` to 2."),
+        "step 11 must refuse replica_count 2"
     );
 
     let ha = between(README, "## High availability", "## Rebuild");
@@ -171,13 +172,13 @@ fn flush_jobs() {
     assert!(jobs.contains(&reason), "jobs.reason check must be {reason}");
     assert!(
         !SCHEMA.contains("graph_jobs"),
-        "graph_jobs is step 6 and must not be in the flush schema"
+        "graph_jobs is step 7 and must not be in the flush schema"
     );
 
     let recon = between(PLAN, "### 1. step-recon", "### 2. step-compose");
     assert!(
-        recon.contains("`graph_jobs` is step 6"),
-        "step-recon must leave graph_jobs for step 6"
+        recon.contains("`graph_jobs` is step 7"),
+        "step-recon must leave graph_jobs for step 7"
     );
 }
 
@@ -188,12 +189,13 @@ fn names_leader(text: &str) -> bool {
         || lower.contains("promot")
 }
 
-/// Copies of a shard are equal. Writes are fenced and versioned. Catch-up reads the graph.
+/// Copies of a replica set are equal. Writes carry a fence and a contiguous lsn.
+/// Catch-up reads another copy's `_repl_log`. Search acks on one copy, the graph on two.
 #[test]
 fn copies() {
-    let steps = between(PLAN, "### 4. step-project", "## After this board");
+    let steps = between(PLAN, "### 4. step-repl-core", "## After this board");
     let cluster = between(README, "## Cluster", "## Memory");
-    for (name, text) in [("scale.md", SCALE), ("README cluster", cluster), ("steps 4–7", steps)] {
+    for (name, text) in [("scale.md", SCALE), ("README cluster", cluster), ("steps 4–13", steps)] {
         assert!(
             !names_leader(text),
             "{name} must not name a leader copy or a promotion"
@@ -204,29 +206,80 @@ fn copies() {
         );
     }
 
-    for needle in ["rendezvous", "`fence`", "`seq`", "`applied_seq`", "hkey % shard_count"] {
+    for needle in [
+        "rendezvous",
+        "`fence`",
+        "`lsn`",
+        "`applied_lsn`",
+        "`_repl_log`",
+        "hkey % shard_count",
+    ] {
         assert!(SCALE.contains(needle), "scale.md must define {needle}");
     }
     assert!(
-        SCALE.contains("A shard is written when **one** copy commits"),
-        "scale.md must ack a shard write on one copy"
+        SCALE.contains("A search write needs **one** copy"),
+        "scale.md must ack a search write on one copy"
+    );
+    assert!(
+        SCALE.contains("| `ack` | **2** (majority) | **1** |"),
+        "scale.md must ack a graph write on a majority"
     );
     assert!(
         SCALE.contains("never from a sibling shard"),
-        "scale.md must refill a copy from the graph, not a sibling"
+        "scale.md must refill a search shard from the graph, not a sibling"
     );
     assert!(
-        cluster.contains("Rendezvous") && cluster.contains("applied_seq"),
-        "README cluster must name rendezvous placement and applied_seq catch-up"
+        cluster.contains("Rendezvous") && cluster.contains("applied_lsn"),
+        "README cluster must name rendezvous placement and applied_lsn catch-up"
     );
 
-    let project = between(PLAN, "### 4. step-project", "### 5. step-query");
-    for scenario in ["| Placement", "| Fenced", "| Older seq", "| One copy down"] {
-        assert!(project.contains(scenario), "step 4 must test {scenario}");
+    let core = between(PLAN, "### 4. step-repl-core", "### 5. step-layout");
+    for scenario in ["| Placement", "| Fenced", "| Gap", "| One copy down"] {
+        assert!(core.contains(scenario), "step 4 must test {scenario}");
     }
-    let third = between(PLAN, "### 7. step-third-node", "## After this board");
+    let third = between(PLAN, "### 11. step-third-node", "### 12. step-graph-copies");
     assert!(
-        third.contains("rendezvous") && third.contains("SEARCH_REALLOCATE_DELAY_MS"),
-        "step 7 joins by rendezvous and waits the reallocate delay"
+        third.contains("rendezvous") && third.contains("REPL_REALLOCATE_DELAY_MS"),
+        "step 11 joins by rendezvous and waits the reallocate delay"
     );
+    let graph = between(PLAN, "### 12. step-graph-copies", "### 13. step-backup");
+    for scenario in ["| Majority ack", "| No lost ack", "| Divergent"] {
+        assert!(graph.contains(scenario), "step 11 must test {scenario}");
+    }
+}
+
+/// Every default scale.md names has a step. No non-goal defers a designed part.
+#[test]
+fn coverage() {
+    let defaults = between(SCALE, "## Defaults", "## Why this shape");
+    let steps = between(PLAN, "### 4. step-repl-core", "## After this board");
+    let names: Vec<&str> = defaults
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_uppercase() || c == '_'))
+        .collect();
+    assert!(names.len() >= 12, "scale.md defaults must name its settings");
+    for name in names {
+        assert!(steps.contains(name), "steps 4–13 must use {name}");
+    }
+
+    let non_goals = between(PLAN, "## Non-goals", "## Constraints");
+    for designed in ["Hedged", "`min_lsn`", "shard_count", "backups", "archive"] {
+        assert!(
+            !non_goals.contains(designed),
+            "non-goals must not defer {designed}; scale.md designs it"
+        );
+    }
+    for (step, scenario) in [
+        ("### 8. step-query", "| Hedge"),
+        ("### 9. step-recover", "| Divergent"),
+        ("### 10. step-monitor", "| Monitor"),
+        ("### 13. step-backup", "| Point in time"),
+        ("### 14. step-split", "| No early flip"),
+    ] {
+        let rest = between(PLAN, step, "## After this board");
+        let body = rest.split("\n### ").next().unwrap_or(rest);
+        assert!(body.contains(scenario), "{step} must test {scenario}");
+    }
 }

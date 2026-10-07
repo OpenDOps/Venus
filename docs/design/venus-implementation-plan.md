@@ -205,7 +205,7 @@ If we skip it:
 
 OctoBase AGPL is a **distribution** constraint for **M1 keck** ([licensing.md](../legal/licensing.md)), not adapter correctness. **M3.0** removes keck from the product path. Neither keck nor the hub makes markdown round-trip correct.
 
-**Fixture suite (M2 exit, before M6):** not a demo.
+**Fixture suite (M2 exit, before M8):** not a demo.
 
 1. **Stable subset.** For the round-trippable types Venus documents (paragraph, heading, list, code, links, linked-doc in the stable markdown form), `fromDoc → toDoc → fromDoc` is byte-stable modulo listed whitespace rules.
 2. **Sidecar ids.** Every exported block has a stable id in the Venus map (not user-visible syntax). Parse diffs **by id**. Re-export keeps the same ids if the writer did not delete the block.
@@ -215,14 +215,14 @@ OctoBase AGPL is a **distribution** constraint for **M1 keck** ([licensing.md](.
 
 Until that suite is green: no alternatives/stacks; do not tell agents “edit the `.md` in git and it will apply.” v1 agent path is lease → private buffer → hunks → accept (still through the adapter). Clone-and-PR import is later.
 
-**Order:** after BlockSuite mounts and syncs, **[MDGate](./MDGate/README.md)** (including [subset](./MDGate/subset.md) / [fixtures](./MDGate/fixtures.md)), then **adapter + sidecar + snapshot writer**, not the review DAG. Apply is [apply.md](./MDGate/apply.md) (markdown vs `T0` → hunks → ops) before M6. Review UI without a faithful exporter produces commented diffs of adapter jitter.
+**Order:** after BlockSuite mounts and syncs, **[MDGate](./MDGate/README.md)** (including [subset](./MDGate/subset.md) / [fixtures](./MDGate/fixtures.md)), then **adapter + sidecar + snapshot writer**, not the review DAG. Apply is [apply.md](./MDGate/apply.md) (markdown vs `T0` → hunks → ops) before M8. Review UI without a faithful exporter produces commented diffs of adapter jitter.
 
 ### 4. Linked docs
 
 Insert `affine:embed-linked-doc` with `pageId = docId`.  
 **Git** stores `[catalog name](posix-relative gitPath)` plus `<!-- venus:doc:<docId> -->`. Post-process **replaces** the M2 adapter URL `./workspace/<ws>/<pageId>` — that path is not a file in the clone. Identity is the comment (and the live `pageId`); the href is that commit’s folders.
 
-Resolve on import: `venus:doc:` first → catalog `docId`; path second (LLM / missing comment). Recreating the card from markdown is M6 apply, not adapter `toDoc`.
+Resolve on import: `venus:doc:` first → catalog `docId`; path second (LLM / missing comment). Recreating the card from markdown is M8 apply, not adapter `toDoc`. The M6 docs import is a fresh `toDoc` of whole files into new spaces, not apply.
 
 ### 5. Lease ↔ freeze
 
@@ -263,10 +263,14 @@ Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./A
 | M3.0 | [Venus hub](#m30--venus-hub-replace-keck-week) | done 2026-09-13 |
 | M3 | [Git snapshotter](#m3--git-snapshotter-week) | done 2026-09-14 |
 | M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | in progress (step 5 done 2026-09-15) |
-| M5 | [Lease + freeze](#m5--lease--freeze-week) | not started |
-| M6 | [Comment-commit](#m6--comment-commit-markdown-only-2-weeks) | not started |
-| M7 | [Threads, alternatives, stacks](#m7--threads-alternatives-stacks-2-weeks) | not started |
-| M8 | [Revert + agent loop](#m8--revert--agent-loop-week) | not started |
+| M5 | [Semantic graph backend (SurrealDB + surrealastic)](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks) | in progress (step 4 done 2026-10-07) |
+| M6 | [Venus docs in the wiki, indexed](#m6--venus-docs-in-the-wiki-indexed-23-weeks) | not started |
+| M7 | [Lease + freeze](#m7--lease--freeze-week) | not started |
+| M8 | [Comment-commit](#m8--comment-commit-markdown-only-2-weeks) | not started |
+| M9 | [Threads, alternatives, stacks](#m9--threads-alternatives-stacks-2-weeks) | not started |
+| M10 | [Revert + agent loop](#m10--revert--agent-loop-week) | not started |
+
+M5 and M6 were inserted on 2026-10-07. Lease, comment-commit, threads, and revert were M5–M8 before that. Older links to `#m5--lease--freeze-week` and the other old anchors still land on the renamed sections.
 
 ### M0 — Empty host (days)
 
@@ -293,7 +297,7 @@ Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./A
 
 - Read-only markdown pane: `MarkdownAdapter.fromDoc` on the **synced Store** ([live-pane.md](./MDGate/live-pane.md) single-flight loop in [M2 `step-loop`](./M2/plan.md#6-step-loop): in-place RAM splice or full export). **highlight.js** paints that string as source (not CodeMirror, not a rendered preview). Not keck `GET …/export`. Git pin is still full `fromDoc` on a pin.
 - Block-id sidecar in **RAM** (and test goldens). No `wiki/.venus/ids/`, no Postgres markdown.
-- **Export fixture suite** (`rt-*`, `side-*`, `incr-*`, opaque, loss, `one-exporter`, `e2e-pane`). **Apply rows (`ap-*`) are M6.**
+- **Export fixture suite** (`rt-*`, `side-*`, `incr-*`, opaque, loss, `one-exporter`, `e2e-pane`). **Apply rows (`ap-*`) are M8.**
 - No git, lease, CodeMirror, or editable markdown.
 
 **Exit:** [fixtures.md](./MDGate/fixtures.md) **export** rows green; WYSIWYG and markdown stay aligned on one client; pane is replaceable (no caret); one shared exporter.
@@ -312,11 +316,11 @@ Do not start M3 `wiki/` until this milestone is **done**. Hub HPA, stateless gat
 
 **Status:** done (2026-09-14). Step-by-step: [M3/plan.md](./M3/plan.md). Board: [M3/M3.state.yaml](./M3/M3.state.yaml). **Gate was:** [M3.0](./M3.0/README.md) **closed** and [LiveSnapshot/high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance** accepted 2026-09-13 (snapshotter beside the **hub**; 2026-08-31 “OctoBase stays” is superseded).
 
-Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 **implements** the [HA snapshotter](./LiveSnapshot/high-availability.md): `dirty_wiki` → `jobs` → SKIP LOCKED consumers → MVCC cut. Load is one wiki / one page. **Rust worker** hydrates the pin with y-octo, then converts with the M2 dialect ([M3](./M3/plan.md): JS CLI oracle, Rust `fromDoc`). Do not `fromDoc` the live Store for git. Slice `toDoc` for apply is the same worker (M6), not the hub.
+Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not stall live CRDT). M3 **implements** the [HA snapshotter](./LiveSnapshot/high-availability.md): `dirty_wiki` → `jobs` → SKIP LOCKED consumers → MVCC cut. Load is one wiki / one page. **Rust worker** hydrates the pin with y-octo, then converts with the M2 dialect ([M3](./M3/plan.md): JS CLI oracle, Rust `fromDoc`). Do not `fromDoc` the live Store for git. Slice `toDoc` for apply is the same worker (M8), not the hub.
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in the hub; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
-Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. The graph store and in-document extractors are [SemanticGraph](./SemanticGraph/README.md) (SurrealDB; start once M4 links exist). Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M5–M6 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M6** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
+Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. The graph store is [M5](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks) and the in-document extractors are [M6](#m6--venus-docs-in-the-wiki-indexed-23-weeks) ([SemanticGraph](./SemanticGraph/README.md), SurrealDB). Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M7–M8 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M8** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
 
 - First snapshot: sidecar **autoinits** `wiki/` (git2 init + catalog dirs) if missing; product git ignores it. No origin in M3.
 - Catalog v0: one folder, one doc, fixed path.
@@ -341,13 +345,65 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 **Exit:** two pages, one link, move a page to another folder, git tree matches, link still resolves, Flush used `.venus/links.json` (not `fromDoc` of every page). Header undo/redo matches keyboard undo on the open page.
 
-**After M4 (not this exit):** record the workspace’s **wiki remote + product remote@branch** (separate histories; submodules lean). Do **not** delay M5 for the analyzer. **Before AB5:** select CodeGraph CLI, Aider, or both ([code-bind — select](./Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). Design: [code-bind](./Agents/code-bind.md). AB5 / runner review: [agentic-binding — AB5](./Agents/agentic-binding.md#ab5--code-bind--aider), [product-plan](../product/product-plan.md#workspace-and-aider).
+**After M4 (not this exit):** record the workspace’s **wiki remote + product remote@branch** (separate histories; submodules lean). Do **not** delay M7 for the analyzer. **Before AB5:** select CodeGraph CLI, Aider, or both ([code-bind — select](./Agents/code-bind.md#select-codegraph-cli-or-aider-or-both)). Design: [code-bind](./Agents/code-bind.md). AB5 / runner review: [agentic-binding — AB5](./Agents/agentic-binding.md#ab5--code-bind--aider), [product-plan](../product/product-plan.md#workspace-and-aider).
 
-**Next graph build (after M4, parallel to M5):** [SemanticGraph](./SemanticGraph/README.md). First board is the search cluster ([search-scale/plan.md](./SemanticGraph/search-scale/plan.md)): one graph process and `surreal-search` nodes that run the full SurrealDB server with the search schema only. Dev shape is 2 nodes, `replica_count = 1`. HA default adds a third node, replica count unchanged (step 7). Steps 1–5 and 7 can start now; step 6 waits until M4 is closed. SurrealDB holds the spatial wiki graph (namespace `graph`) and a search projection (namespace `search`, [scale](./SemanticGraph/scale.md)). Tree-sitter, glossary, regex, and the background model are the boards after this split. Does not replace M5. Does not run CodeGraph or Aider on the wiki.
+### M5 — Semantic graph backend: SurrealDB + surrealastic (6 weeks)
 
-### M5 — Lease + freeze (week)
+**Status:** in progress — [search-scale](./SemanticGraph/search-scale/plan.md) steps 1–4 done (step 4, the replication core, 2026-10-07). Step-by-step: [search-scale/plan.md](./SemanticGraph/search-scale/plan.md). Board: [SS.state.yaml](./SemanticGraph/search-scale/SS.state.yaml). Design: [SemanticGraph](./SemanticGraph/README.md), [store.md](./SemanticGraph/store.md), [scale.md](./SemanticGraph/scale.md), [search-scale](./SemanticGraph/search-scale/README.md). **Gate:** steps 1–6 and 8–14 can run now; step 7 (`graph_jobs` after flush) waits until [M4](./M4/README.md) is closed.
 
-**Status:** not started. Plan lives in this file until a dedicated `M5/` board exists.
+The storage backend the wiki graph and word search run on. No extractor yet: fixture docs only.
+
+- SurrealDB `v2.7.0`, stock `surreal start rocksdb:…`, Compose profile `graph`. Graph processes hold namespace `graph` (pages, headings, mentions, `RELATE` edges, model binds, no full-text index). Search processes hold namespace `search` only (BM25 projection of heading and mention text). `crates/venus-graph` is the worker; not the hub, not the pin cut.
+- **Surrealastic** (`crates/surrealastic`, no Venus types): replication (Postgres lease + `fence`, contiguous `lsn`, per-copy `_repl_log` in the same transaction as the data, fan-out with ack, catch-up, snapshot, takeover, divergence, retention) and layout (commit set = the wiki graph, items on `key % shard_count`, queued apply, refill from the commit set, split by doubling).
+- Venus writes once per job (`layout.write`): graph body plus one search item per doc, `key = hkey`. A lagging shard never fails or retries the job.
+- Router: map cache, two random choices, hedge after p95, failover, `min_lsn`, `@@` merge across shards, hydrate from the graph, `unverified` when the graph does not answer.
+- Monitor, node states, health; third search node and replacement; three graph copies acked on two; nightly export, log archive, point-in-time restore; online split.
+- `graph_jobs` (not flush `jobs`) is upserted after `last_flushed`; a down cluster never fails a flush.
+
+**Exit:** the [search-scale exit](./SemanticGraph/search-scale/plan.md#exit): losing one search copy or one graph copy loses no acked write and stops neither writes nor reads; a wiped copy comes back by snapshot plus catch-up; `@@` merges every shard and never runs on a graph node; the fixture wiki splits 2 → 4 under load; M1–M4 tests stay green.
+
+Does not run CodeGraph or Aider on the wiki. Does not change Flush. Does not replace M7.
+
+### M6 — Venus docs in the wiki, indexed (2–3 weeks)
+
+**Status:** not started. Design brief: [M6/README.md](./M6/README.md) (passes, tools, measured doc counts, steps, exit). Pass rules: [extract.md](./SemanticGraph/extract.md), [connect.md](./SemanticGraph/connect.md), [LifeIndexing](./Agents/LifeIndexing.md) (AB1 contract). **Gate:** M4 and M5 closed.
+
+No CodeGraph and no Aider on the wiki: they analyze the product git at `productSha` for AB5 ([code-bind](./Agents/code-bind.md)). Wiki code fences get tree-sitter only.
+
+Dogfood the product on its own documentation, then index it with the M5 backend.
+
+**Upload.** Venus’s own `docs/` (design, product, marketing, devops, scenarios) becomes one wiki workspace, written by Venus, not copied into `wiki/` by hand:
+
+- Catalog folders mirror the `docs/` directories. One catalog page per `.md`, name from its first `#` heading, `gitPath` = its relative path.
+- Each file enters through `MarkdownAdapter` `toDoc` into a new space (same adapter as [MDGate](./MDGate/README.md)). Relative links between those files become `affine:embed-linked-doc` / `venus:doc:` links; links that do not resolve stay plain and are reported.
+- One Flush writes `wiki/` and `.venus/ids/` through the M3 snapshotter. The import is rerunnable: an unchanged file does not make a new page or a git change.
+
+**Index.** `graph_jobs` from that Flush runs the [SemanticGraph pipeline](./SemanticGraph/README.md#pipeline) on the committed SHA. One `layout.write` per doc.
+
+| Index | Built from | Stored |
+|---|---|---|
+| Titles and headings | Catalog name, page title, heading tree | Graph `page` / `heading`; title and heading text on the search shards |
+| Cross-document links | `venus:doc:` and markdown links ([connect — direct](./SemanticGraph/connect.md#direct--no-model)) | Graph `links_to`, page and heading level. Unresolved targets stored as unresolved, not guessed |
+| Folder structure | Catalog parent chain | Graph `contains` edges folder → page; `git_path` on the page |
+| Glossary, titles, headings, keywords | **`daachorse`** (double-array Aho–Corasick, leftmost-longest) over prose and inline code; glossary from `glossary.md` | Graph `mention` kinds `term`, `title`, `heading`; `page.keywords` (top 10 by count × idf). Title and heading hits are candidates, not links |
+| Code snippets | **tree-sitter** on fenced code only (bash, YAML, SQL, JSON, TypeScript/TSX, Rust) ([extract](./SemanticGraph/extract.md)) | Graph symbol mentions on the heading that holds the fence |
+| Email, UUID, phone, hashes, endpoints | **`regex`**, conservative patterns | Graph `mention` with a normalized `norm`; pages meet through it, not through an edge |
+| People and organizations (optional) | **`tokenizers`** + a BERT-class NER model in **ONNX** via `ort`; off by default, off on the Venus docs | Graph `mention` kinds `person`, `org` |
+| Full-text search | Title, heading body, keywords, mention text | Search shards, BM25 `@@` |
+| Vector embeddings | Heading body (BGE-M3, ONNX via `ort`) | Search namespace, HNSW index, next to the BM25 rows. Candidate search only: a near neighbor is never an edge |
+
+- Query API (`venus_graph::search`, `venus_graph::exact`): title lookup, `@@`, vector neighbors, and a hybrid of the two, all hydrated from the graph; outbound and inbound links of a page; the folder path of a page; pages that name a code symbol.
+- Re-index of an unchanged heading churns no edge and no vector.
+
+**Exit:** the Venus docs are browsable in the tree and readable in a `wiki/` clone. For a fixed list of questions about this repo (for example “where is the lease fence checked”, “which pages link to `scale.md`”, “which pages mention `layout.write`”, “what is a pin”), the right page is in the top 5 for title, full-text, vector, and hybrid search. Every cross-doc link in `docs/` is an edge or a reported unresolved target. Every glossary term has a definition site and its mentions. `exact` on a UUID returns every page that holds it. Killing SurrealDB does not fail a Flush.
+
+Not this exit: CodeGraph or Aider on the wiki, NER on the Venus docs workspace, and the background model’s semantic binds ([connect — semantic](./SemanticGraph/connect.md#semantic--background-model)). Bound chat (AB2) reads this index later.
+
+<a id="m5--lease--freeze-week"></a>
+
+### M7 — Lease + freeze (week)
+
+**Status:** not started. Plan lives in this file until a dedicated `M7/` board exists.
 
 - Acquire / heartbeat / release.
 - Editor readonly + banner while leased.
@@ -356,9 +412,11 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 **Exit:** second user cannot type in WYSIWYG during the lease; they see who holds it.
 
-### M6 — Comment-commit (markdown only) (2 weeks)
+<a id="m6--comment-commit-markdown-only-2-weeks"></a>
 
-**Status:** not started. Plan lives in this file until a dedicated `M6/` board exists. Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks; not whole-file `toDoc`).
+### M8 — Comment-commit (markdown only) (2 weeks)
+
+**Status:** not started. Plan lives in this file until a dedicated `M8/` board exists. Design: [MDGate apply](./MDGate/apply.md) (markdown vs `T0` + sidecar → hunks; not whole-file `toDoc`).
 
 - Diff `markdown_T0` vs buffer; attribute with frozen sidecar → hunks. Overlay on **Before** WYSIWYG (Cursor-style).
 - Submit **requires** a comment + optional selection pin on **Before** (right rail).
@@ -370,9 +428,11 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 Parallel (**AB4**, not this exit): [history/why pack](./Agents/agentic-binding.md#ab4--history--why-pack) may start **after this** — real comment-commit whys exist. Do not start AB4 because AB1 exists. Spatial AB1 is not pain 7.
 
-### M7 — Threads, alternatives, stacks (2 weeks)
+<a id="m7--threads-alternatives-stacks-2-weeks"></a>
 
-**Status:** not started. Plan lives in this file until a dedicated `M7/` board exists.
+### M9 — Threads, alternatives, stacks (2 weeks)
+
+**Status:** not started. Plan lives in this file until a dedicated `M9/` board exists.
 
 - Pin-only comment (no hunks) on **Before** (published or `T0`), right rail.
 - Replies.
@@ -382,9 +442,11 @@ Parallel (**AB4**, not this exit): [history/why pack](./Agents/agentic-binding.m
 
 **Exit:** two competing proposals on one pin; accept one; the other is superseded.
 
-### M8 — Revert + agent loop (week+)
+<a id="m8--revert--agent-loop-week"></a>
 
-**Status:** not started. Plan lives in this file until a dedicated `M8/` board exists.
+### M10 — Revert + agent loop (week+)
+
+**Status:** not started. Plan lives in this file until a dedicated `M10/` board exists.
 
 - Revert from git sha as a review commit.
 - Regenerate: comment on a hunk → holder replaces that commit’s hunks.
@@ -413,9 +475,9 @@ Ship M2 → **M3.0** → M3 → M4, then **author the product in the wiki**, not
 
 **Exit for dogfood:** a manager can create and edit pages in the tree; a second browser sees them; a clone of `wiki/` is readable markdown. Venus’s own pitch, product plan, and design notes can live (or be mounted) as wiki pages. `docs/` in this git may still be the engineering notebook until that move; the **product** docs that managers own must have a wiki home.
 
-Do not wait for M7–M8. Do not wait for Hugo. Clone + live wiki is v1 documentation.
+Do not wait for M9–M10. Do not wait for Hugo. Clone + live wiki is v1 documentation.
 
-### Meaning-accept (after M6)
+### Meaning-accept (after M8)
 
 When a spec page **changes intention**, v1 must use comment-commit: After / Before / Diff + required human-language why. That is the PM review cycle (CodeSpeak-shaped, on spec). Casual typos stay snapshots.
 
@@ -425,7 +487,7 @@ When a spec page **changes intention**, v1 must use comment-commit: After / Befo
 
 Runner, two-agent DoD, MCP, Hugo, alternatives/stacks, **analyzer review**. Identity can stay display name + id ([Identity (v1)](#identity-v1)); the **authorization module** is a leftover (separately designed), not dogfood. Named people (not `user1`) so a PM can see who holds a lease. After M4 you **may** record product remote + branch; you do not run Aider or CodeGraph in dogfood.
 
-Header in M4 should already show **current page**. As soon as M5 exists, show **who holds the lease**. That is manager chrome, not programmer chrome.
+Header in M4 should already show **current page**. As soon as M7 exists, show **who holds the lease**. That is manager chrome, not programmer chrome.
 
 ## Suggested repo layout
 
@@ -438,12 +500,13 @@ Venus/
   apps/web/                 # BlockSuite host + tree + review UI
   crates/venus-hub/         # M3.0 product hub: y-octo apply + WS + persist
   crates/venus-sidecar/     # convert worker: y-octo hydrate + M2 adapter + git2
-  crates/venus-graph/       # semantic graph worker → SurrealDB (after M4). Not the hub.
+  crates/venus-graph/       # semantic graph worker → SurrealDB (M5, M6). Not the hub.
+  crates/surrealastic/      # M5: replication + layout over stock SurrealDB. No Venus types.
   packages/catalog/         # not M4; catalog ops are apps/web/src/host/catalog/
   packages/review/          # lease, thread, commit, hunk types
   packages/md-bridge/       # adapter + id map + id-diff → BlockSuite ops
   wiki/                     # git working tree (or **separate remote**; product code is another remote / submodule)
-  docs/design/              # product + architecture + datamodel + CRDT + MDGate + SemanticGraph + milestone plans (M0–M8)
+  docs/design/              # product + architecture + datamodel + CRDT + MDGate + SemanticGraph + milestone plans (M0–M10)
   docs/devops/              # Compose now; Kubernetes later; hub fleet after M3.0
   docs/drafts/pre-design/   # pitch-era notes (v1-concerns, venus-plan)
 ```
@@ -456,7 +519,7 @@ After M3.0 the collab image is **Venus hub** (not AGPL). Do not vendor OctoBase 
 | Risk                                     | Mitigation                                                                                                                                                              |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OctoBase JS provider is incomplete       | M1 shim; M3.0 hub keeps the same `y-protocols` interface                                                                                                                |
-| MarkdownAdapter drops block ids / jitter | **[MDGate](./MDGate/README.md)**; **export fixtures before M2 exit**; **apply fixtures before M6** ([adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)) |
+| MarkdownAdapter drops block ids / jitter | **[MDGate](./MDGate/README.md)**; **export fixtures before M2 exit**; **apply fixtures before M8** ([adapter gate](#markdown-adapter-gate-build-this-do-not-debate-it)) |
 | Adapter cannot express a block           | Opaque raw block; markdown commit must not rewrite it                                                                                                                   |
 | OctoBase AGPL                            | M1 keck only; M3.0 hub is Venus-owned. Keep app code separate either way                                                                                                |
 | y-octo / Yjs version skew                | Pin versions to the pair AFFiNE currently ships                                                                                                                         |
@@ -478,17 +541,19 @@ Everything after M3.0 git is Venus snapshotter. Do not block M3.0 on review desi
 
 1. Playground page editor. **Done** — [M0](./M0/README.md).
 2. OctoBase sync of that one doc (Postgres + keck in Compose). **Done** — [M1](./M1/README.md).
-3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M6.
+3. **[MDGate](./MDGate/README.md)** design is written. **Code:** [M2/plan.md](./M2/plan.md) — read-only markdown pane + **export fixture suite**. Apply: [apply.md](./MDGate/apply.md) before M8.
 4. **Venus hub** — [M3.0/plan.md](./M3.0/plan.md). Replaces keck. **Done** (2026-09-13). HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
 5. **Git snapshotter** — [M3/plan.md](./M3/plan.md) ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape). **Done** (2026-09-14). Gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance.
 6. **Folder tree + product header** — [M4/plan.md](./M4/plan.md). **Gated on M3 closed.**
-7. **Lease + freeze** — [M5](#m5--lease--freeze-week).
-8. **Comment-commit** — [M6](#m6--comment-commit-markdown-only-2-weeks). Apply fixtures first: [apply.md](./MDGate/apply.md).
-9. **Threads, alternatives, stacks** — [M7](#m7--threads-alternatives-stacks-2-weeks).
-10. **Revert + agent loop** — [M8](#m8--revert--agent-loop-week).
+7. **Semantic graph backend** — [M5](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks), board [search-scale/plan.md](./SemanticGraph/search-scale/plan.md). Steps 1–4 done.
+8. **Venus docs in the wiki, indexed** — [M6](#m6--venus-docs-in-the-wiki-indexed-23-weeks). Titles, cross-doc links, folders, `daachorse` dictionary (glossary, titles, headings, keywords), tree-sitter on code, regex patterns, optional ONNX NER, full-text, vectors. Brief: [M6/README.md](./M6/README.md).
+9. **Lease + freeze** — [M7](#m7--lease--freeze-week).
+10. **Comment-commit** — [M8](#m8--comment-commit-markdown-only-2-weeks). Apply fixtures first: [apply.md](./MDGate/apply.md).
+11. **Threads, alternatives, stacks** — [M9](#m9--threads-alternatives-stacks-2-weeks).
+12. **Revert + agent loop** — [M10](#m10--revert--agent-loop-week).
 
-Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M6 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
+Do not start M2 **exit** until [fixtures.md](./MDGate/fixtures.md) export rows are green. Do not start M8 until apply rows are green ([apply.md](./MDGate/apply.md)). Snapshot git (autocomment) first, then freeze, then markdown comment-commits.
 
-**v1 documenting this product:** after M4, dogfood the wiki as the manager-facing spec store; after M6, spec-intention changes use comment-commit. Details: [v1 dogfood](#v1-dogfood--document-the-product).
+**v1 documenting this product:** after M4, dogfood the wiki as the manager-facing spec store; after M6, the same docs are indexed; after M8, spec-intention changes use comment-commit. Details: [v1 dogfood](#v1-dogfood--document-the-product).
 
-After the wiki spine (M8): runner, lease MCP, accept inbox, shared git hop — [product-plan](../product/product-plan.md). Bound chat (AB2) and chat-edit (AB3) are parallel: [agentic-binding](./Agents/agentic-binding.md). **Two gits + analyzer** (AB5): record remotes after M4; **select** CodeGraph CLI, Aider, or both; review product diffs after plan-step implement — [code-bind](./Agents/code-bind.md), [product-plan — Workspace and Aider](../product/product-plan.md#workspace-and-aider). Those files are not this milestone list. Flow invariants to force: [product-plan — Force these](../product/product-plan.md#force-these-or-it-is-not-the-flow).
+After the wiki spine (M10): runner, lease MCP, accept inbox, shared git hop — [product-plan](../product/product-plan.md). Bound chat (AB2) and chat-edit (AB3) are parallel: [agentic-binding](./Agents/agentic-binding.md). **Two gits + analyzer** (AB5): record remotes after M4; **select** CodeGraph CLI, Aider, or both; review product diffs after plan-step implement — [code-bind](./Agents/code-bind.md), [product-plan — Workspace and Aider](../product/product-plan.md#workspace-and-aider). Those files are not this milestone list. Flow invariants to force: [product-plan — Force these](../product/product-plan.md#force-these-or-it-is-not-the-flow).

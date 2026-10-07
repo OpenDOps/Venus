@@ -21,6 +21,7 @@ surrealdb = { version = "2.7.0", default-features = false, features = [
   "protocol-ws",
   "rustls",
 ] }
+surrealastic = { path = "../surrealastic" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]

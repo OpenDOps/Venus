@@ -44,6 +44,9 @@ pub struct AllocationRow {
 /// Create the map if needed and seed this board's two nodes, crossed.
 /// A second call does not insert another primary.
 pub async fn migrate_allocation(database_url: &str) -> anyhow::Result<()> {
+    surrealastic::migrate(database_url)
+        .await
+        .context("repl map")?;
     let pool = PgPool::connect(database_url)
         .await
         .context("connect allocation postgres")?;
