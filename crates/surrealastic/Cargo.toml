@@ -36,3 +36,11 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 name = "live"
 path = "tests/live.rs"
 required-features = ["fault"]
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+
+[[test]]
+name = "layout_live"
+path = "tests/layout_live.rs"

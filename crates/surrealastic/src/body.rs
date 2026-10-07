@@ -2,7 +2,7 @@
 //! replay to the same rows.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use serde_json::{Map, Value};
 
 /// Statements plus the parameters they close over. Built, never hand-written.
@@ -62,6 +62,78 @@ impl Body {
             "statements": self.statements,
             "params": self.params,
         })
+    }
+
+    /// Rebuild a body that was stored in a log row or an item row.
+    pub fn from_logged(value: &Value) -> anyhow::Result<Self> {
+        let Some(statements) = value.get("statements").and_then(|v| v.as_array()) else {
+            bail!("logged body has no statements");
+        };
+        let statements = statements
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .context("logged statement is not a string")
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let params = value
+            .get("params")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        Ok(Self { statements, params })
+    }
+
+    /// One statement that already passes the body rule.
+    pub fn statement(mut self, sql: &str) -> anyhow::Result<Self> {
+        let sql = sql.trim().trim_end_matches(';').trim();
+        if sql.is_empty() {
+            bail!("empty statement");
+        }
+        accept_sql(sql)?;
+        self.statements.push(format!("{sql};"));
+        Ok(self)
+    }
+
+    /// A schema change. Only `DEFINE` and `REMOVE` statements.
+    pub fn define(self, sql: &str) -> anyhow::Result<Self> {
+        let mut body = self;
+        for part in sql.split(';') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let head = part.split_whitespace().next().unwrap_or("");
+            if !head.eq_ignore_ascii_case("define") && !head.eq_ignore_ascii_case("remove") {
+                bail!("define refuses a non-DDL statement");
+            }
+            body = body.statement(part)?;
+        }
+        Ok(body)
+    }
+
+    /// Splice another body, rebinding its parameters so names do not clash.
+    pub fn append(mut self, other: &Body) -> Self {
+        let mut map = std::collections::HashMap::new();
+        for (key, value) in &other.params {
+            let bound = self.bind(value.clone());
+            map.insert(key.clone(), bound);
+        }
+        let mut keys: Vec<_> = map.keys().cloned().collect();
+        keys.sort_by_key(|key| std::cmp::Reverse(key.len()));
+        for statement in &other.statements {
+            let mut rewritten = statement.clone();
+            for key in &keys {
+                rewritten = rewritten.replace(&format!("${key}"), &format!("${}", map[key]));
+            }
+            self.statements.push(rewritten);
+        }
+        self
+    }
+
+    pub(crate) fn bind_value(&mut self, value: Value) -> String {
+        self.bind(value)
     }
 
     fn bind(&mut self, value: Value) -> String {

@@ -169,7 +169,7 @@ What each step **adds** to the product (not how to test it — that is under eac
 | [2](#2-step-compose)      | [`step-compose`](#2-step-compose)           | ✅ **done.** Graph + two search nodes, three volumes.                                         |
 | [3](#3-step-schema)       | [`step-schema`](#3-step-schema)             | ✅ **done.** Search indexes on :8001 and :8002. Allocation rows.                              |
 | [4](#4-step-repl-core)    | [`step-repl-core`](#4-step-repl-core)       | ✅ **done.** `surrealastic` replication: map, leases, guarded log, fan-out with ack, placement, TLS. |
-| [5](#5-step-layout)       | [`step-layout`](#5-step-layout)             | **pending.** `surrealastic` layout: commit set, `_layout_item`, `key % shard_count`, shard cursor, queued apply, refill, `schema` hook. |
+| [5](#5-step-layout)       | [`step-layout`](#5-step-layout)             | ✅ **done.** `surrealastic` layout: commit set, `_layout_item`, `key % shard_count`, shard cursor, queued apply, refill, `schema` hook. |
 | [6](#6-step-project)      | [`step-project`](#6-step-project)           | **pending.** Venus bodies on the layout: `hkey` as `key`, `doc_id` as item, `search_cluster` migrated into `layout_db`, one write per job. |
 | [7](#7-step-enqueue)      | [`step-enqueue`](#7-step-enqueue)           | **pending.** `graph_jobs` after flush. M4 closed.                                            |
 | [8](#8-step-query)        | [`step-query`](#8-step-query)               | **pending.** Router: map cache, two choices, hedge, failover, `min_lsn`, merge, hydrate.      |
@@ -431,7 +431,7 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | **title**     | Layout: commit set, shard key, apply, refill           |
 | **dependsOn** | `step-repl-core`                                        |
 | **kind**      | implement                                               |
-| **status**    | **pending** ([board](./SS.state.yaml); breakpoint `human`) |
+| **status**    | **done** ([board](./SS.state.yaml); breakpoint `human`) |
 
 
 #### Work

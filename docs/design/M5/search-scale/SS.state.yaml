@@ -80,9 +80,16 @@ steps:
         evidence: "2026-10-07 cargo test -p surrealastic --test live --features fault — lease, renew lost, fenced, gap, already, divergent, atomic, range read, ack policy, one copy down, one in flight, lag max, quiet map, TLS."
   step-layout: # 5
     n: 5
-    state: pending
+    state: done
     breakpoint: human
     pr: null
+    dodResults:
+      - name: Pure
+        status: pass
+        evidence: "2026-10-07 cargo test -p surrealastic --test layout — modulo, dual grouping, entry pack, define refuses non-DDL, refill log starts after L0, crate source has no doc_id and no sha256."
+      - name: Live
+        status: pass
+        evidence: "2026-10-07 cargo test -p surrealastic --test layout_live — commit returns and queued apply, queue order, one copy down, item table, key collision, delete, cursor and fresh read, schema, empty shard refill, dual layout, entry limit. Profile graph."
   step-project: # 6
     n: 6
     state: pending

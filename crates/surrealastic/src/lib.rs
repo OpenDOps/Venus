@@ -1,5 +1,5 @@
-//! Surrealastic. Replication for any SurrealDB database. No page, doc, or shard type.
-//! Layout (sharding, queued apply, refill) lands in this crate in step 5.
+//! Surrealastic. Replication and layout for any SurrealDB database.
+//! No page, doc, or field hash.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 mod body;
@@ -7,6 +7,7 @@ mod cluster;
 mod config;
 mod guard;
 mod hooks;
+mod layout;
 mod link;
 mod place;
 mod store;
@@ -16,10 +17,14 @@ pub use body::{accept_sql, Body};
 pub use cluster::{migrate, Cluster};
 pub use config::Config;
 pub use guard::{ApplyReply, ApplyStatus, Entry};
-pub use hooks::Owner;
+pub use hooks::{BoxFut, Owner};
+pub use layout::{
+    log_tail_start, pack_items, remove_database, shard_for, shard_set_id, shards_for, Item, Layout,
+    PartialShard, ReadOut, ShardLag,
+};
 pub use link::dial_wss;
 pub use place::{homes, set_health, Health, Member, NodeState};
-pub use store::SetRow;
+pub use store::{LayoutRow, SetRow};
 pub use writer::Writer;
 
 /// Guarded write against one copy. The writer fans this out. Tests use it for

@@ -52,6 +52,7 @@ pub struct Writer {
     inflight: Arc<Mutex<HashMap<String, u32>>>,
     lagged_at: Arc<Mutex<HashMap<String, i64>>>,
     owner: Option<Arc<dyn Owner>>,
+    log: Arc<Mutex<HashMap<String, Vec<Entry>>>>,
 }
 
 fn transport(err: &anyhow::Error) -> bool {
@@ -156,7 +157,119 @@ impl Writer {
             inflight,
             lagged_at: Arc::new(Mutex::new(HashMap::new())),
             owner: None,
+            log: Arc::new(Mutex::new(HashMap::new())),
         })
+    }
+
+    /// Another set on this writer's lease. Shard sets share the commit set's lease.
+    pub(crate) async fn attach(&self, set_id: &str) -> anyhow::Result<()> {
+        if self.sets.lock().await.contains_key(set_id) {
+            return Ok(());
+        }
+        let set = store::load_set(self.cluster.pool(), set_id).await?;
+        if set.lease != self.lease {
+            anyhow::bail!("set lease does not match this writer");
+        }
+        let copies = store::load_copies(self.cluster.pool(), set_id).await?;
+        let mut copy_rt = HashMap::new();
+        let mut head = 0_i64;
+        let mut head_fence = 0_i64;
+        for copy in &copies {
+            let (applied, applied_fence) = match self.cluster.conn(&copy.node_id, &copy.url).await {
+                Ok(conn) => crate::link::state_of(&conn, &set.namespace, &set.database)
+                    .await
+                    .unwrap_or((copy.applied_lsn, 0)),
+                Err(_) => (copy.applied_lsn, 0),
+            };
+            if (applied, applied_fence) > (head, head_fence) {
+                head = applied;
+                head_fence = applied_fence;
+            }
+            let (tx, rx) = mpsc::unbounded_channel();
+            spawn_lane(
+                self.cluster.clone(),
+                set.namespace.clone(),
+                set.database.clone(),
+                copy.node_id.clone(),
+                copy.url.clone(),
+                rx,
+                Arc::clone(&self.sends),
+                Arc::clone(&self.inflight),
+                Arc::clone(&self.peak),
+            );
+            copy_rt.insert(
+                copy.node_id.clone(),
+                CopyRt {
+                    applied,
+                    state: copy.state.clone(),
+                    behind_since: None,
+                    tx,
+                },
+            );
+        }
+        self.sets.lock().await.insert(
+            set_id.to_string(),
+            SetRt {
+                row: set,
+                head,
+                head_fence,
+                copies: copy_rt,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) async fn head(&self, set_id: &str) -> i64 {
+        self.sets
+            .lock()
+            .await
+            .get(set_id)
+            .map(|set| set.head)
+            .unwrap_or(0)
+    }
+
+    pub(crate) async fn remembered(&self, set_id: &str) -> Vec<Entry> {
+        self.log
+            .lock()
+            .await
+            .get(set_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) async fn force_lagging(&self, set_id: &str, node: &str) -> anyhow::Result<()> {
+        self.mark_lagging(set_id, node, 0).await
+    }
+
+    pub(crate) async fn note_caught_up(&self, set_id: &str, node: &str, applied: i64) {
+        self.note_applied(set_id, node, applied).await;
+    }
+
+    pub(crate) async fn revive(&self, set_id: &str, node: &str) -> anyhow::Result<()> {
+        {
+            let mut sets = self.sets.lock().await;
+            let set = sets.get_mut(set_id).context("set is not on this writer")?;
+            let copy = set.copies.get_mut(node).context("copy is not on this set")?;
+            copy.state = "in_sync".to_string();
+            copy.behind_since = None;
+        }
+        store::set_copy_state(self.cluster.pool(), set_id, node, "in_sync").await?;
+        Ok(())
+    }
+
+    /// After a database is removed. The next entry starts at lsn 1.
+    pub(crate) async fn reset_progress(&self, set_id: &str) {
+        let mut sets = self.sets.lock().await;
+        if let Some(set) = sets.get_mut(set_id) {
+            set.head = 0;
+            set.head_fence = 0;
+            for copy in set.copies.values_mut() {
+                copy.applied = 0;
+                copy.state = "in_sync".to_string();
+                copy.behind_since = None;
+            }
+        }
+        self.log.lock().await.remove(set_id);
     }
 
     pub fn fence(&self) -> i64 {
@@ -282,6 +395,7 @@ impl Writer {
             sets.get(set_id).map(|s| s.row.ack).unwrap_or(1)
         };
         if targets.is_empty() {
+            self.rollback_head(set_id, &entry).await;
             anyhow::bail!("no in-sync copy");
         }
         let mut pending = targets.len();
@@ -317,16 +431,40 @@ impl Writer {
                 Err(err) if transport(&err) => {
                     self.mark_lagging(set_id, &node, entry.lsn).await?;
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    if ok == 0 {
+                        self.rollback_head(set_id, &entry).await;
+                    }
+                    return Err(err);
+                }
                 Ok(_) => {
                     self.mark_lagging(set_id, &node, entry.lsn).await?;
                 }
             }
         }
         if ok < ack {
+            if ok == 0 {
+                self.rollback_head(set_id, &entry).await;
+            }
             anyhow::bail!("acked {ok} of {ack}");
         }
+        self.log
+            .lock()
+            .await
+            .entry(set_id.to_string())
+            .or_default()
+            .push(entry.clone());
         Ok(entry.lsn)
+    }
+
+    async fn rollback_head(&self, set_id: &str, entry: &Entry) {
+        let mut sets = self.sets.lock().await;
+        if let Some(set) = sets.get_mut(set_id) {
+            if set.head == entry.lsn {
+                set.head = entry.prev;
+                set.head_fence = entry.prev_fence;
+            }
+        }
     }
 
     async fn note_applied(&self, set_id: &str, node: &str, applied: i64) {

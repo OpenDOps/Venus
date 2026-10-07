@@ -84,6 +84,10 @@ impl Cluster {
         Ok(())
     }
 
+    pub async fn upsert_layout(&self, row: &crate::store::LayoutRow) -> anyhow::Result<()> {
+        store::upsert_layout(self.pool(), row).await
+    }
+
     pub async fn upsert_set(&self, set: &SetRow) -> anyhow::Result<()> {
         store::ensure_lease(self.pool(), &set.lease).await?;
         sqlx::query(

@@ -283,6 +283,40 @@ pub async fn state_of(conn: &Conn, namespace: &str, database: &str) -> anyhow::R
     ))
 }
 
+pub async fn query_json(
+    conn: &Conn,
+    namespace: &str,
+    database: &str,
+    sql: &str,
+) -> anyhow::Result<serde_json::Value> {
+    let script = format!("USE NS {namespace} DB {database}; {sql}");
+    let _gate = conn.gate.lock().await;
+    let mut response = conn
+        .db
+        .query(script)
+        .await
+        .with_context(|| format!("query {sql}"))?;
+    for index in 0usize..16 {
+        let Ok(value) = response.take::<surrealdb::Value>(index) else {
+            continue;
+        };
+        if value.to_string() == "NONE" {
+            continue;
+        }
+        let text = value.to_string();
+        return Ok(surrealdb::value::from_value::<serde_json::Value>(value)
+            .unwrap_or(serde_json::Value::String(text)));
+    }
+    Ok(serde_json::Value::Null)
+}
+
+/// Run a script that already names its namespace. Used to remove a database.
+pub async fn exec(conn: &Conn, sql: &str) -> anyhow::Result<String> {
+    let _gate = conn.gate.lock().await;
+    let mut response = conn.db.query(sql).await.with_context(|| format!("script {sql}"))?;
+    Ok(response_text(&mut response))
+}
+
 pub async fn raw(conn: &Conn, namespace: &str, database: &str, sql: &str) -> anyhow::Result<String> {
     let script = format!("USE NS {namespace} DB {database}; {sql}");
     let _gate = conn.gate.lock().await;

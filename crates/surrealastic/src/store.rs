@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS repl_copy (
     PRIMARY KEY (set_id, node_id)
 );
 
+CREATE TABLE IF NOT EXISTS layout_db (
+    db_id TEXT PRIMARY KEY,
+    commit_set TEXT NOT NULL,
+    epoch INT NOT NULL,
+    shard_count INT NOT NULL,
+    shard_count_next INT,
+    replica_count INT NOT NULL,
+    shard_ack INT NOT NULL
+);
+
 "#;
 
 const FUNCTION: &str = r#"
@@ -68,6 +78,11 @@ CREATE TRIGGER repl_set_notify
 DROP TRIGGER IF EXISTS repl_copy_notify ON repl_copy;
 CREATE TRIGGER repl_copy_notify
     AFTER INSERT OR UPDATE OR DELETE ON repl_copy
+    FOR EACH STATEMENT EXECUTE FUNCTION repl_map_notify();
+
+DROP TRIGGER IF EXISTS layout_db_notify ON layout_db;
+CREATE TRIGGER layout_db_notify
+    AFTER INSERT OR UPDATE OR DELETE ON layout_db
     FOR EACH STATEMENT EXECUTE FUNCTION repl_map_notify();
 "#;
 
@@ -236,6 +251,68 @@ pub async fn copy_fingerprint(pool: &PgPool, set_id: &str) -> anyhow::Result<Vec
         .into_iter()
         .map(|(n, s, l, x)| format!("{n}:{s}:{l}:{x}"))
         .collect())
+}
+
+#[derive(Debug, Clone)]
+pub struct LayoutRow {
+    pub db_id: String,
+    pub commit_set: String,
+    pub epoch: i32,
+    pub shard_count: i32,
+    pub shard_count_next: Option<i32>,
+    pub replica_count: i32,
+    pub shard_ack: i32,
+}
+
+pub async fn upsert_layout(pool: &PgPool, row: &LayoutRow) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO layout_db
+            (db_id, commit_set, epoch, shard_count, shard_count_next, replica_count, shard_ack)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (db_id) DO UPDATE SET
+            commit_set = EXCLUDED.commit_set,
+            epoch = EXCLUDED.epoch,
+            shard_count = EXCLUDED.shard_count,
+            shard_count_next = EXCLUDED.shard_count_next,
+            replica_count = EXCLUDED.replica_count,
+            shard_ack = EXCLUDED.shard_ack",
+    )
+    .bind(&row.db_id)
+    .bind(&row.commit_set)
+    .bind(row.epoch)
+    .bind(row.shard_count)
+    .bind(row.shard_count_next)
+    .bind(row.replica_count)
+    .bind(row.shard_ack)
+    .execute(pool)
+    .await
+    .context("upsert layout")?;
+    Ok(())
+}
+
+pub async fn load_layout(pool: &PgPool, db_id: &str) -> anyhow::Result<LayoutRow> {
+    sqlx::query_as::<_, (String, String, i32, i32, Option<i32>, i32, i32)>(
+        "SELECT db_id, commit_set, epoch, shard_count, shard_count_next, replica_count, shard_ack
+         FROM layout_db WHERE db_id = $1",
+    )
+    .bind(db_id)
+    .fetch_optional(pool)
+    .await
+    .context("load layout")?
+    .map(
+        |(db_id, commit_set, epoch, shard_count, shard_count_next, replica_count, shard_ack)| {
+            LayoutRow {
+                db_id,
+                commit_set,
+                epoch,
+                shard_count,
+                shard_count_next,
+                replica_count,
+                shard_ack,
+            }
+        },
+    )
+    .context("unknown layout")
 }
 
 pub fn health_of(set: &SetRow, copies: &[CopyRow]) -> Health {
