@@ -4,7 +4,7 @@
 |               |                                                                                     |
 | ------------- | ----------------------------------------------------------------------------------- |
 | **planId**    | `ss-cluster`                                                                        |
-| **Milestone** | First board of [M5](../README.md). Search design: [README](./README.md). |
+| **Milestone** | [M5](../../M5/README.md). Board 1 of the [semantic graph](../README.md#boards). Search design: [README](./README.md). |
 | **Duration**  | About 6 weeks. The replication layer and the layout (steps 4, 5, 9, and 10) are about half of it. |
 | **Board**     | [SS.state.yaml](./SS.state.yaml)                                                    |
 
@@ -152,7 +152,7 @@ Every section of [scale.md](../scale.md) and the step that builds it.
 | Node ids from `repl_node_seq`, state `removed`  | 11   |
 | Restore, case by case                           | 9, 10, 11, 12, 13 |
 | Postgres tables, lease statement                | 4 (`repl_*`), 5 (`layout_db`) |
-| Compared with Elasticsearch; Tantivy upgrade    | [M5 plan](../plan.md) board 4. This board keeps SurrealDB `SEARCH`. |
+| Compared with Elasticsearch; Tantivy upgrade    | [Tantivy](../tantivy/plan.md), optional board 4. This board keeps SurrealDB `SEARCH`. |
 
 
 

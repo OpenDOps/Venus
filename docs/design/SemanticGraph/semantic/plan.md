@@ -3,8 +3,8 @@
 
 |               |                                                                 |
 | ------------- | --------------------------------------------------------------- |
-| **planId**    | `m5-semantic`                                                   |
-| **Milestone** | Sixth board of [M5](../plan.md). |
+| **planId**    | `m6-semantic`                                                   |
+| **Milestone** | [M6](../../M6/plan.md). Board 6 of the [semantic graph](../README.md#boards). |
 | **Duration**  | About 3 weeks after extraction writes links. Vector neighbors are used when board 5 is up. |
 | **Board**     | State file added when this board opens.                        |
 

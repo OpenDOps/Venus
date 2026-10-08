@@ -263,8 +263,8 @@ Spine (do in order). Parallel AB1–AB5 are not this list: [agentic-binding](./A
 | M3.0 | [Venus hub](#m30--venus-hub-replace-keck-week) | done 2026-09-13 |
 | M3 | [Git snapshotter](#m3--git-snapshotter-week) | done 2026-09-14 |
 | M4 | [Folder tree + links + product header](#m4--folder-tree--links--product-header-12-weeks) | in progress (step 5 done 2026-09-15) |
-| M5 | [Semantic graph backend (SurrealDB + surrealastic)](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks) | in progress (step 4 done 2026-10-07) |
-| M6 | [Venus docs in the wiki, indexed](#m6--venus-docs-in-the-wiki-indexed-23-weeks) | not started |
+| M5 | [Semantic graph backend (SurrealDB + surrealastic)](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks) | in progress (step 7 done 2026-10-08) |
+| M6 | [Semantic graph: extraction, view, vectors, model edges](#m6--semantic-graph-extraction-view-vectors-model-edges-7-weeks) | not started |
 | M7 | [Lease + freeze](#m7--lease--freeze-week) | not started |
 | M8 | [Comment-commit](#m8--comment-commit-markdown-only-2-weeks) | not started |
 | M9 | [Threads, alternatives, stacks](#m9--threads-alternatives-stacks-2-weeks) | not started |
@@ -320,7 +320,7 @@ Design: [LiveSnapshot](./LiveSnapshot/README.md) (pin copy, then convert; do not
 
 Must not invert HA: dirty is clocks not keystrokes; one job per wiki; cut then convert (cut released before `fromDoc`); not in the hub; not markdown in Postgres; not `fromDoc` every keystroke; not per-block commits.
 
-Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. The graph store is [M5](./M5/README.md) and the in-document extractors run in [M6](#m6--venus-docs-in-the-wiki-indexed-23-weeks). Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M7–M8 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M8** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
+Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIndexing.md) (**AB1**, [agentic-binding](./Agents/agentic-binding.md)) may gist/tag/graph dirty pages at that SHA. The graph design is [SemanticGraph](./SemanticGraph/README.md). [M5](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks) builds its store and [M6](#m6--semantic-graph-extraction-view-vectors-model-edges-7-weeks) its extractors, view, vectors, and model edges. Do not put an LLM on convert or `last_flushed`. Snapshot git message stays autocomment. Bound chat (**AB2**) starts only after AB1 (**ask-only**; the agent does not write the wiki). Chat-edit (**AB3**) starts only after **M7–M8 checkout**, not when AB2 ships. History/why pack (**AB4**) starts only after **M8** comment-commits, not when AB1 ships; do not treat snapshot autocomment as why. **AB5** (code analyzer on the **product** git, two remotes; **select** CodeGraph CLI / Aider / both) is [code-bind](./Agents/code-bind.md) — not M3, not every wiki request.
 
 - First snapshot: sidecar **autoinits** `wiki/` (git2 init + catalog dirs) if missing; product git ignores it. No origin in M3.
 - Catalog v0: one folder, one doc, fixed path.
@@ -349,7 +349,7 @@ Parallel track (not this exit): after the commit, [LifeIndexing](./Agents/LifeIn
 
 ### M5 — Semantic graph backend: SurrealDB + surrealastic (6 weeks)
 
-**Status:** in progress — [search-scale](./M5/search-scale/plan.md) steps 1–4 done (step 4, the replication core, 2026-10-07). Step-by-step: [search-scale/plan.md](./M5/search-scale/plan.md). Board: [SS.state.yaml](./M5/search-scale/SS.state.yaml). Design: [M5](./M5/README.md), [store.md](./M5/store.md), [scale.md](./M5/scale.md), [search-scale](./M5/search-scale/README.md). **Gate:** steps 1–6 and 8–14 can run now; step 7 (`graph_jobs` after flush) waits until [M4](./M4/README.md) is closed.
+**Status:** in progress — steps 1–7 done (step 7, `graph_jobs` after flush, 2026-10-08). Next is [step 8](./SemanticGraph/search-scale/plan.md#8-step-query). Milestone: [M5/README.md](./M5/README.md). Step-by-step: board 1 of the semantic graph, [search-scale/plan.md](./SemanticGraph/search-scale/plan.md). Board: [SS.state.yaml](./SemanticGraph/search-scale/SS.state.yaml). Design: [SemanticGraph](./SemanticGraph/README.md), [store.md](./SemanticGraph/store.md), [scale.md](./SemanticGraph/scale.md), [search-scale](./SemanticGraph/search-scale/README.md). **Gate:** [search-scale — gate](./SemanticGraph/search-scale/plan.md#gate); the M4 person pass does not block it.
 
 The storage backend the wiki graph and word search run on. No extractor yet: fixture docs only.
 
@@ -360,17 +360,19 @@ The storage backend the wiki graph and word search run on. No extractor yet: fix
 - Monitor, node states, health; third search node and replacement; three graph copies acked on two; nightly export, log archive, point-in-time restore; online split.
 - `graph_jobs` (not flush `jobs`) is upserted after `last_flushed`; a down cluster never fails a flush.
 
-**Exit:** the [search-scale exit](./M5/search-scale/plan.md#exit): losing one search copy or one graph copy loses no acked write and stops neither writes nor reads; a wiped copy comes back by snapshot plus catch-up; `@@` merges every shard and never runs on a graph node; the fixture wiki splits 2 → 4 under load; M1–M4 tests stay green.
+**Exit:** the [search-scale exit](./SemanticGraph/search-scale/plan.md#exit): losing one search copy or one graph copy loses no acked write and stops neither writes nor reads; a wiped copy comes back by snapshot plus catch-up; `@@` merges every shard and never runs on a graph node; the fixture wiki splits 2 → 4 under load; M1–M4 tests stay green.
 
 Does not run CodeGraph or Aider on the wiki. Does not change Flush. Does not replace M7.
 
-### M6 — Venus docs in the wiki, indexed (2–3 weeks)
+<a id="m6--venus-docs-in-the-wiki-indexed-23-weeks"></a>
 
-**Status:** not started. Design brief: [M6/README.md](./M6/README.md) (passes, tools, measured doc counts, steps, exit). Pass rules: [extract.md](./M5/extract.md), [connect.md](./M5/connect.md), [LifeIndexing](./Agents/LifeIndexing.md) (AB1 contract). **Gate:** M4 and M5 closed.
+### M6 — Semantic graph: extraction, view, vectors, model edges (7 weeks)
+
+**Status:** not started. Milestone: [M6/README.md](./M6/README.md) (passes, tools, measured doc counts, exit). Plan: [M6/plan.md](./M6/plan.md) (board order, steps, gate). Boards 2, 3, 5, and 6 of the [semantic graph](./SemanticGraph/README.md#boards): [extraction](./SemanticGraph/extraction/plan.md), [graph-view](./SemanticGraph/graph-view/plan.md), [vectors](./SemanticGraph/vectors/plan.md), [semantic](./SemanticGraph/semantic/plan.md). Pass rules: [extract.md](./SemanticGraph/extract.md), [connect.md](./SemanticGraph/connect.md), [LifeIndexing](./Agents/LifeIndexing.md) (AB1 contract). **Gate:** M4 closed and M5 step 7 done ([plan — gate](./M6/plan.md#gate)). Vectors also waits for M5 step 8.
 
 No CodeGraph and no Aider on the wiki: they analyze the product git at `productSha` for AB5 ([code-bind](./Agents/code-bind.md)). Wiki code fences get tree-sitter only.
 
-Dogfood the product on its own documentation, then index it with the M5 backend.
+Build the wiki graph on the M5 cluster, and prove it on the product’s own documentation.
 
 **Upload.** Venus’s own `docs/` (design, product, marketing, devops, scenarios) becomes one wiki workspace, written by Venus, not copied into `wiki/` by hand:
 
@@ -378,26 +380,28 @@ Dogfood the product on its own documentation, then index it with the M5 backend.
 - Each file enters through `MarkdownAdapter` `toDoc` into a new space (same adapter as [MDGate](./MDGate/README.md)). Relative links between those files become `affine:embed-linked-doc` / `venus:doc:` links; links that do not resolve stay plain and are reported.
 - One Flush writes `wiki/` and `.venus/ids/` through the M3 snapshotter. The import is rerunnable: an unchanged file does not make a new page or a git change.
 
-**Index.** `graph_jobs` from that Flush runs the [M5 pipeline](./M5/README.md#pipeline) on the committed SHA. One `layout.write` per doc.
+**Index.** `graph_jobs` from that Flush runs the [semantic graph pipeline](./SemanticGraph/README.md#pipeline) on the committed SHA. One `layout.write` per doc.
 
 | Index | Built from | Stored |
 |---|---|---|
 | Titles and headings | Catalog name, page title, heading tree | Graph `page` / `heading`; title and heading text on the search shards |
-| Cross-document links | `venus:doc:` and markdown links ([connect — direct](./M5/connect.md#direct--no-model)) | Graph `links_to`, page and heading level. Unresolved targets stored as unresolved, not guessed |
+| Cross-document links | `venus:doc:` and markdown links ([connect — direct](./SemanticGraph/connect.md#direct--no-model)) | Graph `links_to`, page and heading level. Unresolved targets stored as unresolved, not guessed |
 | Folder structure | Catalog parent chain | Graph `contains` edges folder → page; `git_path` on the page |
 | Glossary, titles, headings, keywords | **`daachorse`** (double-array Aho–Corasick, leftmost-longest) over prose and inline code; glossary from `glossary.md` | Graph `mention` kinds `term`, `title`, `heading`; `page.keywords` (top 10 by count × idf). Title and heading hits are candidates, not links |
-| Code snippets | **tree-sitter** on fenced code only (bash, YAML, SQL, JSON, TypeScript/TSX, Rust) ([extract](./M5/extract.md)) | Graph symbol mentions on the heading that holds the fence |
+| Code snippets | **tree-sitter** on fenced code only (bash, YAML, SQL, JSON, TypeScript/TSX, Rust) ([extract](./SemanticGraph/extract.md)) | Graph symbol mentions on the heading that holds the fence |
 | Email, UUID, phone, hashes, endpoints | **`regex`**, conservative patterns | Graph `mention` with a normalized `norm`; pages meet through it, not through an edge |
 | People and organizations (optional) | **`tokenizers`** + a BERT-class NER model in **ONNX** via `ort`; off by default, off on the Venus docs | Graph `mention` kinds `person`, `org` |
 | Full-text search | Title, heading body, keywords, mention text | Search shards, BM25 `@@` |
 | Vector embeddings | Heading body (BGE-M3, ONNX via `ort`) | Search namespace, HNSW index, next to the BM25 rows. Candidate search only: a near neighbor is never an edge |
+| Model edges | One JSON completion per dirty page, after the graph job ([connect — semantic](./SemanticGraph/connect.md#semantic--background-model)) | Graph `defines`, `depends_on`, `constrains`, `contradicts`, `supersedes`, each with a quote that is a substring of the source heading |
 
 - Query API (`venus_graph::search`, `venus_graph::exact`): title lookup, `@@`, vector neighbors, and a hybrid of the two, all hydrated from the graph; outbound and inbound links of a page; the folder path of a page; pages that name a code symbol.
-- Re-index of an unchanged heading churns no edge and no vector.
+- Graph view: Sigma.js on WebGL draws pages, headings, `contains`, `same_page`, and `links_to`; ForceAtlas2 in a worker.
+- Re-index of an unchanged heading churns no edge, no vector, and no model call.
 
-**Exit:** the Venus docs are browsable in the tree and readable in a `wiki/` clone. For a fixed list of questions about this repo (for example “where is the lease fence checked”, “which pages link to `scale.md`”, “which pages mention `layout.write`”, “what is a pin”), the right page is in the top 5 for title, full-text, vector, and hybrid search. Every cross-doc link in `docs/` is an edge or a reported unresolved target. Every glossary term has a definition site and its mentions. `exact` on a UUID returns every page that holds it. Killing SurrealDB does not fail a Flush.
+**Exit:** the Venus docs are browsable in the tree and readable in a `wiki/` clone. For a fixed list of questions about this repo (for example “where is the lease fence checked”, “which pages link to `scale.md`”, “which pages mention `layout.write`”, “what is a pin”), the right page is in the top 5 for title, full-text, vector, and hybrid search. Every cross-doc link in `docs/` is an edge or a reported unresolved target. Every glossary term has a definition site and its mentions. `exact` on a UUID returns every page that holds it. The graph view draws the Venus docs graph. Every stored model edge carries a quote that is an exact substring of its source heading. Killing SurrealDB or the model does not fail a Flush. Each board’s own exit is met.
 
-Not this exit: CodeGraph or Aider on the wiki, NER on the Venus docs workspace, and the background model’s semantic binds ([connect — semantic](./M5/connect.md#semantic--background-model)). Bound chat (AB2) reads this index later.
+Not this exit: CodeGraph or Aider on the wiki, NER on the Venus docs workspace, the optional [Tantivy](./SemanticGraph/tantivy/plan.md) board, and bound chat (AB2), which reads this index later.
 
 <a id="m5--lease--freeze-week"></a>
 
@@ -545,8 +549,8 @@ Everything after M3.0 git is Venus snapshotter. Do not block M3.0 on review desi
 4. **Venus hub** — [M3.0/plan.md](./M3.0/plan.md). Replaces keck. **Done** (2026-09-13). HA: [M3.0/high-availability.md](./M3.0/high-availability.md).
 5. **Git snapshotter** — [M3/plan.md](./M3/plan.md) ([LiveSnapshot](./LiveSnapshot/README.md) — M3 is the thin of that shape). **Done** (2026-09-14). Gated on M3.0 **done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) Acceptance.
 6. **Folder tree + product header** — [M4/plan.md](./M4/plan.md). **Gated on M3 closed.**
-7. **Semantic graph backend** — [M5](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks), board [search-scale/plan.md](./M5/search-scale/plan.md). Steps 1–4 done.
-8. **Venus docs in the wiki, indexed** — [M6](#m6--venus-docs-in-the-wiki-indexed-23-weeks). Titles, cross-doc links, folders, `daachorse` dictionary (glossary, titles, headings, keywords), tree-sitter on code, regex patterns, optional ONNX NER, full-text, vectors. Brief: [M6/README.md](./M6/README.md).
+7. **Semantic graph backend** — [M5](#m5--semantic-graph-backend-surrealdb--surrealastic-6-weeks), board [search-scale/plan.md](./SemanticGraph/search-scale/plan.md). Steps 1–7 done.
+8. **Semantic graph: extraction, view, vectors, model edges** — [M6](#m6--semantic-graph-extraction-view-vectors-model-edges-7-weeks), on the Venus docs. Boards [extraction](./SemanticGraph/extraction/plan.md), [graph-view](./SemanticGraph/graph-view/plan.md), [vectors](./SemanticGraph/vectors/plan.md), [semantic](./SemanticGraph/semantic/plan.md). Plan: [M6/plan.md](./M6/plan.md).
 9. **Lease + freeze** — [M7](#m7--lease--freeze-week).
 10. **Comment-commit** — [M8](#m8--comment-commit-markdown-only-2-weeks). Apply fixtures first: [apply.md](./MDGate/apply.md).
 11. **Threads, alternatives, stacks** — [M9](#m9--threads-alternatives-stacks-2-weeks).

@@ -1,6 +1,6 @@
 # Graph view
 
-**Status:** not started. Step-by-step: [plan.md](./plan.md). Parent: [M5 plan](../plan.md) board 3.
+**Status:** not started. Step-by-step: [plan.md](./plan.md). Board 3 of the [semantic graph](../README.md#boards). Milestone: [M6 plan](../../M6/plan.md).
 
 A browser view of the graph board 2 writes. Nodes are pages and headings. Edges are `contains`, `same_page`, in-document `links_to`, and cross-page `links_to`. Mentions stay off the first drawing. They are a zoom-in, not the map.
 

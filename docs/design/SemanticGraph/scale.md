@@ -1,6 +1,6 @@
 # Scale — graph store and search store
 
-**Status:** design. Same engine as [store.md](./store.md): **SurrealDB**. Two roles: the **graph** (truth for links, mentions, and model binds) and **search** (a projection of heading and mention text). **Surrealastic** (`crates/surrealastic`) is the extension between them and Venus: replication, sharding, and clustering, in the style of a search cluster, on stock SurrealDB servers. Venus calls it once per job. Cluster summary, search schema, and memory: [search-scale](./search-scale/README.md). Boards: [plan.md](./plan.md). First board: [search-scale/plan.md](./search-scale/plan.md).
+**Status:** design. Same engine as [store.md](./store.md): **SurrealDB**. Two roles: the **graph** (truth for links, mentions, and model binds) and **search** (a projection of heading and mention text). **Surrealastic** (`crates/surrealastic`) is the extension between them and Venus: replication, sharding, and clustering, in the style of a search cluster, on stock SurrealDB servers. Venus calls it once per job. Cluster summary, search schema, and memory: [search-scale](./search-scale/README.md). Boards: [README — boards](./README.md#boards). First board: [search-scale/plan.md](./search-scale/plan.md).
 
 Traversal, mentions, and model edges stay in the graph namespace ([store](./store.md)). A `@@` query hits the search namespace only, then hydrates ids from the graph when the graph answers.
 
@@ -638,7 +638,7 @@ Not taken: Raft between SurrealDB processes (the layer is the only writer; Postg
 
 ## Compared with Elasticsearch
 
-Moved to [M5 README — Compared with Elasticsearch](./README.md#compared-with-elasticsearch).
+Moved to [semantic graph README — Compared with Elasticsearch](./README.md#compared-with-elasticsearch).
 
 ## Do not
 

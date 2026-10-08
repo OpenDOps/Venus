@@ -10,6 +10,7 @@
 | [CRDT](./CRDT/README.md) | Prototype CRDT stack (Yjs, M1 keck, M3.0 hub, Postgres, export). No client Rust: [CRDT/wasm.md](./CRDT/wasm.md). |
 | [LiveSnapshot](./LiveSnapshot/README.md) | Pin (copy, do not stall CRDT) + git snapshotter. **Implemented** in [M3](./M3/README.md) (closed 2026-09-14). Gate was [M3.0](./M3.0/README.md) **closed** and [high-availability.md](./LiveSnapshot/high-availability.md) **Acceptance**. Live CRDT HA: [M3.0/high-availability.md](./M3.0/high-availability.md). |
 | [Agents](./Agents/README.md) | **Main product feature:** multidimensional spec graph (spatial binds + temporal why). Plan: [agentic-binding.md](./Agents/agentic-binding.md). Contract: [LifeIndexing](./Agents/LifeIndexing.md). Two gits + analyzer (select CodeGraph CLI / Aider / both): [code-bind](./Agents/code-bind.md). |
+| [SemanticGraph](./SemanticGraph/README.md) | Wiki graph store and search: SurrealDB + surrealastic. [extract](./SemanticGraph/extract.md), [connect](./SemanticGraph/connect.md), [store](./SemanticGraph/store.md), [scale](./SemanticGraph/scale.md), [boards](./SemanticGraph/README.md#boards). Built in [M5](./M5/README.md) and [M6](./M6/README.md). |
 | [MDGate](./MDGate/README.md) | Adapter gate. `fromDoc`, [live pane](./MDGate/live-pane.md), [apply](./MDGate/apply.md), [subset](./MDGate/subset.md), [fixtures](./MDGate/fixtures.md). |
 | [api-map.md](./api-map.md) | Installed symbols (Actual column) |
 | [rpc.md](./rpc.md) | Project-wide JSON/gRPC envelope (`error` / advertisement / data). Internal RPC is gRPC. |
@@ -22,8 +23,8 @@
 | [M3.0](./M3.0/README.md) | Venus hub replace keck (**done** 2026-09-13). Plan: [M3.0/plan.md](./M3.0/plan.md). Process: [hub](./components/backend/hub/). Wire: [CRDT](./CRDT/README.md). HA: [M3.0/high-availability.md](./M3.0/high-availability.md). |
 | [M3](./M3/README.md) | Git snapshotter (**done** 2026-09-14). Plan: [M3/plan.md](./M3/plan.md). Pin: [LiveSnapshot](./LiveSnapshot/README.md). |
 | [M4](./M4/README.md) | Folder tree + links + product header (**in progress** — steps 1–8 done; [step-verify](./M4/plan.md#9-step-verify) automated pass 2026-10-06, person pass open). Plan: [M4/plan.md](./M4/plan.md). |
-| [M5](./M5/README.md) | Semantic graph: SurrealDB + surrealastic (**in progress** — [search-scale](./M5/search-scale/plan.md) steps 1–4 done). [extract](./M5/extract.md), [connect](./M5/connect.md), [store](./M5/store.md), [scale](./M5/scale.md). |
-| [M6](./M6/README.md) | Venus docs in the wiki, indexed (**not started**). Dictionary (`daachorse`), tree-sitter, regex, optional ONNX NER, full text, vectors |
+| [M5](./M5/README.md) | Semantic graph backend: SurrealDB + surrealastic (**in progress** — steps 1–7 done 2026-10-08). Plan: [search-scale/plan.md](./SemanticGraph/search-scale/plan.md). |
+| [M6](./M6/README.md) | Semantic graph: extraction, view, vectors, model edges, on the Venus docs (**not started**). Plan: [M6/plan.md](./M6/plan.md). Boards: [extraction](./SemanticGraph/extraction/README.md), [graph-view](./SemanticGraph/graph-view/README.md), [vectors](./SemanticGraph/vectors/README.md), [semantic](./SemanticGraph/semantic/README.md). |
 | [M7](./venus-implementation-plan.md#m7--lease--freeze-week) | Lease + freeze (**not started**) |
 | [M8](./venus-implementation-plan.md#m8--comment-commit-markdown-only-2-weeks) | Comment-commit, markdown apply (**not started**). Apply: [MDGate apply](./MDGate/apply.md) |
 | [M9](./venus-implementation-plan.md#m9--threads-alternatives-stacks-2-weeks) | Threads, alternatives, stacks (**not started**) |

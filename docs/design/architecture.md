@@ -18,7 +18,7 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 | Comment-commit apply | **M6 not started** | [implementation plan — M6](./venus-implementation-plan.md#m6--comment-commit-markdown-only-2-weeks), [MDGate apply](./MDGate/apply.md) |
 | Threads, alternatives, stacks | **M7 not started** | [implementation plan — M7](./venus-implementation-plan.md#m7--threads-alternatives-stacks-2-weeks) |
 | Revert + agent loop | **M8 not started** | [implementation plan — M8](./venus-implementation-plan.md#m8--revert--agent-loop-week) |
-| LifeIndexing | Parallel (after M3; store after M4) | [Agents](./Agents/README.md) — [AB1](./Agents/agentic-binding.md#ab1--lifeindexing) / [LifeIndexing](./Agents/LifeIndexing.md). SurrealDB: [M5](./M5/README.md). |
+| LifeIndexing | Parallel (after M3; store after M4) | [Agents](./Agents/README.md) — [AB1](./Agents/agentic-binding.md#ab1--lifeindexing) / [LifeIndexing](./Agents/LifeIndexing.md). SurrealDB: [SemanticGraph](./SemanticGraph/README.md) (built in [M5](./M5/README.md) and [M6](./M6/README.md)). |
 | Bound chat | Parallel (after AB1; **ask-only**) | [AB2](./Agents/agentic-binding.md#ab2--bound-chat) |
 | Chat-edit markdown | Parallel (**after M5–M6 checkout**, not after AB2) | [AB3](./Agents/agentic-binding.md#ab3--chat-edit-markdown) |
 | History / why pack | Parallel (**after M6**; needs AB1 index; not after AB1) | [AB4](./Agents/agentic-binding.md#ab4--history--why-pack) |
@@ -116,6 +116,6 @@ WYSIWYG (live CRDT)  ← aligned →  read-only markdown pane
 | Pin + git snapshotter (M3) | [M3/plan.md](./M3/plan.md); [LiveSnapshot](./LiveSnapshot/README.md); **done** 2026-09-14. **Gated on M3.0 done** + [LiveSnapshot HA](./LiveSnapshot/high-availability.md) **Acceptance** |
 | M4 catalog / tree / header | [M4/plan.md](./M4/plan.md); [CRDT tree](./components/frontend/crdt-tree/). **Gated on M3 closed.** |
 | Milestone order (M0–M8) | [venus-implementation-plan.md](./venus-implementation-plan.md#milestone-plan) |
-| LifeIndexing / bound chat | [agentic-binding](./Agents/agentic-binding.md) (AB1–AB4). Contract: [LifeIndexing](./Agents/LifeIndexing.md) (spatial + temporal). Store: [M5](./M5/README.md). |
+| LifeIndexing / bound chat | [agentic-binding](./Agents/agentic-binding.md) (AB1–AB4). Contract: [LifeIndexing](./Agents/LifeIndexing.md) (spatial + temporal). Store: [SemanticGraph](./SemanticGraph/README.md). |
 | Implemented tests | [scenarios](../scenarios/README.md) |
 | License split | [licensing.md](../legal/licensing.md) |

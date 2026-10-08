@@ -3,8 +3,8 @@
 
 |               |                                                                 |
 | ------------- | --------------------------------------------------------------- |
-| **planId**    | `m5-extract`                                                    |
-| **Milestone** | Second board of [M5](../plan.md). Rules: [extract.md](../extract.md). |
+| **planId**    | `m6-extract`                                                    |
+| **Milestone** | [M6](../../M6/plan.md). Board 2 of the [semantic graph](../README.md#boards). Rules: [extract.md](../extract.md). |
 | **Duration**  | About 4 weeks. Structure and the glossary are about half of it. |
 | **Board**     | State file added when this board opens.                        |
 

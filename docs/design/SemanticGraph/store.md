@@ -37,7 +37,7 @@ The hub **does not** get a SurrealDB client. The browser **does not** open Surre
 
 Auth is the same leftover as the hub ([implementation plan — identity](../venus-implementation-plan.md#identity-v1)): local / trusted network. Do not design OIDC in this folder. Credentials are Compose env, not a new product login.
 
-Job queue is a new Postgres table `graph_jobs` (one row per workspace: `wiki_sha`, dirty doc ids), claimed `SKIP LOCKED`, inserted **after** `last_flushed` commits. The flush `jobs` row stays the snapshotter’s (primary key `workspace_id`, reason `idle` | `flush` | `lease`). One graph writer per workspace. Plan: [search-scale/plan.md](./search-scale/plan.md#6-step-enqueue).
+Job queue is a new Postgres table `graph_jobs` (one row per workspace: `wiki_sha`, dirty doc ids), claimed `SKIP LOCKED`, inserted **after** `last_flushed` commits. The flush `jobs` row stays the snapshotter’s (primary key `workspace_id`, reason `idle` | `flush` | `lease`). One graph writer per workspace. Plan: [search-scale/plan.md](./search-scale/plan.md#7-step-enqueue).
 
 ## Clocks
 

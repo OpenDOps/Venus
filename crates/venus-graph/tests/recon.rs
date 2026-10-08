@@ -12,9 +12,9 @@ use venus_graph::{
     SURREAL_IMAGE,
 };
 
-const PLAN: &str = include_str!("../../../docs/design/M5/search-scale/plan.md");
-const README: &str = include_str!("../../../docs/design/M5/search-scale/README.md");
-const SCALE: &str = include_str!("../../../docs/design/M5/scale.md");
+const PLAN: &str = include_str!("../../../docs/design/SemanticGraph/search-scale/plan.md");
+const README: &str = include_str!("../../../docs/design/SemanticGraph/search-scale/README.md");
+const SCALE: &str = include_str!("../../../docs/design/SemanticGraph/scale.md");
 const SCHEMA: &str = include_str!("../../venus-hub/src/schema.sql");
 const CRATE: &str = include_str!("../Cargo.toml");
 const LIB: &str = include_str!("../src/lib.rs");

@@ -3,13 +3,13 @@
 
 |               |                                                                 |
 | ------------- | --------------------------------------------------------------- |
-| **planId**    | `m5-vectors`                                                    |
-| **Milestone** | Fifth board of [M5](../plan.md). |
+| **planId**    | `m6-vectors`                                                    |
+| **Milestone** | [M6](../../M6/plan.md). Board 5 of the [semantic graph](../README.md#boards). |
 | **Duration**  | About 2 weeks after extraction writes heading text and the router can read a shard. |
 | **Board**     | State file added when this board opens.                        |
 
 
-Rules: [grain](./README.md#what-gets-a-vector) and [M5 README — vectors](../README.md#tool-decision). A stored vector is a candidate for search and, later, for the [semantic graph](../semantic/plan.md). It is not an edge.
+Rules: [grain](./README.md#what-gets-a-vector) and [semantic graph README — tool decision](../README.md#tool-decision). A stored vector is a candidate for search and, later, for the [semantic graph](../semantic/plan.md). It is not an edge.
 
 ## Where the board is
 

@@ -1,6 +1,6 @@
 # Extraction
 
-**Status:** not started. Step-by-step: [plan.md](./plan.md). Parent: [M5 plan](../plan.md) board 2.
+**Status:** not started. Step-by-step: [plan.md](./plan.md). Board 2 of the [semantic graph](../README.md#boards). Milestone: [M6 plan](../../M6/plan.md).
 
 Committed pages become one graph. Each page is headings and mentions. `links_to` joins headings inside a page and joins pages to each other. The rules are [extract.md](../extract.md) and [connect.md — direct](../connect.md#direct--no-model). The tables are [store.md](../store.md). The write is one `layout.write` on the cluster from [search-scale](../search-scale/plan.md).
 

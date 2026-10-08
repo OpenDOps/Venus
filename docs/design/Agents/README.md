@@ -13,7 +13,7 @@ Do not sell this as shipped until **AB4**. AB4 cannot exist until **M6**. Spatia
 | **Spatial** | Headings / pages at a git SHA (`defines`, `depends-on`, `constrains`, `contradicts`; plus direct links) | If I change this, what else is in force? |
 | **Temporal** | Those same parts → comment-commits, review comments, supersedes / reverts | Why is it designed this way? Where did we decide badly — what SHA do we revert? |
 
-One index, sidecar `blockId`s, clocked to published git. Snapshot autocomments are *what moved*, not why. The why is the **accepted** comment-commit (and the rail). Contract: [LifeIndexing.md](./LifeIndexing.md). Store and in-document extractors (SurrealDB, after M4): [M5](../M5/README.md).
+One index, sidecar `blockId`s, clocked to published git. Snapshot autocomments are *what moved*, not why. The why is the **accepted** comment-commit (and the rail). Contract: [LifeIndexing.md](./LifeIndexing.md). Store and in-document extractors (SurrealDB, after M4): [SemanticGraph](../SemanticGraph/README.md).
 
 Human chrome is **user-to-agent**: point at a span, the engine expands this graph (and later drafts via lease). Not a copilot bolted onto a human wiki UI ([agentic-native](../../product/product-plan.md#agentic-native-user-to-agent)).
 
@@ -36,4 +36,4 @@ Do not teach agents Yjs. Do not put this index on the pin cut or `fromDoc` path.
 | [agentic-binding.md](./agentic-binding.md) | Parallel milestones AB1 → AB5 |
 | [LifeIndexing.md](./LifeIndexing.md) | Spatial + temporal graph contract |
 | [code-bind.md](./code-bind.md) | Wiki remote ≠ product remote; **select** CodeGraph CLI / Aider / both; post-implement review |
-| [M5](../M5/README.md) | AB1 store: SurrealDB, in-document extract, direct + semantic edges. Not AB5. |
+| [SemanticGraph](../SemanticGraph/README.md) | AB1 store: SurrealDB, in-document extract, direct + semantic edges. Built in [M5](../M5/README.md) (cluster) and [M6](../M6/README.md) (extract, view, vectors, model edges). Not AB5. |

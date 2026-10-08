@@ -52,7 +52,7 @@ This chrome is **user-to-agent**, not agent-as-teammate-in-the-page. The environ
 
 ## AB1 — LifeIndexing
 
-Index the published wiki **after** each snapshot commit. Incremental on dirty `docId`s; periodic full re-gist when rolling summaries drift. Direct (links) graph + logical (LLM) graph + component/domain tags. Store, in-document extractors, and the SurrealDB schema: [M5](../M5/README.md) (start once [M4](../M4/README.md) links exist). CodeGraph CLI / Aider stay on the product repo ([AB5](#ab5--code-bind--aider)).
+Index the published wiki **after** each snapshot commit. Incremental on dirty `docId`s; periodic full re-gist when rolling summaries drift. Direct (links) graph + logical (LLM) graph + component/domain tags. Store, in-document extractors, and the SurrealDB schema: [SemanticGraph](../SemanticGraph/README.md) (start once [M4](../M4/README.md) links exist). CodeGraph CLI / Aider stay on the product repo ([AB5](#ab5--code-bind--aider)).
 
 **Gate:** [M3](../venus-implementation-plan.md#m3--git-snapshotter-week) exit — clone `wiki/`, autocomment snapshots, typing during flush still syncs. **After [M3.0](../M3.0/README.md)** (hub). HA: [LiveSnapshot HA](../LiveSnapshot/high-availability.md) (snapshotter beside the hub). AB1 is **not** M3 exit. AB1 is **spatial only** (“what else is in force”). It is **not** [pains §7](../../product/pains.md#7-why-is-it-designed-this-way) and not the main wiki feature until AB4.
 
@@ -260,7 +260,7 @@ Step plans and boards (M2-style) come when a milestone is opened. This file is t
 | [agentic-binding.md](./agentic-binding.md) | This plan (AB1 → AB5) |
 | [LifeIndexing.md](./LifeIndexing.md) | AB1 spatial + AB4 temporal |
 | [code-bind.md](./code-bind.md) | Two gits; select CodeGraph CLI / Aider / both; post-implement review |
-| [M5](../M5/README.md) | AB1 store (SurrealDB) and extractors |
+| [SemanticGraph](../SemanticGraph/README.md) | AB1 store (SurrealDB) and extractors. Built in [M5](../M5/README.md) and [M6](../M6/README.md) |
 | [agentic-comparison](../../marketing/agentic-comparison.md) | Ask, chat-edit, why/history vs Notion / Cursor |
 | [Agents README](./README.md) | Folder map |
 | [LiveSnapshot](../LiveSnapshot/README.md) | SHA AB1 consumes |

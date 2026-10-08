@@ -1,8 +1,19 @@
-# M6 — Venus docs in the wiki, indexed
+# M6 — Semantic graph: extraction, view, vectors, model edges
 
-Venus’s own `docs/` becomes one wiki workspace, written by Venus. Each committed page is then indexed by the [M5](../M5/README.md) pipeline. Indexing covers titles and headings, cross-doc links, folders, a dictionary pass (glossary, titles, headings, keywords), tree-sitter on code snippets, regex patterns, optional NER, full-text search, and vector embeddings. Every pass is deterministic except the two ONNX models, and no pass calls an LLM.
+M6 builds the wiki graph on the [M5](../M5/README.md) cluster and runs it on Venus’s own `docs/`. That folder becomes one wiki workspace, written by Venus. Each committed page is then indexed by the [semantic graph pipeline](../SemanticGraph/README.md#pipeline). Indexing covers titles and headings, cross-doc links, folders, a dictionary pass (glossary, titles, headings, keywords), tree-sitter on code snippets, regex patterns, optional NER, full-text search, and vector embeddings. Every one of those passes is deterministic except the two ONNX models. After them, a background LLM writes typed edges with a required quote, and the browser draws the graph.
 
-**Status:** not started. **Gate:** [M4](../M4/README.md) and M5 closed. Plan slice: [venus-implementation-plan — M6](../venus-implementation-plan.md#m6--venus-docs-in-the-wiki-indexed-23-weeks). Pass rules: [extract.md](../M5/extract.md). Links and edges: [connect.md](../M5/connect.md). Tables: [store.md](../M5/store.md). A step board (`plan.md`, `M6.state.yaml`) is added here when M6 opens.
+**Status:** not started. **Gate:** [M4](../M4/README.md) closed and M5 [step 7](../SemanticGraph/search-scale/plan.md#7-step-enqueue) done ([plan — gate](./plan.md#gate)). **Plan:** [plan.md](./plan.md). Plan slice: [venus-implementation-plan — M6](../venus-implementation-plan.md#m6--semantic-graph-extraction-view-vectors-model-edges-7-weeks). Pass rules: [extract.md](../SemanticGraph/extract.md). Links and edges: [connect.md](../SemanticGraph/connect.md). Tables: [store.md](../SemanticGraph/store.md).
+
+## Boards
+
+M6 runs four boards of the [semantic graph](../SemanticGraph/README.md#boards). Their design and steps stay in that folder. The order is [plan.md](./plan.md).
+
+| # | Board | M6 lands |
+| --- | --- | --- |
+| 2 | [extraction](../SemanticGraph/extraction/README.md) | Passes 1–5 below on every uploaded page, and `links_to` across the Venus docs |
+| 3 | [graph-view](../SemanticGraph/graph-view/README.md) | The Venus docs graph drawn in the browser with Sigma.js |
+| 5 | [vectors](../SemanticGraph/vectors/README.md) | Pass 7 below: BGE-M3 heading vectors, HNSW on the search shards |
+| 6 | [semantic](../SemanticGraph/semantic/README.md) | Model edges between Venus docs headings, each with a quote |
 
 ## No CodeGraph and no Aider on the wiki
 
@@ -36,7 +47,7 @@ Most API names (`layout.write`, `ensure`, `fence`) appear as inline code in pros
 
 ## Pipeline
 
-`graph_jobs` from that Flush runs on the committed SHA, one page per job, one `layout.write` per doc ([search-scale plan step 6](../M5/search-scale/plan.md#6-step-project)). The passes run in this order on sidecar blocks. A later pass does not overwrite a span an earlier pass claimed, and the longest match wins inside a pass ([extract — pass order](../M5/extract.md#pass-order)).
+`graph_jobs` from that Flush runs on the committed SHA, one page per job, one `layout.write` per doc ([search-scale plan step 6](../SemanticGraph/search-scale/plan.md#6-step-project)). The passes run in this order on sidecar blocks. A later pass does not overwrite a span an earlier pass claimed, and the longest match wins inside a pass ([extract — pass order](../SemanticGraph/extract.md#pass-order)).
 
 | # | Pass | Tool | Looks at | Emits |
 |---|---|---|---|---|
@@ -46,13 +57,14 @@ Most API names (`layout.write`, `ensure`, `fence`) appear as inline code in pros
 | 4 | Patterns | `regex` | Prose, inline code, and fences, skipping claimed spans | `mention` kinds `email`, `phone`, `uuid`, `hash`, `endpoint` |
 | 5 | NER (optional) | `tokenizers` + BERT-class model in ONNX via `ort` | Leftover prose sentences only | `mention` kinds `person`, `org` |
 | 6 | Full text | SurrealDB BM25 on the search shards | Title, heading body, keywords, mention text | `@@` rows |
-| 7 | Vectors | BGE-M3 in ONNX via `ort` + `tokenizers` ([M5 board 5](../M5/vectors/plan.md)) | Heading body | 1 024-dim vector, HNSW index on the search shards |
+| 7 | Vectors | BGE-M3 in ONNX via `ort` + `tokenizers` ([board 5](../SemanticGraph/vectors/plan.md)) | Heading body | 1 024-dim vector, HNSW index on the search shards |
+| 8 | Semantic edges | One JSON completion per dirty page on a Venus model key ([board 6](../SemanticGraph/semantic/plan.md)) | Dirty heading body and its candidate list | `defines`, `depends_on`, `constrains`, `contradicts`, `supersedes`, each with a quote |
 
-A heading whose `body_hash`, dictionary id, and fence-language set are unchanged is not re-extracted and not re-embedded.
+Passes 1–7 are the graph job. Pass 8 runs after that job has written, and git and `last_flushed` never wait on it. A heading whose `body_hash`, dictionary id, and fence-language set are unchanged is not re-extracted and not re-embedded. A heading whose body hash is unchanged gets no model call.
 
 ### 1. Structure, links, folders
 
-As in [extract — structure](../M5/extract.md#1-structure) and [connect — direct](../M5/connect.md#direct--no-model). The page title comes from the catalog name. Each folder is a node, and `contains` runs folder → subfolder → page. A cross-doc link is a `links_to` edge at page and heading level when the target resolves (`venus:doc:` first, then path). Otherwise it is stored with `resolved = false` and never pointed at a page by guess.
+As in [extract — structure](../SemanticGraph/extract.md#1-structure) and [connect — direct](../SemanticGraph/connect.md#direct--no-model). The page title comes from the catalog name. Each folder is a node, and `contains` runs folder → subfolder → page. A cross-doc link is a `links_to` edge at page and heading level when the target resolves (`venus:doc:` first, then path). Otherwise it is stored with `resolved = false` and never pointed at a page by guess.
 
 ### 2. Dictionary — `daachorse`
 
@@ -69,16 +81,16 @@ One automaton per workspace, compiled with `daachorse` (`CharwiseDoubleArrayAhoC
 - **Word boundary.** A hit is dropped when the character on either side is a letter or a digit.
 - **Priority.** When one surface form has several sources, the order is `term`, then `title`, then `heading`.
 - **Dictionary id.** Hash of the glossary blob plus the sorted title and heading pattern sets. The automaton is rebuilt only when this hash changes. A change re-runs pass 2 on every page, not passes 1, 3, 4, or 5.
-- **Mentions of titles and headings** are not links. [connect](../M5/connect.md) uses them as candidates for the background model. Only explicit links are `links_to`.
+- **Mentions of titles and headings** are not links. [connect](../SemanticGraph/connect.md) uses them as candidates for the background model. Only explicit links are `links_to`.
 - **Keywords.** Per page, the 10 dictionary targets with the highest `count × idf`, where idf is taken across the workspace’s pages. Stored on `page.keywords` and projected to search as a boosted field. Not an edge.
 
 ### 3. Code snippets — tree-sitter
 
-As in [extract — code symbols](../M5/extract.md#3-code-symbols--tree-sitter). Grammars for M6, matched to the docs above: `bash`/`sh`/`zsh`, `yaml`, `sql`, `json` (keys only, as `type` symbols at depth 1), `ts`/`typescript`, `tsx`, `rust`/`rs`. An unknown or missing info string (`text`, `surql`, `mermaid`) gets no symbol pass. A parse error skips that fence only. A symbol defined in a fence is linked to prose on the same page by the per-page symbol automaton. Cross-page symbol hits need a name of 4 or more characters with exactly one definition. No call graph.
+As in [extract — code symbols](../SemanticGraph/extract.md#3-code-symbols--tree-sitter). Grammars for M6, matched to the docs above: `bash`/`sh`/`zsh`, `yaml`, `sql`, `json` (keys only, as `type` symbols at depth 1), `ts`/`typescript`, `tsx`, `rust`/`rs`. An unknown or missing info string (`text`, `surql`, `mermaid`) gets no symbol pass. A parse error skips that fence only. A symbol defined in a fence is linked to prose on the same page by the per-page symbol automaton. Cross-page symbol hits need a name of 4 or more characters with exactly one definition. No call graph.
 
 ### 4. Patterns — regex
 
-As in [extract — regular patterns](../M5/extract.md#4-regular-patterns), crate `regex`.
+As in [extract — regular patterns](../SemanticGraph/extract.md#4-regular-patterns), crate `regex`.
 
 | Kind | Accept | Reject |
 |---|---|---|
@@ -92,7 +104,7 @@ Join keys are normalized: UUID, email, and hash lower-case; endpoint without its
 
 ### 5. NER — optional
 
-As in [extract — NER](../M5/extract.md#5-ner--optional-last).
+As in [extract — NER](../SemanticGraph/extract.md#5-ner--optional-last).
 
 | Piece | Choice |
 |---|---|
@@ -108,7 +120,7 @@ M6 ships NER behind the flag and tests it on fixture sentences. It stays off on 
 
 ### 6. Full text
 
-The search shards hold BM25 rows for title, heading body, `page.keywords`, and mention text. The analyzer is the one from the [search-scale README schema](../M5/search-scale/README.md#schema). Fresh reads pass the job’s commit as `min_commit` ([scale — read path](../M5/scale.md#read-path)).
+The search shards hold BM25 rows for title, heading body, `page.keywords`, and mention text. The analyzer is the one from the [search-scale README schema](../SemanticGraph/search-scale/README.md#schema). Fresh reads pass the job’s commit as `min_commit` ([scale — read path](../SemanticGraph/scale.md#read-path)).
 
 ### 7. Vectors
 
@@ -122,6 +134,14 @@ The search shards hold BM25 rows for title, heading body, `page.keywords`, and m
 
 The graph namespace gets no vector field and no index, the same rule as its no-`SEARCH`-index rule.
 
+### 8. Semantic edges
+
+As in [semantic graph](../SemanticGraph/semantic/README.md) and [connect — semantic](../SemanticGraph/connect.md#semantic--background-model). Candidates for one dirty page are its 1-hop `links_to`, glossary definition headings, headings that share a mentioned term, and HNSW neighbors once pass 7 has indexed them ([plan — from board 5 to board 6](./plan.md#from-board-5-to-board-6)). An edge is kept only when its quote is an exact substring of the dirty heading body and its confidence clears the floor for its type. A model failure keeps the previous model edges and sets `semantic_error`. The upload makes every page dirty, so each page gets one call. After that, one edited page is one call.
+
+## Graph view
+
+As in [graph-view](../SemanticGraph/graph-view/README.md). The browser draws pages, headings, `contains`, `same_page`, and `links_to` of the Venus docs. Model edges are drawn once pass 8 has written them. Mentions stay a zoom-in. The view is not a wiki page.
+
 ## Query API
 
 `venus_graph::search` and `venus_graph::exact`, all hydrated from the graph:
@@ -132,20 +152,9 @@ The graph namespace gets no vector field and no index, the same rule as its no-`
 - pages that mention a glossary term, title, symbol, UUID, email, or endpoint (`exact` on `norm`);
 - a page’s keywords.
 
-## Steps (board when M6 opens)
+## Steps
 
-| # | Step | Proves |
-|---|---|---|
-| 1 | recon | The counts above, re-measured; the stop list; the grammar crates and their sizes |
-| 2 | upload | 88 files to catalog pages; rerun is a no-op; unresolved links reported |
-| 3 | structure | Pages, headings, folders, `links_to` on M5 |
-| 4 | dictionary | `daachorse` automaton, glossary table rule, titles, headings, keywords |
-| 5 | code | tree-sitter grammars above, symbols, same-page linking |
-| 6 | patterns | regex kinds and normalization |
-| 7 | ner | ONNX + `tokenizers` behind the flag, fixture sentences |
-| 8 | vectors | Run [M5 board 5](../M5/vectors/plan.md) on the uploaded docs: BGE-M3 ONNX, HNSW on search, recompute on `body_hash` only |
-| 9 | query | API above, hybrid ranking |
-| 10 | eval | Exit questions |
+[plan.md](./plan.md#steps): recon, upload, the extraction, graph-view, vectors, and semantic boards, then query and eval.
 
 ## Exit
 
@@ -154,18 +163,22 @@ The graph namespace gets no vector field and no index, the same rule as its no-`
 - Every glossary term in `glossary.md` has a `defines` site, and the pages that use it have `term` mentions.
 - For a fixed list of questions, the right page is in the top 5 for title, full-text, vector, and hybrid search. Examples: “where is the lease fence checked”, “which pages link to `scale.md`”, “which pages mention `layout.write`”, “what is a pin”.
 - `exact` on each of the 94 UUIDs returns every page that holds it.
-- Re-indexing an unchanged heading changes no row, edge, or vector.
-- Killing SurrealDB does not fail a Flush. M1–M5 tests stay green.
+- Re-indexing an unchanged heading changes no row, edge, or vector, and makes no model call.
+- The graph view draws the Venus docs graph, and a picked page shows its in-document and cross-page links.
+- Every stored model edge has a quote that is an exact substring of its source heading, and a confidence at or above the floor for its type.
+- Killing SurrealDB or the model does not fail a Flush. M1–M5 tests stay green.
 
 ## Do not
 
-- Run CodeGraph, Aider, or any LLM over the wiki in M6.
+- Run CodeGraph or Aider over the wiki.
+- Call an LLM anywhere except pass 8, and never on the Flush path.
 - Run tree-sitter on the markdown itself, or guess a fence’s language.
 - Run the dictionary inside fences.
 - Turn a title, heading, keyword, NER, or vector hit into a `links_to` edge.
 - Download a model at run time.
 - Put vectors or `SEARCH` indexes in the graph namespace.
+- Turn a vector neighbor into an edge without a model quote.
 
 ## Not in M6
 
-The background model’s semantic binds ([connect — semantic](../M5/connect.md#semantic--background-model)), bound chat (AB2), and code-bind on the product repo (AB5).
+Bound chat (AB2), code-bind on the product repo (AB5), and the optional [Tantivy](../SemanticGraph/tantivy/README.md) board.

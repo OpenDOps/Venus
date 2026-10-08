@@ -3,13 +3,13 @@
 
 |               |                                                                 |
 | ------------- | --------------------------------------------------------------- |
-| **planId**    | `m5-tantivy`                                                    |
-| **Milestone** | Optional fourth board of [M5](../plan.md). |
+| **planId**    | `sg-tantivy`                                                    |
+| **Milestone** | None yet. Optional board 4 of the [semantic graph](../README.md#boards). |
 | **Duration**  | About 3 weeks once the router and the extractor exist. |
 | **Board**     | State file added when this board opens.                        |
 
 
-SurrealDB `SEARCH` on this cluster is whole-term BM25 (`wiki` analyzer: `class` tokenizer, lowercase, ascii). Prefix search and fuzzy / edit-distance search are unsupported. Both arrive here, because the shard index becomes Tantivy ([M5 README](../README.md#compared-with-elasticsearch)).
+SurrealDB `SEARCH` on this cluster is whole-term BM25 (`wiki` analyzer: `class` tokenizer, lowercase, ascii). Prefix search and fuzzy / edit-distance search are unsupported. Both arrive here, because the shard index becomes Tantivy ([semantic graph README](../README.md#compared-with-elasticsearch)).
 
 The graph process stays SurrealDB. The commit set, the copies, the router, and the split stay. A search node stops being a SurrealDB process.
 

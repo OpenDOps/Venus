@@ -3,8 +3,8 @@
 
 |               |                                                                 |
 | ------------- | --------------------------------------------------------------- |
-| **planId**    | `m5-graph-view`                                                 |
-| **Milestone** | Third board of [M5](../plan.md). |
+| **planId**    | `m6-graph-view`                                                 |
+| **Milestone** | [M6](../../M6/plan.md). Board 3 of the [semantic graph](../README.md#boards). |
 | **Duration**  | About 2 weeks after extraction writes `links_to`. |
 | **Board**     | State file added when this board opens.                        |
 

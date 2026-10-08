@@ -1,6 +1,6 @@
 # Tantivy search
 
-**Status:** optional, not started. Step-by-step: [plan.md](./plan.md). Parent: [M5 plan](../plan.md) board 4. Why this index: [Compared with Elasticsearch](../README.md#compared-with-elasticsearch).
+**Status:** optional, not started. Step-by-step: [plan.md](./plan.md). Optional board 4 of the [semantic graph](../README.md#boards). No milestone yet. Why this index: [Compared with Elasticsearch](../README.md#compared-with-elasticsearch).
 
 The search-node index is replaced. A shard copy becomes a Tantivy index. The layout still replicates an item (key, tag, statements) and the shard applies that item to Tantivy instead of SurrealDB `SEARCH`.
 
