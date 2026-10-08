@@ -111,7 +111,12 @@ impl Cluster {
         Ok(())
     }
 
-    pub async fn upsert_copy(&self, set_id: &str, node_id: &str, state: &str) -> anyhow::Result<()> {
+    pub async fn upsert_copy(
+        &self,
+        set_id: &str,
+        node_id: &str,
+        state: &str,
+    ) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO repl_copy (set_id, node_id, state, applied_lsn)
              VALUES ($1, $2, $3, 0)
@@ -165,11 +170,13 @@ impl Cluster {
     }
 
     pub async fn expire_lease(&self, name: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE repl_lease SET lease_until = now() - interval '1 second' WHERE name = $1")
-            .bind(name)
-            .execute(self.pool())
-            .await
-            .context("expire lease")?;
+        sqlx::query(
+            "UPDATE repl_lease SET lease_until = now() - interval '1 second' WHERE name = $1",
+        )
+        .bind(name)
+        .execute(self.pool())
+        .await
+        .context("expire lease")?;
         Ok(())
     }
 
@@ -183,7 +190,10 @@ impl Cluster {
         let set = store::load_set(self.pool(), set_id).await?;
         let copies = store::load_copies(self.pool(), set_id).await?;
         let mut last = None;
-        for copy in copies.iter().filter(|c| c.state == "in_sync" && c.node_state != "down") {
+        for copy in copies
+            .iter()
+            .filter(|c| c.state == "in_sync" && c.node_state != "down")
+        {
             let conn = match self.conn(&copy.node_id, &copy.url).await {
                 Ok(conn) => conn,
                 Err(err) => {

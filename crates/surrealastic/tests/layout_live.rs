@@ -31,9 +31,13 @@ extern "C" fn remove_pg() {
     if name.is_empty() {
         return;
     }
-    let _ = Command::new("docker").args(["rm", "-f", name.as_str()]).output();
+    let _ = Command::new("docker")
+        .args(["rm", "-f", name.as_str()])
+        .output();
     let graph = format!("surrealastic-graph-{}", std::process::id());
-    let _ = Command::new("docker").args(["rm", "-f", graph.as_str()]).output();
+    let _ = Command::new("docker")
+        .args(["rm", "-f", graph.as_str()])
+        .output();
 }
 
 fn repo_root() -> PathBuf {
@@ -64,7 +68,12 @@ fn compose(args: &[&str]) -> String {
 
 fn surreal_on(port: u16) -> bool {
     let out = Command::new("curl")
-        .args(["-sI", "--max-time", "2", &format!("http://127.0.0.1:{port}/health")])
+        .args([
+            "-sI",
+            "--max-time",
+            "2",
+            &format!("http://127.0.0.1:{port}/health"),
+        ])
         .output();
     let Ok(out) = out else { return false };
     if !out.status.success() {
@@ -78,8 +87,16 @@ fn surreal_on(port: u16) -> bool {
 /// commit set runs in a scratch SurrealDB container on a free port.
 fn ensure_graph() -> String {
     let up = docker(&[
-        "compose", "--profile", "graph", "up", "-d", "--wait", "--wait-timeout", "120",
-        "--no-deps", "surreal-graph",
+        "compose",
+        "--profile",
+        "graph",
+        "up",
+        "-d",
+        "--wait",
+        "--wait-timeout",
+        "120",
+        "--no-deps",
+        "surreal-graph",
     ]);
     if up.status.success() && surreal_on(8000) {
         return "http://127.0.0.1:8000".to_string();
@@ -87,13 +104,21 @@ fn ensure_graph() -> String {
     let name = format!("surrealastic-graph-{}", std::process::id());
     let _ = docker(&["rm", "-f", &name]);
     let started = docker(&[
-        "run", "-d", "--name", &name,
-        "-p", "127.0.0.1::8000",
-        "-u", "0:0",
-        "-e", "SURREAL_USER=venus",
-        "-e", "SURREAL_PASS=venus",
+        "run",
+        "-d",
+        "--name",
+        &name,
+        "-p",
+        "127.0.0.1::8000",
+        "-u",
+        "0:0",
+        "-e",
+        "SURREAL_USER=venus",
+        "-e",
+        "SURREAL_PASS=venus",
         "surrealdb/surrealdb:v2.7.0",
-        "start", "rocksdb:/data/graph.db",
+        "start",
+        "rocksdb:/data/graph.db",
     ]);
     assert!(
         started.status.success(),
@@ -120,8 +145,16 @@ fn world() -> &'static World {
             let _ = docker(&["rm", "-f", id]);
         }
         compose(&[
-            "--profile", "graph", "up", "-d", "--wait", "--wait-timeout", "300", "--no-deps",
-            "surreal-search-0", "surreal-search-1",
+            "--profile",
+            "graph",
+            "up",
+            "-d",
+            "--wait",
+            "--wait-timeout",
+            "300",
+            "--no-deps",
+            "surreal-search-0",
+            "surreal-search-1",
         ]);
         for port in [8001_u16, 8002] {
             wait_port(port);
@@ -131,14 +164,25 @@ fn world() -> &'static World {
         let name = format!("surrealastic-pg-{}", std::process::id());
         let _ = docker(&["rm", "-f", &name]);
         let started = docker(&[
-            "run", "-d", "--name", &name,
-            "-e", "POSTGRES_USER=venus",
-            "-e", "POSTGRES_PASSWORD=venus",
-            "-e", "POSTGRES_DB=venus",
-            "-p", "127.0.0.1::5432",
+            "run",
+            "-d",
+            "--name",
+            &name,
+            "-e",
+            "POSTGRES_USER=venus",
+            "-e",
+            "POSTGRES_PASSWORD=venus",
+            "-e",
+            "POSTGRES_DB=venus",
+            "-p",
+            "127.0.0.1::5432",
             "postgres:16",
         ]);
-        assert!(started.status.success(), "{}", String::from_utf8_lossy(&started.stderr));
+        assert!(
+            started.status.success(),
+            "{}",
+            String::from_utf8_lossy(&started.stderr)
+        );
         let mapped = docker(&["port", &name, "5432"]);
         let host_port = String::from_utf8_lossy(&mapped.stdout)
             .trim()
@@ -153,7 +197,9 @@ fn world() -> &'static World {
             atexit(remove_pg);
         }
         for _ in 0..60 {
-            let ready = docker(&["exec", &name, "psql", "-U", "venus", "-d", "venus", "-c", "SELECT 1"]);
+            let ready = docker(&[
+                "exec", &name, "psql", "-U", "venus", "-d", "venus", "-c", "SELECT 1",
+            ]);
             if ready.status.success() {
                 return World { pg };
             }
@@ -181,7 +227,11 @@ fn pause(services: &[&str]) -> Paused {
     let ids: Vec<String> = services.iter().map(|service| service_id(service)).collect();
     for id in &ids {
         let out = docker(&["pause", id]);
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Paused(ids)
 }
@@ -189,7 +239,12 @@ fn pause(services: &[&str]) -> Paused {
 fn wait_port(port: u16) {
     for _ in 0..60 {
         let out = Command::new("curl")
-            .args(["-sf", "--max-time", "2", &format!("http://127.0.0.1:{port}/health")])
+            .args([
+                "-sf",
+                "--max-time",
+                "2",
+                &format!("http://127.0.0.1:{port}/health"),
+            ])
             .output();
         if out.map(|o| o.status.success()).unwrap_or(false) {
             return;
@@ -207,7 +262,9 @@ fn config() -> Config {
 }
 
 async fn cluster() -> Cluster {
-    Cluster::connect(&world().pg, config()).await.expect("cluster")
+    Cluster::connect(&world().pg, config())
+        .await
+        .expect("cluster")
 }
 
 async fn gate() -> tokio::sync::MutexGuard<'static, ()> {
@@ -217,7 +274,11 @@ async fn gate() -> tokio::sync::MutexGuard<'static, ()> {
 
 fn stamp() -> String {
     static N: AtomicUsize = AtomicUsize::new(1);
-    format!("{}{:x}", std::process::id(), N.fetch_add(1, Ordering::Relaxed))
+    format!(
+        "{}{:x}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 struct Hooks {
@@ -242,6 +303,7 @@ impl Owner for Hooks {
 }
 
 struct Scratch {
+    db_id: String,
     commit_db: String,
     shards: Vec<ShardDb>,
 }
@@ -272,7 +334,10 @@ async fn scratch(
         ("n8001", "http://127.0.0.1:8001", "search", "z1"),
         ("n8002", "http://127.0.0.1:8002", "search", "z2"),
     ] {
-        cluster.upsert_node(node, pool, url, zone, 1, "up").await.unwrap();
+        cluster
+            .upsert_node(node, pool, url, zone, 1, "up")
+            .await
+            .unwrap();
     }
     let id = stamp();
     let db_id = format!("db{id}");
@@ -291,7 +356,10 @@ async fn scratch(
         })
         .await
         .unwrap();
-    cluster.upsert_copy(&commit_set, "g8000", "in_sync").await.unwrap();
+    cluster
+        .upsert_copy(&commit_set, "g8000", "in_sync")
+        .await
+        .unwrap();
     let mut shards = Vec::new();
     let span = homes.len() as i32;
     let shard_count = if next.is_some() { 2 } else { span };
@@ -314,7 +382,11 @@ async fn scratch(
         for node in &nodes {
             cluster.upsert_copy(&set_id, node, "in_sync").await.unwrap();
         }
-        shards.push(ShardDb { set_id, database, nodes });
+        shards.push(ShardDb {
+            set_id,
+            database,
+            nodes,
+        });
     }
     cluster
         .upsert_layout(&LayoutRow {
@@ -328,10 +400,16 @@ async fn scratch(
         })
         .await
         .unwrap();
-    let layout = Layout::open(cluster.clone(), &db_id, "holder", owner).await.expect("layout");
+    let layout = Layout::open(cluster.clone(), &db_id, "holder", owner)
+        .await
+        .expect("layout");
     (
         layout,
-        Scratch { commit_db, shards },
+        Scratch {
+            db_id,
+            commit_db,
+            shards,
+        },
     )
 }
 
@@ -407,14 +485,32 @@ async fn commit_returns_and_queued_apply() {
         .await
         .expect("commit acks");
     commit_is_number(commit);
-    let on_commit = q(&cluster, "g8000", &scratch.commit_db, "SELECT * FROM _layout_item;").await;
-    assert!(on_commit.contains("a") && on_commit.contains("b"), "{on_commit}");
+    let on_commit = q(
+        &cluster,
+        "g8000",
+        &scratch.commit_db,
+        "SELECT * FROM _layout_item;",
+    )
+    .await;
+    assert!(
+        on_commit.contains("a") && on_commit.contains("b"),
+        "{on_commit}"
+    );
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await.len(), 1);
-    let shard0 = q(&cluster, "g8000", &scratch.shards[0].database, "SELECT * FROM row;").await;
+    let shard0 = q(
+        &cluster,
+        "g8000",
+        &scratch.shards[0].database,
+        "SELECT * FROM row;",
+    )
+    .await;
     assert!(shard0.contains("row:0") || shard0.contains('0'), "{shard0}");
     let lag = layout.lag().await.unwrap();
     assert_eq!(lag.iter().find(|row| row.shard == 0).unwrap().behind, 0);
-    assert!(lag.iter().find(|row| row.shard == 1).unwrap().behind > 0, "{lag:?}");
+    assert!(
+        lag.iter().find(|row| row.shard == 1).unwrap().behind > 0,
+        "{lag:?}"
+    );
     drop(paused);
     wait_port(8001);
     wait_port(8002);
@@ -423,9 +519,16 @@ async fn commit_returns_and_queued_apply() {
         let database = scratch.shards[1].database.clone();
         async move {
             for node in ["n8001", "n8002"] {
-                let text = raw(&cluster, node, node_url(node), NS, &database, "SELECT * FROM row;")
-                    .await
-                    .unwrap_or_default();
+                let text = raw(
+                    &cluster,
+                    node,
+                    node_url(node),
+                    NS,
+                    &database,
+                    "SELECT * FROM row;",
+                )
+                .await
+                .unwrap_or_default();
                 if text.contains("row:1") || text.contains("n: 1") || text.contains("\"n\":1") {
                     return true;
                 }
@@ -468,7 +571,13 @@ async fn queue_order() {
         async move { logs(&cluster, "n8001", &database).await.len() >= 3 }
     })
     .await;
-    let text = q(&cluster, "n8001", &scratch.shards[1].database, "SELECT * FROM row:1;").await;
+    let text = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[1].database,
+        "SELECT * FROM row:1;",
+    )
+    .await;
     assert!(text.contains('3'), "{text}");
     let cursor = q(
         &cluster,
@@ -477,7 +586,10 @@ async fn queue_order() {
         "SELECT * FROM _layout:cursor;",
     )
     .await;
-    assert!(cursor.contains(&third.to_string()), "{cursor} third {third}");
+    assert!(
+        cursor.contains(&third.to_string()),
+        "{cursor} third {third}"
+    );
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await.len(), 3);
     finish(&cluster, &scratch).await;
 }
@@ -494,13 +606,37 @@ async fn one_copy_down() {
     )
     .await;
     let paused = pause(&["surreal-search-1"]);
-    let commit = layout.write(Body::new(), vec![row_item(0, "solo")]).await.expect("commit");
+    let commit = layout
+        .write(Body::new(), vec![row_item(0, "solo")])
+        .await
+        .expect("commit");
     commit_is_number(commit);
-    let on_a = q(&cluster, "n8001", &scratch.shards[0].database, "SELECT * FROM row;").await;
+    let on_a = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[0].database,
+        "SELECT * FROM row;",
+    )
+    .await;
     assert!(on_a.contains("solo") || on_a.contains("row:0"), "{on_a}");
-    let copies = cluster.copies(&scratch.shards[0].set_id).await.unwrap();
-    let down = copies.iter().find(|copy| copy.node_id == "n8002").unwrap();
-    assert_eq!(down.state, "lagging");
+    until("n8002 lagging", || {
+        let cluster = cluster.clone();
+        let set_id = scratch.shards[0].set_id.clone();
+        async move {
+            cluster
+                .copies(&set_id)
+                .await
+                .ok()
+                .and_then(|copies| {
+                    copies
+                        .into_iter()
+                        .find(|copy| copy.node_id == "n8002")
+                        .map(|copy| copy.state == "lagging")
+                })
+                .unwrap_or(false)
+        }
+    })
+    .await;
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await.len(), 1);
     drop(paused);
     wait_port(8002);
@@ -517,7 +653,13 @@ async fn item_table_collision_and_delete() {
         .await
         .unwrap();
     commit_is_number(commit);
-    let row = q(&cluster, "g8000", &scratch.commit_db, "SELECT * FROM _layout_item:4;").await;
+    let row = q(
+        &cluster,
+        "g8000",
+        &scratch.commit_db,
+        "SELECT * FROM _layout_item:4;",
+    )
+    .await;
     for field in ["kept", "job", "row:4", &commit.to_string()] {
         assert!(row.contains(field), "{field} missing in {row}");
     }
@@ -530,7 +672,13 @@ async fn item_table_collision_and_delete() {
         .await
         .expect_err("throw");
     assert!(!err.to_string().contains("shard"), "{err}");
-    let missed = q(&cluster, "g8000", &scratch.commit_db, "SELECT * FROM _layout_item:8;").await;
+    let missed = q(
+        &cluster,
+        "g8000",
+        &scratch.commit_db,
+        "SELECT * FROM _layout_item:8;",
+    )
+    .await;
     assert!(!missed.contains("absent"), "{missed}");
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await, before);
 
@@ -541,16 +689,34 @@ async fn item_table_collision_and_delete() {
     assert!(err.to_string().contains("key collision"), "{err}");
     assert!(!err.to_string().contains("shard"), "{err}");
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await, before);
-    let still = q(&cluster, "n8001", &scratch.shards[0].database, "SELECT * FROM row;").await;
+    let still = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[0].database,
+        "SELECT * FROM row;",
+    )
+    .await;
     assert!(still.contains("kept") || still.contains("row:4"), "{still}");
 
     let mut gone = row_item(4, "kept");
     gone.delete = true;
     let deleted = layout.write(Body::new(), vec![gone]).await.unwrap();
     commit_is_number(deleted);
-    let item = q(&cluster, "g8000", &scratch.commit_db, "SELECT * FROM _layout_item:4;").await;
+    let item = q(
+        &cluster,
+        "g8000",
+        &scratch.commit_db,
+        "SELECT * FROM _layout_item:4;",
+    )
+    .await;
     assert!(!item.contains("kept"), "{item}");
-    let shard = q(&cluster, "n8001", &scratch.shards[0].database, "SELECT * FROM row:4;").await;
+    let shard = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[0].database,
+        "SELECT * FROM row:4;",
+    )
+    .await;
     assert!(!shard.contains("kept"), "{shard}");
     finish(&cluster, &scratch).await;
 }
@@ -580,6 +746,30 @@ async fn cursor_and_fresh_read() {
     assert!(cursor.contains(&first.to_string()), "{cursor}");
     let lag = layout.lag().await.unwrap();
     assert!(lag.iter().all(|row| row.behind == 0), "{lag:?}");
+    let even = layout
+        .write(Body::new(), vec![row_item(4, "idle")])
+        .await
+        .unwrap();
+    let lag = layout.lag().await.unwrap();
+    assert!(lag.iter().all(|row| row.behind == 0), "idle shard {lag:?}");
+    let on_a = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[1].database,
+        "SELECT * FROM _layout:cursor;",
+    )
+    .await;
+    let on_b = q(
+        &cluster,
+        "n8002",
+        &scratch.shards[1].database,
+        "SELECT * FROM _layout:cursor;",
+    )
+    .await;
+    assert!(
+        on_a.contains(&even.to_string()) || on_b.contains(&even.to_string()),
+        "idle cursor {even} a={on_a} b={on_b}"
+    );
 
     let paused = pause(&["surreal-search-0", "surreal-search-1"]);
     let last = layout
@@ -587,10 +777,15 @@ async fn cursor_and_fresh_read() {
         .await
         .unwrap();
     let lag = layout.lag().await.unwrap();
-    assert!(lag.iter().find(|row| row.shard == 1).unwrap().behind > 0, "{lag:?}");
+    assert!(
+        lag.iter().find(|row| row.shard == 1).unwrap().behind > 0,
+        "{lag:?}"
+    );
     let read = layout.read("SELECT * FROM row;", Some(last)).await.unwrap();
     assert!(
-        read.partial.iter().any(|part| part.shard == 1 && part.reason == "behind"),
+        read.partial
+            .iter()
+            .any(|part| part.shard == 1 && part.reason == "behind"),
         "{read:?}"
     );
     drop(paused);
@@ -632,9 +827,17 @@ async fn schema_reaches_a_copy_that_was_down() {
     )
     .await;
     for node in ["n8001", "n8002"] {
-        let info = q(&cluster, node, &scratch.shards[0].database, "INFO FOR TABLE probe;").await;
+        let info = q(
+            &cluster,
+            node,
+            &scratch.shards[0].database,
+            "INFO FOR TABLE probe;",
+        )
+        .await;
         assert!(info.to_ascii_lowercase().contains('n'), "{node} {info}");
-        assert!(logs(&cluster, node, &scratch.shards[0].database).await.is_empty());
+        assert!(logs(&cluster, node, &scratch.shards[0].database)
+            .await
+            .is_empty());
     }
     let paused = pause(&["surreal-search-1"]);
     let lsn = layout
@@ -644,13 +847,27 @@ async fn schema_reaches_a_copy_that_was_down() {
         )
         .await
         .unwrap();
-    assert_eq!(logs(&cluster, "n8001", &scratch.shards[0].database).await, vec![lsn]);
+    assert_eq!(
+        logs(&cluster, "n8001", &scratch.shards[0].database).await,
+        vec![lsn]
+    );
     drop(paused);
     wait_port(8002);
     layout.catch_up(&scratch.shards[0].set_id).await.unwrap();
-    let info = q(&cluster, "n8002", &scratch.shards[0].database, "INFO FOR TABLE probe;").await;
+    let info = q(
+        &cluster,
+        "n8002",
+        &scratch.shards[0].database,
+        "INFO FOR TABLE probe;",
+    )
+    .await;
     assert!(info.contains("extra"), "{info}");
-    assert_eq!(logs(&cluster, "n8002", &scratch.shards[0].database).await.len(), 1);
+    assert_eq!(
+        logs(&cluster, "n8002", &scratch.shards[0].database)
+            .await
+            .len(),
+        1
+    );
     assert_eq!(hooks.rebuilds.load(Ordering::SeqCst), 0);
     assert_eq!(hooks.lost.load(Ordering::SeqCst), 0);
     finish(&cluster, &scratch).await;
@@ -678,13 +895,28 @@ async fn empty_shard_refills_from_the_commit_set() {
         .unwrap();
     let sibling_before = logs(&cluster, "n8001", &scratch.shards[1].database).await;
     for node in ["n8001", "n8002"] {
-        remove_database(&cluster, node, node_url(node), NS, &scratch.shards[0].database)
-            .await
-            .unwrap();
+        remove_database(
+            &cluster,
+            node,
+            node_url(node),
+            NS,
+            &scratch.shards[0].database,
+        )
+        .await
+        .unwrap();
     }
     layout.refill(0).await.expect("refill");
-    let restored = q(&cluster, "n8001", &scratch.shards[0].database, "SELECT * FROM row;").await;
-    assert!(restored.contains("even") || restored.contains("row:0"), "{restored}");
+    let restored = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[0].database,
+        "SELECT * FROM row;",
+    )
+    .await;
+    assert!(
+        restored.contains("even") || restored.contains("row:0"),
+        "{restored}"
+    );
     assert!(!restored.contains("odd"), "{restored}");
     let sibling_after = logs(&cluster, "n8001", &scratch.shards[1].database).await;
     assert_eq!(sibling_before, sibling_after);
@@ -699,20 +931,30 @@ async fn dual_layout() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[
-            vec!["n8001"],
-            vec!["n8001"],
-            vec!["n8002"],
-            vec!["n8002"],
-        ],
+        &[vec!["n8001"], vec!["n8001"], vec!["n8002"], vec!["n8002"]],
         Some(4),
         None,
     )
     .await;
-    let commit = layout.write(Body::new(), vec![row_item(2, "both")]).await.unwrap();
+    let commit = layout
+        .write(Body::new(), vec![row_item(2, "both")])
+        .await
+        .unwrap();
     commit_is_number(commit);
-    let a = q(&cluster, "n8001", &scratch.shards[0].database, "SELECT * FROM row;").await;
-    let b = q(&cluster, "n8002", &scratch.shards[2].database, "SELECT * FROM row;").await;
+    let a = q(
+        &cluster,
+        "n8001",
+        &scratch.shards[0].database,
+        "SELECT * FROM row;",
+    )
+    .await;
+    let b = q(
+        &cluster,
+        "n8002",
+        &scratch.shards[2].database,
+        "SELECT * FROM row;",
+    )
+    .await;
     assert!(a.contains("both") || a.contains("row:2"), "{a}");
     assert!(b.contains("both") || b.contains("row:2"), "{b}");
     finish(&cluster, &scratch).await;
@@ -723,10 +965,26 @@ async fn entry_limit_live() {
     let _guard = gate().await;
     let cluster = cluster().await;
     let (layout, scratch) = scratch(&cluster, &[vec!["n8001"], vec!["n8002"]], None, None).await;
-    let items: Vec<Item> = (0..300).map(|n| row_item(n * 2, &format!("i{n}"))).collect();
+    let items: Vec<Item> = (0..300)
+        .map(|n| row_item(n * 2, &format!("i{n}")))
+        .collect();
     let commit = layout.write(Body::new(), items).await.expect("commit");
     commit_is_number(commit);
-    assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await.len(), 1);
+    let commit_ids = logs(&cluster, "g8000", &scratch.commit_db).await;
+    assert_eq!(commit_ids.len(), 2, "{commit_ids:?}");
+    assert_eq!(commit_ids.iter().copied().max(), Some(commit));
+    for id in &commit_ids {
+        let text = q(
+            &cluster,
+            "g8000",
+            &scratch.commit_db,
+            &format!("SELECT * FROM _repl_log:{id};"),
+        )
+        .await;
+        let upserts = text.matches("UPSERT _layout_item:").count();
+        assert!(upserts <= 256 && upserts > 0, "{id} has {upserts}");
+        assert!(text.len() < 4 * 1024 * 1024, "{id} is {} bytes", text.len());
+    }
     let ids = logs(&cluster, "n8001", &scratch.shards[0].database).await;
     assert_eq!(ids.len(), 2, "{ids:?}");
     for id in ids {
@@ -742,4 +1000,58 @@ async fn entry_limit_live() {
         assert!(text.len() < 4 * 1024 * 1024, "{id} is {} bytes", text.len());
     }
     finish(&cluster, &scratch).await;
+}
+
+#[tokio::test]
+async fn queued_delete_survives_restart() {
+    let _guard = gate().await;
+    let cluster = cluster().await;
+    let (layout, scratch) = scratch(
+        &cluster,
+        &[vec!["g8000"], vec!["n8001", "n8002"]],
+        None,
+        None,
+    )
+    .await;
+    layout
+        .write(Body::new(), vec![row_item(1, "gone")])
+        .await
+        .unwrap();
+    until("row exists", || {
+        let cluster = &cluster;
+        let db = scratch.shards[1].database.clone();
+        async move {
+            let a = q(cluster, "n8001", &db, "SELECT * FROM row:1;").await;
+            let b = q(cluster, "n8002", &db, "SELECT * FROM row:1;").await;
+            a.contains("row:1") || b.contains("row:1")
+        }
+    })
+    .await;
+    let paused = pause(&["surreal-search-0", "surreal-search-1"]);
+    let mut gone = row_item(1, "gone");
+    gone.delete = true;
+    layout.write(Body::new(), vec![gone]).await.unwrap();
+    let before = logs(&cluster, "g8000", &scratch.commit_db).await;
+    assert_eq!(before.len(), 2, "{before:?}");
+    let db_id = scratch.db_id.clone();
+    drop(layout);
+    drop(paused);
+    wait_port(8001);
+    wait_port(8002);
+    let layout = Layout::open(cluster.clone(), &db_id, "holder", None)
+        .await
+        .expect("reopen");
+    until("delete applied from the commit list", || {
+        let cluster = &cluster;
+        let db = scratch.shards[1].database.clone();
+        async move {
+            let a = q(cluster, "n8001", &db, "SELECT * FROM row:1;").await;
+            let b = q(cluster, "n8002", &db, "SELECT * FROM row:1;").await;
+            !a.contains("row:1") && !b.contains("row:1")
+        }
+    })
+    .await;
+    assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await, before);
+    finish(&cluster, &scratch).await;
+    drop(layout);
 }

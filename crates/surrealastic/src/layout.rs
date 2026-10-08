@@ -2,7 +2,7 @@
 //! No page, doc, or field hash. The caller supplies `key`.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,10 +11,11 @@ use std::time::Duration;
 
 use anyhow::Context;
 use serde_json::{json, Value};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
 use crate::body::Body;
 use crate::cluster::Cluster;
+use crate::guard::Entry;
 use crate::hooks::Owner;
 use crate::store::{self, LayoutRow};
 use crate::writer::Writer;
@@ -62,20 +63,21 @@ struct Inner {
     db: tokio::sync::Mutex<LayoutRow>,
     owner: Option<Arc<dyn Owner>>,
     queue: tokio::sync::Mutex<BTreeMap<i32, Vec<Pending>>>,
-    history: tokio::sync::Mutex<Vec<(i64, Vec<Item>)>>,
     apply: tokio::sync::Mutex<()>,
+    /// Last TCP probe. The write path trusts this and does not dial.
+    probes: tokio::sync::Mutex<HashMap<String, bool>>,
 }
 
 pub struct Layout {
     inner: Arc<Inner>,
     stop: Arc<AtomicBool>,
-    pump: Option<JoinHandle<()>>,
+    tasks: Vec<JoinHandle<()>>,
 }
 
 impl Drop for Layout {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(task) = self.pump.take() {
+        for task in self.tasks.drain(..) {
             task.abort();
         }
     }
@@ -145,6 +147,8 @@ DEFINE FIELD IF NOT EXISTS tag ON _layout_item TYPE string;
 DEFINE FIELD IF NOT EXISTS rids ON _layout_item TYPE array<string>;
 DEFINE FIELD IF NOT EXISTS body ON _layout_item FLEXIBLE TYPE object;
 DEFINE FIELD IF NOT EXISTS commit ON _layout_item TYPE int;
+DEFINE TABLE IF NOT EXISTS _layout_commit SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS items ON _layout_commit FLEXIBLE TYPE array;
 "#;
 
 const CURSOR_DDL: &str = r#"
@@ -177,8 +181,8 @@ impl Layout {
             db: tokio::sync::Mutex::new(row),
             owner,
             queue: tokio::sync::Mutex::new(BTreeMap::new()),
-            history: tokio::sync::Mutex::new(Vec::new()),
             apply: tokio::sync::Mutex::new(()),
+            probes: tokio::sync::Mutex::new(HashMap::new()),
         });
         rebuild_queue(&inner).await?;
         let stop = Arc::new(AtomicBool::new(false));
@@ -200,36 +204,46 @@ impl Layout {
                 }
             })
         };
+        let probe = {
+            let inner = Arc::clone(&inner);
+            let stop = Arc::clone(&stop);
+            tokio::spawn(async move {
+                while !stop.load(Ordering::Relaxed) {
+                    tokio::time::sleep(inner.cluster.config().probe).await;
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    inner.probe_all().await;
+                }
+            })
+        };
         Ok(Self {
             inner,
             stop,
-            pump: Some(pump),
+            tasks: vec![pump, probe],
         })
     }
 
-    /// Commit, then apply. The number returned is the commit set's lsn.
+    /// Commit, then apply. The number returned is the last commit lsn.
+    /// A job that fits in one entry stays one entry. A larger job is several
+    /// entries, each within the entry limits, and the shards apply once.
     pub async fn write(&self, commit_body: Body, items: Vec<Item>) -> anyhow::Result<i64> {
-        let mut body = commit_body;
-        for item in &items {
-            body = push_item(body, item)?;
+        let docs = self.inner.cluster.config().entry_docs;
+        let bytes = self.inner.cluster.config().entry_bytes;
+        let chunks = commit_chunks(commit_body, &items, docs, bytes)?;
+        let tag = entry_tag(&items);
+        let commit_set = self.db().await.commit_set;
+        let mut last = 0_i64;
+        for (body, _) in chunks {
+            last = match self.inner.writer.write(&commit_set, body, &tag).await {
+                Ok(lsn) => lsn,
+                Err(err) => return Err(commit_error(err)),
+            };
         }
-        let commit = match self
-            .inner
-            .writer
-            .write(self.db().await.commit_set.as_str(), body, "layout")
-            .await
-        {
-            Ok(lsn) => lsn,
-            Err(err) => return Err(commit_error(err)),
-        };
-        self.inner
-            .history
-            .lock()
-            .await
-            .push((commit, items.clone()));
-        let _guard = self.inner.apply.lock().await;
-        self.inner.fan_out(commit, &items).await;
-        Ok(commit)
+        let inner = Arc::clone(&self.inner);
+        let _guard = inner.apply.lock().await;
+        inner.fan_out(last, &items).await;
+        Ok(last)
     }
 
     pub async fn read(&self, query: &str, min_commit: Option<i64>) -> anyhow::Result<ReadOut> {
@@ -275,8 +289,10 @@ impl Layout {
     }
 
     /// Replay this process's entries onto copies that missed them.
+    /// A copy stays `lagging` until replay reaches the head.
     pub async fn catch_up(&self, set_id: &str) -> anyhow::Result<()> {
-        self.inner.catch_up(set_id).await
+        self.inner.note_health(set_id, true).await;
+        Ok(())
     }
 
     /// Fill an empty shard from the commit set's item table. A sibling shard is not a source.
@@ -290,15 +306,38 @@ impl Layout {
 }
 
 impl Inner {
-    async fn fan_out(&self, commit: i64, items: &[Item]) {
+    async fn fan_out(self: &Arc<Self>, commit: i64, items: &[Item]) {
         let db = self.db.lock().await.clone();
         let grouped = group_items(items, db.shard_count, db.shard_count_next);
-        for (shard, group) in grouped {
-            if self.apply_group(shard, commit, &group).await.is_err() {
-                self.queue.lock().await.entry(shard).or_default().push(Pending {
-                    commit,
-                    items: group,
-                });
+        let mut jobs = Vec::new();
+        for shard in 0..span(&db) {
+            let set_id = shard_set_id(&db.db_id, db.epoch, shard);
+            self.note_health(&set_id, false).await;
+            let group = grouped.get(&shard).cloned().unwrap_or_default();
+            jobs.push((shard, group));
+        }
+        let mut set = JoinSet::new();
+        for (shard, group) in jobs {
+            let inner = Arc::clone(self);
+            set.spawn(async move {
+                let result = inner.apply_group(shard, commit, &group).await;
+                (shard, group, result)
+            });
+        }
+        while let Some(joined) = set.join_next().await {
+            let Ok((shard, group, result)) = joined else {
+                continue;
+            };
+            if result.is_err() {
+                self.queue
+                    .lock()
+                    .await
+                    .entry(shard)
+                    .or_default()
+                    .push(Pending {
+                        commit,
+                        items: group,
+                    });
             }
         }
     }
@@ -326,6 +365,9 @@ impl Inner {
         if still != Some(pending.commit) {
             return Ok(());
         }
+        let db = self.db.lock().await.clone();
+        let set_id = shard_set_id(&db.db_id, db.epoch, shard);
+        self.note_health(&set_id, false).await;
         if self
             .apply_group(shard, pending.commit, &pending.items)
             .await
@@ -348,84 +390,223 @@ impl Inner {
     async fn apply_group(&self, shard: i32, commit: i64, items: &[Item]) -> anyhow::Result<()> {
         let db = self.db.lock().await.clone();
         let set_id = shard_set_id(&db.db_id, db.epoch, shard);
-        if !self.ready(&set_id).await? {
+        if !self.writer.has_in_sync(&set_id).await {
             anyhow::bail!("no in-sync copy");
         }
         let docs = self.cluster.config().entry_docs;
         let bytes = self.cluster.config().entry_bytes;
-        let packs = pack_items(items, docs, bytes);
+        let packed = pack_items(items, docs, bytes);
+        let packs = if packed.is_empty() {
+            vec![Vec::new()]
+        } else {
+            packed
+        };
         for (index, pack) in packs.iter().enumerate() {
             let last = index + 1 == packs.len();
             let body = shard_body(pack, commit, last)?;
-            self.writer.write(&set_id, body, "layout").await?;
+            let tag = entry_tag(pack);
+            self.writer.write(&set_id, body, &tag).await?;
         }
         Ok(())
     }
 
     async fn ready(&self, set_id: &str) -> anyhow::Result<bool> {
-        let copies = self.cluster.copies(set_id).await?;
-        let head = self.writer.head(set_id).await;
-        let mut any = false;
-        for copy in copies {
-            if !node_ready(&copy.url).await {
-                self.writer.force_lagging(set_id, &copy.node_id).await?;
-                continue;
-            }
-            let set = store::load_set(self.cluster.pool(), set_id).await?;
-            self.cluster.disconnect(&copy.node_id).await;
-            let conn = self.cluster.conn(&copy.node_id, &copy.url).await?;
-            let (applied, _) = crate::link::state_of(&conn, &set.namespace, &set.database)
-                .await
-                .unwrap_or((0, 0));
-            if applied < head {
-                self.replay_copy(set_id, &copy.node_id, &copy.url).await?;
-            }
-            self.writer.revive(set_id, &copy.node_id).await?;
-            any = true;
-        }
-        Ok(any)
+        self.note_health(set_id, false).await;
+        Ok(self.writer.has_in_sync(set_id).await)
     }
 
-    async fn replay_copy(&self, set_id: &str, node: &str, url: &str) -> anyhow::Result<()> {
-        let set = store::load_set(self.cluster.pool(), set_id).await?;
-        let entries = self.writer.remembered(set_id).await;
+    /// A healthy socket stays up. TCP runs only when `probe` is set: the timer
+    /// and an explicit catch-up. A write uses the last answer and does not dial.
+    async fn note_health(&self, set_id: &str, probe: bool) {
+        let Ok(copies) = self.cluster.copies(set_id).await else {
+            return;
+        };
+        let head = self.writer.head(set_id).await;
+        for copy in copies {
+            let known = self.probes.lock().await.get(&copy.node_id).copied();
+            if probe {
+                let ready = node_ready(&copy.url).await;
+                self.probes.lock().await.insert(copy.node_id.clone(), ready);
+                if !ready {
+                    self.mark_down(set_id, &copy.node_id).await;
+                    continue;
+                }
+            } else if known == Some(false) {
+                self.mark_down(set_id, &copy.node_id).await;
+                continue;
+            }
+            let state = self.writer.copy_state(set_id, &copy.node_id).await;
+            let applied_mem = self
+                .writer
+                .copy_applied(set_id, &copy.node_id)
+                .await
+                .unwrap_or(0);
+            if state.as_deref() == Some("in_sync") && applied_mem >= head {
+                continue;
+            }
+            // A lagging copy waits for the probe. The write path does not dial it.
+            if !probe && state.as_deref() != Some("in_sync") {
+                continue;
+            }
+            let node = copy.node_id.clone();
+            let url = copy.url.clone();
+            let recovered = tokio::time::timeout(
+                Duration::from_secs(8),
+                self.recover_copy(set_id, &node, &url, head),
+            )
+            .await;
+            if !matches!(recovered, Ok(Ok(()))) {
+                self.cluster.disconnect(&node).await;
+                self.probes.lock().await.insert(node, false);
+            }
+        }
+    }
+
+    /// Dial once, replay to the head, and mark the copy in sync when it arrives.
+    async fn recover_copy(
+        &self,
+        set_id: &str,
+        node: &str,
+        url: &str,
+        head: i64,
+    ) -> anyhow::Result<()> {
         self.cluster.disconnect(node).await;
+        let set = store::load_set(self.cluster.pool(), set_id).await?;
         let conn = self.cluster.conn(node, url).await?;
-        let (mut applied, _) = crate::link::state_of(&conn, &set.namespace, &set.database).await?;
+        let applied = crate::link::state_of(&conn, &set.namespace, &set.database)
+            .await
+            .map(|state| state.0)
+            .unwrap_or(0);
+        if applied < head {
+            let reached = self.replay_copy(set_id, node, url).await?;
+            if reached < head {
+                anyhow::bail!("still behind");
+            }
+        }
+        self.writer.revive(set_id, node).await?;
+        Ok(())
+    }
+
+    async fn mark_down(&self, set_id: &str, node: &str) {
+        self.cluster.disconnect(node).await;
+        if self.writer.copy_state(set_id, node).await.as_deref() != Some("lagging") {
+            let _ = self.writer.force_lagging(set_id, node).await;
+        }
+    }
+
+    async fn probe_all(&self) {
+        let db = self.db.lock().await.clone();
+        self.note_health(&db.commit_set, true).await;
+        for shard in 0..span(&db) {
+            let set_id = shard_set_id(&db.db_id, db.epoch, shard);
+            self.note_health(&set_id, true).await;
+        }
+    }
+
+    /// Replay until the copy reaches the head. Missing entries come from an
+    /// in-sync copy's `_repl_log` when this process no longer holds them.
+    async fn replay_copy(&self, set_id: &str, node: &str, url: &str) -> anyhow::Result<i64> {
+        let set = store::load_set(self.cluster.pool(), set_id).await?;
+        let conn = match self.cluster.conn(node, url).await {
+            Ok(conn) => conn,
+            Err(err) => {
+                self.cluster.disconnect(node).await;
+                return Err(err);
+            }
+        };
+        let (mut applied, prev_fence) =
+            match crate::link::state_of(&conn, &set.namespace, &set.database).await {
+                Ok(state) => state,
+                Err(err) => {
+                    self.cluster.disconnect(node).await;
+                    return Err(err);
+                }
+            };
+        let head = self.writer.head(set_id).await;
+        let mut entries = self.writer.remembered(set_id).await;
+        let covered = entries
+            .iter()
+            .map(|entry| entry.lsn)
+            .max()
+            .unwrap_or(applied);
+        if covered < head {
+            if let Ok(more) = self
+                .fetch_log(set_id, node, applied + 1, head, prev_fence)
+                .await
+            {
+                for entry in more {
+                    if !entries.iter().any(|have| have.lsn == entry.lsn) {
+                        entries.push(entry);
+                    }
+                }
+                entries.sort_by_key(|entry| entry.lsn);
+            }
+        }
         for entry in &entries {
             if entry.lsn <= applied {
                 continue;
             }
-            let reply = crate::link::apply(&conn, &set.namespace, &set.database, entry).await?;
-            if matches!(
-                reply.status,
-                crate::guard::ApplyStatus::Ok | crate::guard::ApplyStatus::Already
-            ) {
-                applied = entry.lsn;
+            match crate::link::apply(&conn, &set.namespace, &set.database, entry).await {
+                Ok(reply)
+                    if matches!(
+                        reply.status,
+                        crate::guard::ApplyStatus::Ok | crate::guard::ApplyStatus::Already
+                    ) =>
+                {
+                    applied = entry.lsn;
+                }
+                Ok(_) => break,
+                Err(_) => {
+                    self.cluster.disconnect(node).await;
+                    anyhow::bail!("replay failed");
+                }
             }
         }
         self.writer.note_caught_up(set_id, node, applied).await;
-        Ok(())
+        self.writer.trim_remembered(set_id).await;
+        Ok(applied)
     }
 
-    async fn catch_up(&self, set_id: &str) -> anyhow::Result<()> {
-        let copies = self.cluster.copies(set_id).await?;
-        for copy in copies {
-            if !node_ready(&copy.url).await {
-                continue;
-            }
-            let set = store::load_set(self.cluster.pool(), set_id).await?;
-            self.cluster.disconnect(&copy.node_id).await;
-            let conn = self.cluster.conn(&copy.node_id, &copy.url).await?;
-            let (applied, _) =
-                crate::link::state_of(&conn, &set.namespace, &set.database).await?;
-            let head = self.writer.head(set_id).await;
-            if applied < head {
-                self.replay_copy(set_id, &copy.node_id, &copy.url).await?;
-            }
-            self.writer.revive(set_id, &copy.node_id).await?;
+    /// Read `_repl_log` from another in-sync copy of this same set.
+    async fn fetch_log(
+        &self,
+        set_id: &str,
+        skip: &str,
+        from: i64,
+        to: i64,
+        mut prev_fence: i64,
+    ) -> anyhow::Result<Vec<Entry>> {
+        if from > to {
+            return Ok(Vec::new());
         }
-        Ok(())
+        let copies = self.cluster.copies(set_id).await?;
+        let Some(source) = copies
+            .iter()
+            .find(|copy| copy.node_id != skip && copy.state == "in_sync")
+        else {
+            return Ok(Vec::new());
+        };
+        let set = store::load_set(self.cluster.pool(), set_id).await?;
+        let conn = self.cluster.conn(&source.node_id, &source.url).await?;
+        let batch = self.cluster.config().catchup_batch.max(1) as i64;
+        let mut out = Vec::new();
+        let mut next = from;
+        while next <= to {
+            let end = (next + batch - 1).min(to);
+            let sql = format!("SELECT * FROM _repl_log:{next}..={end};");
+            let value = crate::link::query_json(&conn, &set.namespace, &set.database, &sql).await?;
+            let rows = entries_from_log(&value, prev_fence);
+            let Some(last) = rows.last() else {
+                break;
+            };
+            if last.lsn < next {
+                break;
+            }
+            prev_fence = last.fence;
+            next = last.lsn + 1;
+            out.extend(rows);
+        }
+        Ok(out)
     }
 
     async fn read_shard(
@@ -436,7 +617,11 @@ impl Inner {
     ) -> Result<String, String> {
         let db = self.db.lock().await.clone();
         let set_id = shard_set_id(&db.db_id, db.epoch, shard);
-        let copies = self.cluster.copies(&set_id).await.map_err(|err| err.to_string())?;
+        let copies = self
+            .cluster
+            .copies(&set_id)
+            .await
+            .map_err(|err| err.to_string())?;
         let set = store::load_set(self.cluster.pool(), &set_id)
             .await
             .map_err(|err| err.to_string())?;
@@ -549,21 +734,18 @@ impl Inner {
             let body = shard_body(pack, l0, last)?;
             self.writer.write(&set_id, body, "refill").await?;
         }
-        let history = self.history.lock().await.clone();
-        for (commit_lsn, committed) in history {
-            if commit_lsn <= l0 {
-                continue;
+        let head = self.writer.head(&db.commit_set).await;
+        if head > l0 {
+            let later = read_commits(&self.cluster, &commit, log_tail_start(l0), head).await?;
+            for (commit_lsn, committed) in later {
+                let group: Vec<Item> = committed
+                    .into_iter()
+                    .filter(|item| {
+                        shards_for(item.key, db.shard_count, db.shard_count_next).contains(&shard)
+                    })
+                    .collect();
+                self.apply_group(shard, commit_lsn, &group).await?;
             }
-            let group: Vec<Item> = committed
-                .into_iter()
-                .filter(|item| {
-                    shards_for(item.key, db.shard_count, db.shard_count_next).contains(&shard)
-                })
-                .collect();
-            if group.is_empty() {
-                continue;
-            }
-            self.apply_group(shard, commit_lsn, &group).await?;
         }
         Ok(())
     }
@@ -602,6 +784,26 @@ fn group_items(items: &[Item], count: i32, next: Option<i32>) -> BTreeMap<i32, V
     map
 }
 
+fn push_manifest(mut body: Body, items: &[Item]) -> anyhow::Result<Body> {
+    let listed: Vec<Value> = items
+        .iter()
+        .map(|item| {
+            json!({
+                "key": item.key,
+                "item": item.item,
+                "tag": item.tag,
+                "rids": item.rids,
+                "body": item.body.logged(),
+                "delete": item.delete,
+            })
+        })
+        .collect();
+    let param = body.bind_value(Value::Array(listed));
+    body.statement(&format!(
+        "UPSERT type::thing('_layout_commit', $lsn) CONTENT {{ items: ${param} }};"
+    ))
+}
+
 fn push_item(body: Body, item: &Item) -> anyhow::Result<Body> {
     if item.delete {
         return body.statement(&format!("DELETE _layout_item:{};", item.key));
@@ -615,6 +817,122 @@ fn push_item(body: Body, item: &Item) -> anyhow::Result<Body> {
     body.statement(&format!(
         "LET $rows = (SELECT item FROM _layout_item:{key}); LET $have = $rows[0].item; IF $have != NONE AND $have != ${p_item} {{ THROW \"key collision\"; }}; UPSERT _layout_item:{key} CONTENT {{ item: ${p_item}, tag: ${p_tag}, rids: ${p_rids}, body: ${p_body}, commit: $lsn }};"
     ))
+}
+
+/// One chunk when the job fits. Otherwise each piece stays within the entry limits.
+/// A single statement or item that is already over the byte cap is emitted alone.
+fn commit_chunks(
+    commit_body: Body,
+    items: &[Item],
+    max_docs: u32,
+    max_bytes: u32,
+) -> anyhow::Result<Vec<(Body, Vec<Item>)>> {
+    let max_docs = max_docs.max(1);
+    let max_bytes = max_bytes.max(1);
+    if (items.len() as u32) <= max_docs {
+        let whole = finish_chunk(commit_body.clone(), items)?;
+        if whole.byte_len() <= max_bytes {
+            return Ok(vec![(whole, items.to_vec())]);
+        }
+    }
+    let mut chunks = Vec::new();
+    let mut prefix = commit_body.split_bytes(max_bytes);
+    let mut carry = prefix.pop().unwrap_or_else(Body::new);
+    for piece in prefix {
+        chunks.push((push_manifest(piece, &[])?, Vec::new()));
+    }
+    let mut batch = Vec::new();
+    for item in items {
+        let mut trial = batch.clone();
+        trial.push(item.clone());
+        if !batch.is_empty() && !chunk_fits(&carry, &trial, max_docs, max_bytes)? {
+            chunks.push((finish_chunk(std::mem::take(&mut carry), &batch)?, batch));
+            batch = Vec::new();
+        }
+        if batch.is_empty() && !chunk_fits(&carry, std::slice::from_ref(item), max_docs, max_bytes)?
+        {
+            if !carry.is_empty() {
+                chunks.push((push_manifest(std::mem::take(&mut carry), &[])?, Vec::new()));
+            }
+            chunks.push((
+                finish_chunk(Body::new(), std::slice::from_ref(item))?,
+                vec![item.clone()],
+            ));
+            continue;
+        }
+        batch.push(item.clone());
+    }
+    if !batch.is_empty() || chunks.is_empty() {
+        chunks.push((finish_chunk(carry, &batch)?, batch));
+    } else if !carry.is_empty() {
+        chunks.push((push_manifest(carry, &[])?, Vec::new()));
+    }
+    Ok(chunks)
+}
+
+fn chunk_fits(
+    prefix: &Body,
+    items: &[Item],
+    max_docs: u32,
+    max_bytes: u32,
+) -> anyhow::Result<bool> {
+    if items.len() as u32 > max_docs {
+        return Ok(false);
+    }
+    Ok(finish_chunk(prefix.clone(), items)?.byte_len() <= max_bytes)
+}
+
+fn finish_chunk(mut body: Body, items: &[Item]) -> anyhow::Result<Body> {
+    for item in items {
+        body = push_item(body, item)?;
+    }
+    push_manifest(body, items)
+}
+
+fn entries_from_log(value: &Value, prev_fence: i64) -> Vec<Entry> {
+    let rows = match value {
+        Value::Array(rows) => rows.clone(),
+        Value::Object(_) => vec![value.clone()],
+        _ => return Vec::new(),
+    };
+    let mut parsed = Vec::new();
+    for row in rows {
+        let Some(lsn) = record_key(row.get("id")) else {
+            continue;
+        };
+        let fence = json_i64(&row, "fence").unwrap_or(0);
+        let tag = row
+            .get("tag")
+            .and_then(|v| v.as_str())
+            .unwrap_or("layout")
+            .to_string();
+        let at = match row.get("at") {
+            Some(Value::String(text)) => text.clone(),
+            Some(other) => other.to_string().trim_matches('"').to_string(),
+            None => String::new(),
+        };
+        let body = row
+            .get("body")
+            .and_then(|value| Body::from_logged(value).ok())
+            .unwrap_or_default();
+        parsed.push(Entry {
+            lsn,
+            prev: lsn.saturating_sub(1),
+            prev_fence: 0,
+            fence,
+            tag,
+            at,
+            body,
+        });
+    }
+    parsed.sort_by_key(|entry| entry.lsn);
+    let mut fence_before = prev_fence;
+    for entry in &mut parsed {
+        entry.prev = entry.lsn.saturating_sub(1);
+        entry.prev_fence = fence_before;
+        fence_before = entry.fence;
+    }
+    parsed
 }
 
 fn shard_body(items: &[Item], commit: i64, cursor: bool) -> anyhow::Result<Body> {
@@ -635,7 +953,11 @@ fn shard_body(items: &[Item], commit: i64, cursor: bool) -> anyhow::Result<Body>
 }
 
 fn commit_error(err: anyhow::Error) -> anyhow::Error {
-    if err.to_string().to_ascii_lowercase().contains("key collision") {
+    if err
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("key collision")
+    {
         anyhow::anyhow!("key collision")
     } else {
         err
@@ -643,13 +965,29 @@ fn commit_error(err: anyhow::Error) -> anyhow::Error {
 }
 
 fn accept_read(query: &str) -> anyhow::Result<()> {
-    let lower = query.to_ascii_lowercase();
-    for word in ["upsert", "delete", "create", "define", "remove", "update", "relate"] {
-        if lower.contains(word) {
-            anyhow::bail!("read is a query");
-        }
+    let sql = query.trim().trim_end_matches(';').trim();
+    if sql.is_empty() || sql.contains(';') {
+        anyhow::bail!("read is one select");
+    }
+    let lower = sql.to_ascii_lowercase();
+    let Some(after) = lower.strip_prefix("select") else {
+        anyhow::bail!("read is one select");
+    };
+    if after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+        anyhow::bail!("read is one select");
     }
     Ok(())
+}
+
+/// One shared item tag is the log entry tag. A mixed or empty pack stays `layout`.
+fn entry_tag(items: &[Item]) -> String {
+    let Some(first) = items.first() else {
+        return "layout".to_string();
+    };
+    if first.tag.is_empty() || items.iter().any(|item| item.tag != first.tag) {
+        return "layout".to_string();
+    }
+    first.tag.clone()
 }
 
 fn span(row: &LayoutRow) -> i32 {
@@ -663,7 +1001,13 @@ async fn ensure_schema(
 ) -> anyhow::Result<()> {
     ensure_one(cluster, &row.commit_set, true, owner).await?;
     for shard in 0..span(row) {
-        ensure_one(cluster, &shard_set_id(&row.db_id, row.epoch, shard), false, owner).await?;
+        ensure_one(
+            cluster,
+            &shard_set_id(&row.db_id, row.epoch, shard),
+            false,
+            owner,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -703,34 +1047,23 @@ async fn rebuild_queue(inner: &Inner) -> anyhow::Result<()> {
         return Ok(());
     }
     let commit = store::load_set(inner.cluster.pool(), &db.commit_set).await?;
-    let stored = read_item_table(&inner.cluster, &commit).await?;
     for shard in 0..span(&db) {
         let cursor = inner.cursor(shard).await.unwrap_or(0);
         if cursor >= head {
             continue;
         }
-        let mut by_commit: BTreeMap<i64, Vec<Item>> = BTreeMap::new();
-        for row in &stored {
-            if row.commit <= cursor {
-                continue;
-            }
-            if !shards_for(row.key, db.shard_count, db.shard_count_next).contains(&shard) {
-                continue;
-            }
-            by_commit.entry(row.commit).or_default().push(Item {
-                key: row.key,
-                item: row.item.clone(),
-                tag: row.tag.clone(),
-                rids: row.rids.clone(),
-                body: row.body.clone(),
-                delete: false,
-            });
-        }
+        let commits = read_commits(&inner.cluster, &commit, cursor + 1, head).await?;
         let mut queue = inner.queue.lock().await;
-        for (commit_lsn, items) in by_commit {
+        for (commit_lsn, items) in commits {
+            let mine: Vec<Item> = items
+                .into_iter()
+                .filter(|item| {
+                    shards_for(item.key, db.shard_count, db.shard_count_next).contains(&shard)
+                })
+                .collect();
             queue.entry(shard).or_default().push(Pending {
                 commit: commit_lsn,
-                items,
+                items: mine,
             });
         }
     }
@@ -757,6 +1090,12 @@ async fn refuse_filled(cluster: &Cluster, set_id: &str) -> anyhow::Result<()> {
     let set = store::load_set(cluster.pool(), set_id).await?;
     for copy in cluster.copies(set_id).await? {
         let conn = cluster.conn(&copy.node_id, &copy.url).await?;
+        let (applied, _) = crate::link::state_of(&conn, &set.namespace, &set.database)
+            .await
+            .unwrap_or((0, 0));
+        if applied > 0 {
+            anyhow::bail!("refill refuses a database that still has rows");
+        }
         let value = crate::link::query_json(
             &conn,
             &set.namespace,
@@ -772,7 +1111,97 @@ async fn refuse_filled(cluster: &Cluster, set_id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn read_item_table(cluster: &Cluster, set: &crate::store::SetRow) -> anyhow::Result<Vec<StoredItem>> {
+async fn read_commits(
+    cluster: &Cluster,
+    set: &crate::store::SetRow,
+    from: i64,
+    to: i64,
+) -> anyhow::Result<BTreeMap<i64, Vec<Item>>> {
+    let mut out = BTreeMap::new();
+    if from > to {
+        return Ok(out);
+    }
+    let batch = cluster.config().catchup_batch.max(1);
+    let copies = cluster.copies(&set.set_id).await?;
+    let copy = copies
+        .into_iter()
+        .find(|copy| copy.state == "in_sync")
+        .context("commit set has no in-sync copy")?;
+    let conn = cluster.conn(&copy.node_id, &copy.url).await?;
+    let mut offset = 0_u32;
+    loop {
+        let sql = format!(
+            "SELECT items, <string> id AS id FROM _layout_commit ORDER BY id LIMIT {batch} START {offset};"
+        );
+        let value = crate::link::query_json(&conn, &set.namespace, &set.database, &sql).await?;
+        let rows = match value {
+            Value::Array(rows) => rows,
+            Value::Null => break,
+            Value::String(_) => break,
+            other => vec![other],
+        };
+        if rows.is_empty() {
+            break;
+        }
+        let count = rows.len();
+        for row in rows {
+            let lsn = record_key(row.get("id")).unwrap_or(0);
+            if lsn < from || lsn > to {
+                continue;
+            }
+            out.insert(lsn, items_from(row.get("items")));
+        }
+        if (count as u32) < batch {
+            break;
+        }
+        offset += count as u32;
+    }
+    Ok(out)
+}
+
+fn items_from(value: Option<&Value>) -> Vec<Item> {
+    let Some(Value::Array(rows)) = value else {
+        return Vec::new();
+    };
+    rows.iter().filter_map(|row| item_from(row).ok()).collect()
+}
+
+fn item_from(row: &Value) -> anyhow::Result<Item> {
+    let body = match row.get("body") {
+        Some(value) if !value.is_null() => Body::from_logged(value)?,
+        _ => Body::new(),
+    };
+    let rids = row
+        .get("rids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Item {
+        key: json_i64(row, "key").context("key")?,
+        item: row
+            .get("item")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        tag: row
+            .get("tag")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        rids,
+        body,
+        delete: row.get("delete").and_then(|v| v.as_bool()).unwrap_or(false),
+    })
+}
+
+async fn read_item_table(
+    cluster: &Cluster,
+    set: &crate::store::SetRow,
+) -> anyhow::Result<Vec<StoredItem>> {
     let batch = cluster.config().catchup_batch.max(1);
     let copies = cluster.copies(&set.set_id).await?;
     let copy = copies
@@ -812,8 +1241,16 @@ async fn read_item_table(cluster: &Cluster, set: &crate::store::SetRow) -> anyho
                 .unwrap_or_default();
             out.push(StoredItem {
                 key,
-                item: row.get("item").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                tag: row.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                item: row
+                    .get("item")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                tag: row
+                    .get("tag")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 rids,
                 body,
                 commit: json_i64(&row, "commit").unwrap_or(0),
@@ -851,7 +1288,10 @@ fn record_key(id: Option<&Value>) -> Option<i64> {
 
 fn json_i64(value: &Value, field: &str) -> Option<i64> {
     let found = match value {
-        Value::Array(rows) => rows.iter().find_map(|row| row.get(field)).or_else(|| rows.first()),
+        Value::Array(rows) => rows
+            .iter()
+            .find_map(|row| row.get(field))
+            .or_else(|| rows.first()),
         other => other.get(field),
     };
     match found {
@@ -871,7 +1311,11 @@ pub async fn remove_database(
     let conn = cluster.conn(node_id, url).await?;
     crate::link::exec(
         &conn,
-        &format!("USE NS {namespace}; REMOVE DATABASE IF EXISTS {database};"),
+        &format!(
+            "USE NS {}; REMOVE DATABASE IF EXISTS {};",
+            crate::guard::quote_ident(namespace),
+            crate::guard::quote_ident(database)
+        ),
     )
     .await?;
     Ok(())
@@ -895,17 +1339,111 @@ fn probe(url: &str) -> bool {
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(400)) else {
         return false;
     };
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(400)));
-    let _ = stream.set_write_timeout(Some(Duration::from_millis(400)));
-    if stream
-        .write_all(b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n")
-        .is_err()
-    {
-        return false;
-    }
+    let _ = stream.set_nonblocking(true);
+    let started = std::time::Instant::now();
+    let deadline = Duration::from_millis(400);
+    let request = b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n";
+    let mut sent = 0_usize;
     let mut buf = [0_u8; 16];
-    match stream.read(&mut buf) {
-        Ok(n) if n > 0 => buf.starts_with(b"HTTP"),
-        _ => false,
+    loop {
+        if started.elapsed() > deadline {
+            return false;
+        }
+        if sent < request.len() {
+            match stream.write(&request[sent..]) {
+                Ok(0) => return false,
+                Ok(n) => sent += n,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    continue;
+                }
+                Err(_) => return false,
+            }
+            continue;
+        }
+        match stream.read(&mut buf) {
+            Ok(n) if n > 0 => return buf.starts_with(b"HTTP"),
+            Ok(_) => return false,
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accept_read;
+
+    #[test]
+    fn read_is_one_select() {
+        assert!(accept_read("SELECT * FROM row").is_ok());
+        assert!(accept_read("select * from row;").is_ok());
+        assert!(accept_read("SELECT * FROM committed").is_ok());
+        for sql in [
+            "DELETE row",
+            "INSERT INTO row",
+            "SELECT * FROM row; SELECT * FROM row",
+            "UPDATE row SET n = 1",
+        ] {
+            assert!(accept_read(sql).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_small_commit_stays_one_entry() {
+        let item = sample_item(1);
+        let chunks =
+            super::commit_chunks(super::Body::new(), &[item], 256, 4 * 1024 * 1024).unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].1.len(), 1);
+    }
+
+    #[test]
+    fn a_large_commit_splits_on_the_doc_cap() {
+        let items: Vec<_> = (0..300).map(sample_item).collect();
+        let chunks = super::commit_chunks(super::Body::new(), &items, 256, u32::MAX).unwrap();
+        assert_eq!(chunks.len(), 2, "{}", chunks.len());
+        assert_eq!(chunks[0].1.len(), 256);
+        assert_eq!(chunks[1].1.len(), 44);
+        for (body, packed) in &chunks {
+            assert!(body.byte_len() > 0);
+            assert!(packed.len() <= 256);
+        }
+    }
+
+    #[test]
+    fn one_oversized_item_is_still_emitted() {
+        let item = sample_item(7);
+        let chunks = super::commit_chunks(super::Body::new(), &[item], 256, 1).unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].1.len(), 1);
+    }
+
+    #[test]
+    fn log_rows_keep_order_and_the_previous_fence() {
+        let value = serde_json::json!([
+            {"id": "_repl_log:8", "fence": 4, "tag": "layout", "at": "2026-10-08T00:00:00Z", "body": {"statements": ["UPSERT row:1 SET n = 1;"], "params": {}}},
+            {"id": "_repl_log:7", "fence": 3, "tag": "layout", "at": "2026-10-08T00:00:00Z", "body": {"statements": ["UPSERT row:1 SET n = 1;"], "params": {}}}
+        ]);
+        let entries = super::entries_from_log(&value, 2);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].lsn, 7);
+        assert_eq!(entries[0].prev, 6);
+        assert_eq!(entries[0].prev_fence, 2);
+        assert_eq!(entries[1].prev_fence, 3);
+        assert_eq!(entries[1].fence, 4);
+    }
+
+    fn sample_item(n: i64) -> super::Item {
+        super::Item {
+            key: n,
+            item: format!("item:{n}"),
+            tag: "job".into(),
+            rids: vec![format!("row:{n}")],
+            body: super::Body::new().upsert(&format!("row:{n}"), serde_json::json!({"n": n})),
+            delete: false,
+        }
     }
 }

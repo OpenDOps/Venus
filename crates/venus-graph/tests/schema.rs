@@ -1,7 +1,7 @@
 //! ss-cluster step-schema.
 //! Graph has no index: :8000 has `links_to` and no full-text index.
 //! Search has no graph: :8001 and :8002 have the search indexes and no `links_to`.
-//! Allocation: four crossed rows. A second migrate does not add a primary.
+//! Allocation: the fixture wiki lives in `layout_db`. A second migrate leaves it.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::path::PathBuf;
@@ -11,8 +11,8 @@ use std::thread;
 use std::time::Duration;
 
 use venus_graph::{
-    accept_graph_schema, accept_search_schema, graph_surql, list_allocation, migrate_allocation,
-    migrate_surreal, search_surql, AllocationRow, WORKSPACE_ID,
+    accept_graph_schema, accept_search_schema, copy_pairs, graph_surql, legacy_table_names,
+    migrate_allocation, migrate_surreal, search_surql, wiki_layout, WORKSPACE_ID,
 };
 
 fn repo_root() -> PathBuf {
@@ -154,6 +154,7 @@ fn graph_migrator_refuses_search_index() {
     assert!(sql.contains("DEFINE TABLE IF NOT EXISTS links_to "));
     assert!(sql.contains("search_sha"));
     assert!(sql.contains("search_error"));
+    assert!(sql.contains("hkey"));
     accept_graph_schema(&sql).expect("shipped graph schema");
 }
 
@@ -294,41 +295,42 @@ impl Drop for Pg {
     }
 }
 
-/// Four crossed rows. Migrating again does not add a second primary.
+/// Fixture wiki in `layout_db`. A second migrate leaves that row in place.
 #[test]
 fn allocation() {
     let pg = Pg::start();
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let rows = rt.block_on(async {
+    let (first, second, legacy, copies) = rt.block_on(async {
         migrate_allocation(&pg.url).await.expect("seed");
+        let first = wiki_layout(&pg.url, WORKSPACE_ID).await.expect("layout");
         migrate_allocation(&pg.url).await.expect("seed again");
-        list_allocation(&pg.url).await.expect("list")
+        let second = wiki_layout(&pg.url, WORKSPACE_ID).await.expect("layout");
+        let legacy = legacy_table_names(&pg.url).await.expect("legacy");
+        let copies = copy_pairs(&pg.url, WORKSPACE_ID).await.expect("copies");
+        (first, second, legacy, copies)
     });
-    assert_eq!(
-        rows,
-        vec![
-            AllocationRow {
-                shard: 0,
-                role: "primary".into(),
-                node_id: "0".into(),
-            },
-            AllocationRow {
-                shard: 0,
-                role: "replica".into(),
-                node_id: "1".into(),
-            },
-            AllocationRow {
-                shard: 1,
-                role: "primary".into(),
-                node_id: "1".into(),
-            },
-            AllocationRow {
-                shard: 1,
-                role: "replica".into(),
-                node_id: "0".into(),
-            },
-        ]
-    );
-    let primaries = rows.iter().filter(|row| row.role == "primary").count();
-    assert_eq!(primaries, 2, "one primary per shard");
+    assert_eq!(first, second, "a second migrate changes the layout");
+    assert_eq!(first.shard_count, 2);
+    assert_eq!(first.replica_count, 1);
+    assert_eq!(first.shard_ack, 1);
+    assert_eq!(first.search_sets, 2);
+    assert_eq!(first.commit_copies, 1);
+    assert!(legacy.is_empty(), "step 3 tables remain: {legacy:?}");
+    let commit = format!("graph:{WORKSPACE_ID}");
+    let commit_nodes: Vec<_> = copies
+        .iter()
+        .filter(|(set, _)| set == &commit)
+        .map(|(_, node)| node.as_str())
+        .collect();
+    assert_eq!(commit_nodes, vec!["0"]);
+    for shard in 0..2 {
+        let set = format!("search:{WORKSPACE_ID}:1:{shard}");
+        let mut nodes: Vec<_> = copies
+            .iter()
+            .filter(|(id, _)| id == &set)
+            .map(|(_, node)| node.as_str())
+            .collect();
+        nodes.sort_unstable();
+        assert_eq!(nodes, vec!["1", "2"], "{set}");
+    }
 }

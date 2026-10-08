@@ -1,4 +1,6 @@
 //! Observer inserts `jobs`; workers claim, cut, convert, then git + `last_flushed`.
+//! After that commit, one `graph_jobs` row is upserted. A failed upsert does not
+//! fail the flush.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::collections::HashMap;
@@ -360,6 +362,24 @@ async fn flush_claimed_inner(
                 write,
             ))
             .await?;
+        let dirty: Vec<String> = pins.iter().map(|(id, _)| id.to_string()).collect();
+        let upsert = enqueue_graph_job(pool, &claim.workspace_id, &write.sha, &dirty);
+        match tokio::time::timeout(Duration::from_secs(5), upsert).await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                tracing::warn!(
+                    error = %err,
+                    workspace_id = %claim.workspace_id,
+                    "graph_jobs upsert failed"
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    workspace_id = %claim.workspace_id,
+                    "graph_jobs upsert timed out"
+                );
+            }
+        }
     }
     delete_job(pool, &claim.workspace_id, &claim.owner).await?;
     pins.clear();
@@ -539,6 +559,78 @@ async fn record_published_state(
             .with_context(|| format!("last_flushed {doc_id}"))?;
     }
     tx.commit().await.context("publish commit")?;
+    Ok(())
+}
+
+/// Same table `venus-graph` migrates. Hub `schema.sql` does not create it.
+const GRAPH_JOBS_DDL: &str = "
+CREATE TABLE IF NOT EXISTS graph_jobs (
+    workspace_id UUID PRIMARY KEY,
+    wiki_sha TEXT NOT NULL,
+    dirty_doc_ids TEXT[] NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('pending', 'failed')),
+    owner TEXT,
+    claimed_at TIMESTAMPTZ,
+    fence BIGINT,
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT
+)";
+
+/// One row per wiki. A pending row keeps its claim and unions dirty doc ids.
+/// A failed row becomes pending again with this flush's ids.
+async fn enqueue_graph_job(
+    pool: &PgPool,
+    workspace_id: &str,
+    wiki_sha: &str,
+    dirty_doc_ids: &[String],
+) -> Result<()> {
+    sqlx::raw_sql(GRAPH_JOBS_DDL)
+        .execute(pool)
+        .await
+        .context("graph_jobs table")?;
+    sqlx::query(
+        "INSERT INTO graph_jobs (workspace_id, wiki_sha, dirty_doc_ids, state)
+         VALUES ($1::uuid, $2, $3::text[], 'pending')
+         ON CONFLICT (workspace_id) DO UPDATE SET
+           wiki_sha = EXCLUDED.wiki_sha,
+           dirty_doc_ids = (
+             SELECT COALESCE(array_agg(DISTINCT id), ARRAY[]::text[])
+             FROM unnest(
+               CASE
+                 WHEN graph_jobs.state = 'pending'
+                 THEN graph_jobs.dirty_doc_ids || EXCLUDED.dirty_doc_ids
+                 ELSE EXCLUDED.dirty_doc_ids
+               END
+             ) AS id
+           ),
+           state = 'pending',
+           attempts = CASE
+             WHEN graph_jobs.state = 'pending' THEN graph_jobs.attempts
+             ELSE 0
+           END,
+           last_error = CASE
+             WHEN graph_jobs.state = 'pending' THEN graph_jobs.last_error
+             ELSE NULL
+           END,
+           owner = CASE
+             WHEN graph_jobs.state = 'pending' THEN graph_jobs.owner
+             ELSE NULL
+           END,
+           claimed_at = CASE
+             WHEN graph_jobs.state = 'pending' THEN graph_jobs.claimed_at
+             ELSE NULL
+           END,
+           fence = CASE
+             WHEN graph_jobs.state = 'pending' THEN graph_jobs.fence
+             ELSE NULL
+           END",
+    )
+    .bind(workspace_id)
+    .bind(wiki_sha)
+    .bind(dirty_doc_ids)
+    .execute(pool)
+    .await
+    .context("graph_jobs upsert")?;
     Ok(())
 }
 

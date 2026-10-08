@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
-use tokio::sync::{mpsc, Mutex, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::task::JoinHandle;
 
 use crate::body::Body;
@@ -62,9 +62,18 @@ fn transport(err: &anyhow::Error) -> bool {
         text.push(' ');
     }
     let text = text.to_ascii_lowercase();
-    ["timed out", "timeout", "connection", "os error", "refused", "reset", "closed", "transport"]
-        .iter()
-        .any(|needle| text.contains(needle))
+    [
+        "timed out",
+        "timeout",
+        "connection",
+        "os error",
+        "refused",
+        "reset",
+        "closed",
+        "transport",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
 }
 
 impl Drop for Writer {
@@ -237,6 +246,31 @@ impl Writer {
             .unwrap_or_default()
     }
 
+    pub(crate) async fn has_in_sync(&self, set_id: &str) -> bool {
+        self.sets
+            .lock()
+            .await
+            .get(set_id)
+            .map(|set| set.copies.values().any(|copy| copy.state == "in_sync"))
+            .unwrap_or(false)
+    }
+
+    pub(crate) async fn copy_state(&self, set_id: &str, node: &str) -> Option<String> {
+        self.sets
+            .lock()
+            .await
+            .get(set_id)
+            .and_then(|set| set.copies.get(node).map(|copy| copy.state.clone()))
+    }
+
+    pub(crate) async fn copy_applied(&self, set_id: &str, node: &str) -> Option<i64> {
+        self.sets
+            .lock()
+            .await
+            .get(set_id)
+            .and_then(|set| set.copies.get(node).map(|copy| copy.applied))
+    }
+
     pub(crate) async fn force_lagging(&self, set_id: &str, node: &str) -> anyhow::Result<()> {
         self.mark_lagging(set_id, node, 0).await
     }
@@ -249,7 +283,10 @@ impl Writer {
         {
             let mut sets = self.sets.lock().await;
             let set = sets.get_mut(set_id).context("set is not on this writer")?;
-            let copy = set.copies.get_mut(node).context("copy is not on this set")?;
+            let copy = set
+                .copies
+                .get_mut(node)
+                .context("copy is not on this set")?;
             copy.state = "in_sync".to_string();
             copy.behind_since = None;
         }
@@ -387,7 +424,11 @@ impl Writer {
 
         for node in &lags {
             store::set_copy_state(self.cluster.pool(), set_id, node, "lagging").await?;
-            self.lagged_at.lock().await.entry(node.clone()).or_insert(entry.lsn);
+            self.lagged_at
+                .lock()
+                .await
+                .entry(node.clone())
+                .or_insert(entry.lsn);
         }
 
         let ack = {
@@ -400,6 +441,9 @@ impl Writer {
         }
         let mut pending = targets.len();
         let mut ok = 0_i32;
+        let mut hard: Option<anyhow::Error> = None;
+        let mut fenced = false;
+        let mut missed = Vec::new();
         let (tx, mut rx) = mpsc::channel(pending);
         for (node, lane) in targets {
             let (reply_tx, reply_rx) = oneshot::channel();
@@ -416,8 +460,10 @@ impl Writer {
             });
         }
         drop(tx);
-        while pending > 0 && ok < ack {
-            let Some((node, result)) = rx.recv().await else { break };
+        while pending > 0 {
+            let Some((node, result)) = rx.recv().await else {
+                break;
+            };
             pending -= 1;
             match result {
                 Ok(reply) if matches!(reply.status, ApplyStatus::Ok | ApplyStatus::Already) => {
@@ -426,35 +472,56 @@ impl Writer {
                 }
                 Ok(reply) if reply.status == ApplyStatus::Fenced => {
                     self.stopped.store(true, Ordering::Relaxed);
-                    anyhow::bail!("fenced");
+                    fenced = true;
                 }
                 Err(err) if transport(&err) => {
                     self.mark_lagging(set_id, &node, entry.lsn).await?;
+                    self.cluster.disconnect(&node).await;
                 }
                 Err(err) => {
-                    if ok == 0 {
-                        self.rollback_head(set_id, &entry).await;
-                    }
-                    return Err(err);
+                    missed.push(node);
+                    hard = Some(err);
                 }
                 Ok(_) => {
                     self.mark_lagging(set_id, &node, entry.lsn).await?;
                 }
             }
+            // Ack is met: slower copies may still be writing. A hard error with
+            // no ack yet has to wait, in case another copy commits this lsn.
+            if ok >= ack && !fenced {
+                break;
+            }
         }
-        if ok < ack {
+        if fenced {
             if ok == 0 {
                 self.rollback_head(set_id, &entry).await;
             }
+            anyhow::bail!("fenced");
+        }
+        if ok >= ack {
+            for node in missed {
+                self.mark_lagging(set_id, &node, entry.lsn).await?;
+            }
+            self.log
+                .lock()
+                .await
+                .entry(set_id.to_string())
+                .or_default()
+                .push(entry.clone());
+            self.trim_remembered(set_id).await;
+            return Ok(entry.lsn);
+        }
+        if ok == 0 {
+            self.rollback_head(set_id, &entry).await;
+            if let Some(err) = hard {
+                return Err(err);
+            }
             anyhow::bail!("acked {ok} of {ack}");
         }
-        self.log
-            .lock()
-            .await
-            .entry(set_id.to_string())
-            .or_default()
-            .push(entry.clone());
-        Ok(entry.lsn)
+        for node in missed {
+            self.mark_lagging(set_id, &node, entry.lsn).await?;
+        }
+        anyhow::bail!("acked {ok} of {ack}");
     }
 
     async fn rollback_head(&self, set_id: &str, entry: &Entry) {
@@ -492,8 +559,37 @@ impl Writer {
             }
         }
         store::set_copy_state(self.cluster.pool(), set_id, node, "lagging").await?;
-        self.lagged_at.lock().await.entry(node.to_string()).or_insert(lsn);
+        self.lagged_at
+            .lock()
+            .await
+            .entry(node.to_string())
+            .or_insert(lsn);
         Ok(())
+    }
+
+    /// Drop log entries every in-sync copy has already applied. A copy that is
+    /// behind reads `_repl_log` on an in-sync copy, so this process does not
+    /// keep the whole history.
+    pub(crate) async fn trim_remembered(&self, set_id: &str) {
+        let floor = {
+            let sets = self.sets.lock().await;
+            let Some(set) = sets.get(set_id) else {
+                return;
+            };
+            let mut floor = set.head;
+            for copy in set.copies.values() {
+                if copy.state == "in_sync" {
+                    floor = floor.min(copy.applied);
+                }
+            }
+            floor
+        };
+        self.log
+            .lock()
+            .await
+            .entry(set_id.to_string())
+            .or_default()
+            .retain(|entry| entry.lsn > floor);
     }
 }
 
@@ -512,9 +608,27 @@ fn spawn_lane(
         while let Some(job) = rx.recv().await {
             enter(&inflight, &peak, &node_id).await;
             sends.fetch_add(1, Ordering::Relaxed);
-            let result = match cluster.conn(&node_id, &url).await {
-                Ok(conn) => crate::link::apply(&conn, &namespace, &database, &job.entry).await,
-                Err(err) => Err(err),
+            let apply = tokio::spawn({
+                let cluster = cluster.clone();
+                let node_id = node_id.clone();
+                let url = url.clone();
+                let namespace = namespace.clone();
+                let database = database.clone();
+                let entry = job.entry.clone();
+                async move {
+                    match cluster.conn(&node_id, &url).await {
+                        Ok(conn) => crate::link::apply(&conn, &namespace, &database, &entry).await,
+                        Err(err) => Err(err),
+                    }
+                }
+            });
+            let result = match tokio::time::timeout(Duration::from_secs(8), apply).await {
+                Ok(Ok(result)) => result,
+                Ok(Err(err)) => Err(anyhow::anyhow!(err)),
+                Err(_) => {
+                    cluster.disconnect(&node_id).await;
+                    Err(anyhow::anyhow!("timed out"))
+                }
             };
             leave(&inflight, &node_id).await;
             let _ = job.reply.send(result);

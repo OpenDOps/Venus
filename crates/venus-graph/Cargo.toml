@@ -12,6 +12,8 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
+serde_json = "1"
+sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = [
   "runtime-tokio",
   "tls-rustls",
@@ -22,7 +24,10 @@ surrealdb = { version = "2.7.0", default-features = false, features = [
   "rustls",
 ] }
 surrealastic = { path = "../surrealastic" }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+venus-hub = { path = "../venus-hub" }
+venus-sidecar = { path = "../venus-sidecar" }

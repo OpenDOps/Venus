@@ -20,7 +20,8 @@ impl Body {
     pub fn upsert(mut self, id: &str, content: Value) -> Self {
         let name = self.bind(content);
         let id = record_id(id);
-        self.statements.push(format!("UPSERT {id} CONTENT ${name};"));
+        self.statements
+            .push(format!("UPSERT {id} CONTENT ${name};"));
         self
     }
 
@@ -125,11 +126,52 @@ impl Body {
         for statement in &other.statements {
             let mut rewritten = statement.clone();
             for key in &keys {
-                rewritten = rewritten.replace(&format!("${key}"), &format!("${}", map[key]));
+                rewritten = replace_param(&rewritten, key, &map[key]);
             }
             self.statements.push(rewritten);
         }
         self
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.statements.is_empty()
+    }
+
+    pub(crate) fn byte_len(&self) -> u32 {
+        let sql: usize = self.statements.iter().map(String::len).sum();
+        let params = serde_json::to_vec(&self.params)
+            .map(|bytes| bytes.len())
+            .unwrap_or(0);
+        sql.saturating_add(params).min(u32::MAX as usize) as u32
+    }
+
+    /// Cut a body into pieces that each fit `max_bytes`. One statement that is
+    /// already larger is left whole so the cut cannot spin.
+    pub(crate) fn split_bytes(self, max_bytes: u32) -> Vec<Body> {
+        if self.statements.is_empty() || self.byte_len() <= max_bytes {
+            return if self.statements.is_empty() {
+                Vec::new()
+            } else {
+                vec![self]
+            };
+        }
+        let mut out = Vec::new();
+        let mut current = Body::new();
+        for statement in &self.statements {
+            let one = extract_statement(&self, statement);
+            let joined = current
+                .byte_len()
+                .saturating_add(one.byte_len())
+                .saturating_add(1);
+            if !current.statements.is_empty() && joined > max_bytes {
+                out.push(std::mem::take(&mut current));
+            }
+            current = current.append(&one);
+        }
+        if !current.statements.is_empty() {
+            out.push(current);
+        }
+        out
     }
 
     pub(crate) fn bind_value(&mut self, value: Value) -> String {
@@ -162,7 +204,34 @@ pub fn accept_sql(sql: &str) -> anyhow::Result<()> {
     if create_without_id(sql) {
         bail!("body refuses CREATE without an id");
     }
+    for word in ["commit", "cancel", "begin"] {
+        if statement_keyword(&lower, word) {
+            bail!("body refuses {word}");
+        }
+    }
     Ok(())
+}
+
+/// `COMMIT`, `CANCEL`, and `BEGIN` close or open the guarded transaction.
+/// A field named `commit` is still allowed.
+fn statement_keyword(lower: &str, word: &str) -> bool {
+    let mut from = 0;
+    while let Some(pos) = lower[from..].find(word) {
+        let abs = from + pos;
+        let before = lower[..abs].chars().rev().find(|c| !c.is_whitespace());
+        let before_ok = matches!(before, None | Some(';') | Some('{'));
+        let after = lower[abs + word.len()..].chars().next();
+        let after_ok = match after {
+            None => true,
+            Some(c) if c.is_whitespace() || c == ';' || c == '{' => true,
+            _ => false,
+        };
+        if before_ok && after_ok {
+            return true;
+        }
+        from = abs + word.len();
+    }
+    false
 }
 
 fn create_without_id(sql: &str) -> bool {
@@ -189,20 +258,73 @@ fn create_without_id(sql: &str) -> bool {
     false
 }
 
+/// One statement, with only the parameters it names.
+fn extract_statement(source: &Body, statement: &str) -> Body {
+    let mut keys: Vec<_> = source.params.keys().cloned().collect();
+    keys.sort_by_key(|key| std::cmp::Reverse(key.len()));
+    let mut body = Body::new();
+    let mut rewritten = statement.to_string();
+    let mut map = std::collections::HashMap::new();
+    for key in &keys {
+        if !contains_param(statement, key) {
+            continue;
+        }
+        let bound = body.bind(source.params[key].clone());
+        map.insert(key.clone(), bound);
+    }
+    let mut bound_keys: Vec<_> = map.keys().cloned().collect();
+    bound_keys.sort_by_key(|key| std::cmp::Reverse(key.len()));
+    for key in &bound_keys {
+        rewritten = replace_param(&rewritten, key, &map[key]);
+    }
+    body.statements.push(rewritten);
+    body
+}
+
+fn contains_param(statement: &str, name: &str) -> bool {
+    let needle = format!("${name}");
+    let bytes = statement.as_bytes();
+    let mut from = 0;
+    while let Some(at) = statement[from..].find(&needle) {
+        let after = from + at + needle.len();
+        if after >= bytes.len() || !bytes[after].is_ascii_digit() {
+            return true;
+        }
+        from = from + at + 1;
+    }
+    false
+}
+
+/// `$p1` must not match the prefix of `$p10`.
+fn replace_param(sql: &str, from: &str, to: &str) -> String {
+    let needle = format!("${from}");
+    let mut out = String::new();
+    let mut rest = sql;
+    while let Some(at) = rest.find(&needle) {
+        let after = at + needle.len();
+        let boundary = rest[after..].chars().next();
+        if boundary.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
+            out.push_str(&rest[..=at]);
+            rest = &rest[at + 1..];
+            continue;
+        }
+        out.push_str(&rest[..at]);
+        out.push('$');
+        out.push_str(to);
+        rest = &rest[after..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn record_id(id: &str) -> String {
-    assert!(
-        is_record_id(id),
-        "record id must be table:key, got {id}"
-    );
+    assert!(is_record_id(id), "record id must be table:key, got {id}");
     id.to_string()
 }
 
 fn ident(name: &str) -> String {
     assert!(
-        !name.is_empty()
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
         "table name {name}"
     );
     name.to_string()
@@ -214,9 +336,10 @@ fn is_record_id(id: &str) -> bool {
     };
     !table.is_empty()
         && !key.is_empty()
+        && table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         && table
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && table.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
 }

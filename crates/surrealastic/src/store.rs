@@ -172,15 +172,17 @@ pub async fn load_set(pool: &PgPool, set_id: &str) -> anyhow::Result<SetRow> {
     .fetch_optional(pool)
     .await
     .context("load set")?
-    .map(|(set_id, pool, namespace, database, copies, ack, lease)| SetRow {
-        set_id,
-        pool,
-        namespace,
-        database,
-        copies,
-        ack,
-        lease,
-    })
+    .map(
+        |(set_id, pool, namespace, database, copies, ack, lease)| SetRow {
+            set_id,
+            pool,
+            namespace,
+            database,
+            copies,
+            ack,
+            lease,
+        },
+    )
     .context("unknown set")
 }
 
@@ -322,4 +324,3 @@ pub fn health_of(set: &SetRow, copies: &[CopyRow]) -> Health {
         .count() as u32;
     crate::place::set_health(set.copies as u32, set.ack as u32, in_sync_on_up)
 }
-

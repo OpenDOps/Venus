@@ -92,14 +92,28 @@ steps:
         evidence: "2026-10-07 cargo test -p surrealastic --test layout_live — commit returns and queued apply, queue order, one copy down, item table, key collision, delete, cursor and fresh read, schema, empty shard refill, dual layout, entry limit. Profile graph."
   step-project: # 6
     n: 6
-    state: pending
+    state: done
     breakpoint: human
     pr: null
+    dodResults:
+      - name: Project
+        status: pass
+        evidence: "2026-10-08 cargo test -p venus-graph --test project — hkey vectors, migrate and new wiki, project_live (schema hook, serve, search node down, both copies, indexed sha, item, entry limit, all copies down, retry, graph not acked). Profile graph."
   step-enqueue: # 7
     n: 7
-    state: pending
+    state: done
     breakpoint: human
     pr: null
+    dodResults:
+      - name: Row after flush
+        status: pass
+        evidence: "2026-10-08 cargo test -p venus-graph --test enqueue — one graph_jobs row, wiki_sha matches last_flushed. Sidecar flush, profile graph."
+      - name: Cluster down
+        status: pass
+        evidence: "2026-10-08 cargo test -p venus-graph --test enqueue — graph and both search nodes paused; flush commits and graph_jobs upserts."
+      - name: One claim
+        status: pass
+        evidence: "2026-10-08 cargo test -p venus-graph --test enqueue — one worker holds writer:{ws}; the other's write is fenced. The claim records the sha."
   step-query: # 8
     n: 8
     state: pending

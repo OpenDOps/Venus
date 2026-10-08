@@ -30,7 +30,9 @@ extern "C" fn remove_pg() {
     if name.is_empty() {
         return;
     }
-    let _ = Command::new("docker").args(["rm", "-f", name.as_str()]).output();
+    let _ = Command::new("docker")
+        .args(["rm", "-f", name.as_str()])
+        .output();
 }
 
 fn repo_root() -> PathBuf {
@@ -71,23 +73,46 @@ fn world() -> &'static World {
                 .lines()
                 .filter(|line| line.contains(&needle) && !line.contains("surreal-search"))
                 .collect();
-            assert!(holders.is_empty(), "port {port} is taken:\n{}", holders.join("\n"));
+            assert!(
+                holders.is_empty(),
+                "port {port} is taken:\n{}",
+                holders.join("\n")
+            );
         }
         compose(&[
-            "--profile", "graph", "up", "-d", "--wait", "--wait-timeout", "300", "--no-deps",
-            "surreal-search-0", "surreal-search-1",
+            "--profile",
+            "graph",
+            "up",
+            "-d",
+            "--wait",
+            "--wait-timeout",
+            "300",
+            "--no-deps",
+            "surreal-search-0",
+            "surreal-search-1",
         ]);
         let name = format!("surrealastic-pg-{}", std::process::id());
         let _ = docker(&["rm", "-f", &name]);
         let started = docker(&[
-            "run", "-d", "--name", &name,
-            "-e", "POSTGRES_USER=venus",
-            "-e", "POSTGRES_PASSWORD=venus",
-            "-e", "POSTGRES_DB=venus",
-            "-p", "127.0.0.1::5432",
+            "run",
+            "-d",
+            "--name",
+            &name,
+            "-e",
+            "POSTGRES_USER=venus",
+            "-e",
+            "POSTGRES_PASSWORD=venus",
+            "-e",
+            "POSTGRES_DB=venus",
+            "-p",
+            "127.0.0.1::5432",
             "postgres:16",
         ]);
-        assert!(started.status.success(), "{}", String::from_utf8_lossy(&started.stderr));
+        assert!(
+            started.status.success(),
+            "{}",
+            String::from_utf8_lossy(&started.stderr)
+        );
         let mapped = docker(&["port", &name, "5432"]);
         let host_port = String::from_utf8_lossy(&mapped.stdout)
             .trim()
@@ -102,7 +127,9 @@ fn world() -> &'static World {
             atexit(remove_pg);
         }
         for _ in 0..60 {
-            let ready = docker(&["exec", &name, "psql", "-U", "venus", "-d", "venus", "-c", "SELECT 1"]);
+            let ready = docker(&[
+                "exec", &name, "psql", "-U", "venus", "-d", "venus", "-c", "SELECT 1",
+            ]);
             if ready.status.success() {
                 return World { pg, pg_name: name };
             }
@@ -147,7 +174,12 @@ fn wait_port(port: u16) {
     let _ = world();
     for _ in 0..60 {
         let out = Command::new("curl")
-            .args(["-sf", "--max-time", "2", &format!("http://127.0.0.1:{port}/health")])
+            .args([
+                "-sf",
+                "--max-time",
+                "2",
+                &format!("http://127.0.0.1:{port}/health"),
+            ])
             .output();
         if out.map(|o| o.status.success()).unwrap_or(false) {
             return;
@@ -172,7 +204,9 @@ fn node_pair() -> [(&'static str, &'static str, &'static str); 2] {
 }
 
 async fn cluster_with(config: Config) -> Cluster {
-    Cluster::connect(&world().pg, config).await.expect("cluster")
+    Cluster::connect(&world().pg, config)
+        .await
+        .expect("cluster")
 }
 
 async fn scratch(cluster: &Cluster, ack: i32, copies: i32) -> (String, String) {
@@ -227,12 +261,26 @@ fn doc(n: i64) -> Body {
 }
 
 async fn applied(cluster: &Cluster, node: &str, url: &str, database: &str) -> i64 {
-    let text = raw(cluster, node, url, "search", database, "SELECT applied_lsn FROM ONLY _repl:state;")
-        .await
-        .unwrap();
+    let text = raw(
+        cluster,
+        node,
+        url,
+        "search",
+        database,
+        "SELECT applied_lsn FROM ONLY _repl:state;",
+    )
+    .await
+    .unwrap();
     text.split("applied_lsn")
         .nth(1)
-        .and_then(|rest| rest.chars().skip_while(|c| !c.is_ascii_digit() && *c != '-').take_while(|c| c.is_ascii_digit() || *c == '-').collect::<String>().parse().ok())
+        .and_then(|rest| {
+            rest.chars()
+                .skip_while(|c| !c.is_ascii_digit() && *c != '-')
+                .take_while(|c| c.is_ascii_digit() || *c == '-')
+                .collect::<String>()
+                .parse()
+                .ok()
+        })
         .unwrap_or_else(|| panic!("applied_lsn in {text}"))
 }
 
@@ -247,12 +295,26 @@ async fn lease() {
     })
     .await;
     let (set_id, _) = scratch(&cluster, 1, 0).await;
-    let a = cluster.claim(&set_id, "a").await.unwrap().expect("first claim");
-    assert!(cluster.claim(&set_id, "b").await.unwrap().is_none(), "second claimant gets no row");
+    let a = cluster
+        .claim(&set_id, "a")
+        .await
+        .unwrap()
+        .expect("first claim");
+    assert!(
+        cluster.claim(&set_id, "b").await.unwrap().is_none(),
+        "second claimant gets no row"
+    );
     assert_eq!(a.renew().await.unwrap(), Some(a.fence()));
     a.stop_renew();
-    cluster.expire_lease(&format!("writer:{set_id}")).await.unwrap();
-    let b = cluster.claim(&set_id, "b").await.unwrap().expect("claim after expiry");
+    cluster
+        .expire_lease(&format!("writer:{set_id}"))
+        .await
+        .unwrap();
+    let b = cluster
+        .claim(&set_id, "b")
+        .await
+        .unwrap()
+        .expect("claim after expiry");
     assert_eq!(b.fence(), a.fence() + 1);
 }
 
@@ -292,7 +354,9 @@ impl Drop for PgPassword<'_> {
 }
 
 fn psql(container: &str, sql: &str) {
-    let out = docker(&["exec", container, "psql", "-U", "venus", "-d", "venus", "-c", sql]);
+    let out = docker(&[
+        "exec", container, "psql", "-U", "venus", "-d", "venus", "-c", sql,
+    ]);
     assert!(
         out.status.success(),
         "{sql}\n{}",
@@ -324,7 +388,10 @@ async fn fenced() {
     let a = cluster.claim(&set_id, "a").await.unwrap().unwrap();
     a.write(&set_id, doc(1), "t").await.unwrap();
     a.stop_renew();
-    cluster.expire_lease(&format!("writer:{set_id}")).await.unwrap();
+    cluster
+        .expire_lease(&format!("writer:{set_id}"))
+        .await
+        .unwrap();
     let b = cluster.claim(&set_id, "b").await.unwrap().unwrap();
     b.write(&set_id, doc(2), "t").await.unwrap();
     let err = a.write(&set_id, doc(3), "old").await.unwrap_err();
@@ -334,8 +401,20 @@ async fn fenced() {
     assert!(a.write(&set_id, doc(4), "old").await.is_err());
     assert_eq!(a.sends(), sends, "stopped writer must not send");
     for (node, url, _) in node_pair() {
-        let text = raw(&cluster, node, url, "search", &database, "SELECT fence, tag FROM _repl_log;").await.unwrap();
-        assert!(!text.contains("old"), "{node} stored the fenced entry: {text}");
+        let text = raw(
+            &cluster,
+            node,
+            url,
+            "search",
+            &database,
+            "SELECT fence, tag FROM _repl_log;",
+        )
+        .await
+        .unwrap();
+        assert!(
+            !text.contains("old"),
+            "{node} stored the fenced entry: {text}"
+        );
     }
 }
 
@@ -346,32 +425,77 @@ async fn gap_already_divergent_atomic() {
     let cluster = cluster_with(config_long()).await;
     let (_set, database) = scratch(&cluster, 1, 1).await;
     let url = "http://127.0.0.1:8001";
-    let gap = apply(&cluster, "n8001", url, "search", &database, &entry(5, 4, 0, 1, doc(1)))
-        .await
-        .unwrap();
+    let gap = apply(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        &entry(5, 4, 0, 1, doc(1)),
+    )
+    .await
+    .unwrap();
     assert_eq!(gap.status, ApplyStatus::Gap { at: 0 });
     assert_eq!(applied(&cluster, "n8001", url, &database).await, 0);
 
-    let ok = apply(&cluster, "n8001", url, "search", &database, &entry(1, 0, 0, 1, doc(1)))
-        .await
-        .unwrap();
+    let ok = apply(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        &entry(1, 0, 0, 1, doc(1)),
+    )
+    .await
+    .unwrap();
     assert_eq!(ok.status, ApplyStatus::Ok);
-    let again = apply(&cluster, "n8001", url, "search", &database, &entry(1, 0, 0, 1, doc(1)))
-        .await
-        .unwrap();
+    let again = apply(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        &entry(1, 0, 0, 1, doc(1)),
+    )
+    .await
+    .unwrap();
     assert_eq!(again.status, ApplyStatus::Already);
-    assert_eq!(log_ids(&cluster, "n8001", url, "search", &database, 1, 10).await.unwrap(), vec![1]);
+    assert_eq!(
+        log_ids(&cluster, "n8001", url, "search", &database, 1, 10)
+            .await
+            .unwrap(),
+        vec![1]
+    );
 
-    let ahead = apply(&cluster, "n8001", url, "search", &database, &entry(2, 0, 0, 1, doc(2)))
-        .await
-        .unwrap();
+    let ahead = apply(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        &entry(2, 0, 0, 1, doc(2)),
+    )
+    .await
+    .unwrap();
     assert_eq!(ahead.status, ApplyStatus::Divergent);
-    let fence = apply(&cluster, "n8001", url, "search", &database, &entry(2, 1, 9, 1, doc(2)))
-        .await
-        .unwrap();
+    let fence = apply(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        &entry(2, 1, 9, 1, doc(2)),
+    )
+    .await
+    .unwrap();
     assert_eq!(fence.status, ApplyStatus::Divergent);
     assert_eq!(applied(&cluster, "n8001", url, &database).await, 1);
-    assert_eq!(log_ids(&cluster, "n8001", url, "search", &database, 1, 10).await.unwrap(), vec![1]);
+    assert_eq!(
+        log_ids(&cluster, "n8001", url, "search", &database, 1, 10)
+            .await
+            .unwrap(),
+        vec![1]
+    );
 
     raw(
         &cluster,
@@ -386,14 +510,38 @@ async fn gap_already_divergent_atomic() {
     let bad = Body::new()
         .upsert("item:9", serde_json::json!({"n": 1}))
         .upsert("item:10", serde_json::json!({"n": -1}));
-    let err = apply(&cluster, "n8001", url, "search", &database, &entry(2, 1, 1, 1, bad))
-        .await
-        .unwrap_err();
+    let err = apply(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        &entry(2, 1, 1, 1, bad),
+    )
+    .await
+    .unwrap_err();
     assert!(!err.to_string().contains("gap"), "{err}");
-    let rows = raw(&cluster, "n8001", url, "search", &database, "SELECT * FROM item:9..=10;").await.unwrap();
-    assert!(!rows.contains("item:9") && !rows.contains("item:10"), "rolled back: {rows}");
+    let rows = raw(
+        &cluster,
+        "n8001",
+        url,
+        "search",
+        &database,
+        "SELECT * FROM item:9..=10;",
+    )
+    .await
+    .unwrap();
+    assert!(
+        !rows.contains("item:9") && !rows.contains("item:10"),
+        "rolled back: {rows}"
+    );
     assert_eq!(applied(&cluster, "n8001", url, &database).await, 1);
-    assert_eq!(log_ids(&cluster, "n8001", url, "search", &database, 1, 10).await.unwrap(), vec![1]);
+    assert_eq!(
+        log_ids(&cluster, "n8001", url, "search", &database, 1, 10)
+            .await
+            .unwrap(),
+        vec![1]
+    );
 }
 
 #[tokio::test]
@@ -407,12 +555,19 @@ async fn range_read() {
         writer.write(&set_id, doc(n), "t").await.unwrap();
     }
     let url = "http://127.0.0.1:8001";
-    let ids = log_ids(&cluster, "n8001", url, "search", &database, 98, 101).await.unwrap();
+    let ids = log_ids(&cluster, "n8001", url, "search", &database, 98, 101)
+        .await
+        .unwrap();
     assert_eq!(ids, vec![98, 99, 100, 101]);
-    let plan = explain_log(&cluster, "n8001", url, "search", &database, 98, 101).await.unwrap();
+    let plan = explain_log(&cluster, "n8001", url, "search", &database, 98, 101)
+        .await
+        .unwrap();
     let lower = plan.to_ascii_lowercase();
     assert!(lower.contains("range"), "explain has no range read: {plan}");
-    assert!(!lower.contains("iterate table"), "explain scanned the table: {plan}");
+    assert!(
+        !lower.contains("iterate table"),
+        "explain scanned the table: {plan}"
+    );
 }
 
 #[tokio::test]
@@ -426,7 +581,11 @@ async fn ack_policy() {
     let id = service_id("surreal-search-1");
     let _paused = Paused(id.clone());
     let paused = docker(&["pause", &id]);
-    assert!(paused.status.success(), "{}", String::from_utf8_lossy(&paused.stderr));
+    assert!(
+        paused.status.success(),
+        "{}",
+        String::from_utf8_lossy(&paused.stderr)
+    );
     let started = Instant::now();
     timeout(Duration::from_secs(5), writer.write(&fast, doc(1), "t"))
         .await
@@ -442,7 +601,11 @@ async fn ack_policy() {
     let id = service_id("surreal-search-1");
     let paused = Paused(id.clone());
     let hold = docker(&["pause", &id]);
-    assert!(hold.status.success(), "{}", String::from_utf8_lossy(&hold.stderr));
+    assert!(
+        hold.status.success(),
+        "{}",
+        String::from_utf8_lossy(&hold.stderr)
+    );
     let pending = writer.write(&slow, doc(2), "t");
     tokio::pin!(pending);
     tokio::select! {
@@ -469,7 +632,16 @@ async fn one_copy_down() {
     docker(&["stop", "-t", "1", &id]);
     let writer = cluster.claim(&set_id, "a").await.unwrap().unwrap();
     writer.write(&set_id, doc(7), "t").await.unwrap();
-    let row = raw(&cluster, "n8001", "http://127.0.0.1:8001", "search", &database, "SELECT * FROM item;").await.unwrap();
+    let row = raw(
+        &cluster,
+        "n8001",
+        "http://127.0.0.1:8001",
+        "search",
+        &database,
+        "SELECT * FROM item;",
+    )
+    .await
+    .unwrap();
     assert!(row.contains("7"), "{row}");
     let copies = cluster.copies(&set_id).await.unwrap();
     let slow = copies.iter().find(|c| c.node_id == "n8002").unwrap();
@@ -495,11 +667,20 @@ async fn one_in_flight() {
     }
     while tasks.join_next().await.is_some() {}
     for (node, _, _) in node_pair() {
-        assert!(writer.peak_in_flight(node).await <= 1, "{node} had two entries in flight");
+        assert!(
+            writer.peak_in_flight(node).await <= 1,
+            "{node} had two entries in flight"
+        );
     }
     for (node, url, _) in node_pair() {
-        let ids = log_ids(&cluster, node, url, "search", &database, 1, 200).await.unwrap();
-        assert_eq!(ids, (1..=200).collect::<Vec<_>>(), "{node} applied out of order: {ids:?}");
+        let ids = log_ids(&cluster, node, url, "search", &database, 1, 200)
+            .await
+            .unwrap();
+        assert_eq!(
+            ids,
+            (1..=200).collect::<Vec<_>>(),
+            "{node} applied out of order: {ids:?}"
+        );
     }
 }
 
@@ -517,16 +698,29 @@ async fn lag_max() {
     let id = service_id("surreal-search-1");
     let _paused = Paused(id.clone());
     let paused = docker(&["pause", &id]);
-    assert!(paused.status.success(), "{}", String::from_utf8_lossy(&paused.stderr));
+    assert!(
+        paused.status.success(),
+        "{}",
+        String::from_utf8_lossy(&paused.stderr)
+    );
     let started = Instant::now();
     for n in 1_i64..=100 {
         writer.write(&set_id, doc(n), "t").await.unwrap();
     }
-    assert!(started.elapsed() < Duration::from_secs(15), "writes waited on the paused copy");
+    assert!(
+        started.elapsed() < Duration::from_secs(15),
+        "writes waited on the paused copy"
+    );
     assert_eq!(writer.lagged_at("n8002").await, Some(8));
     let copies = cluster.copies(&set_id).await.unwrap();
-    assert_eq!(copies.iter().find(|c| c.node_id == "n8002").unwrap().state, "lagging");
-    assert_eq!(applied(&cluster, "n8001", "http://127.0.0.1:8001", &database).await, 100);
+    assert_eq!(
+        copies.iter().find(|c| c.node_id == "n8002").unwrap().state,
+        "lagging"
+    );
+    assert_eq!(
+        applied(&cluster, "n8001", "http://127.0.0.1:8001", &database).await,
+        100
+    );
 }
 
 #[tokio::test]
@@ -558,37 +752,80 @@ async fn tls() {
     let key = dir.join("key.pem");
     let made = Command::new("openssl")
         .args([
-            "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-            "-keyout", key.to_str().unwrap(),
-            "-out", cert.to_str().unwrap(),
-            "-days", "1",
-            "-subj", "/CN=127.0.0.1",
-            "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost",
-            "-addext", "basicConstraints=CA:FALSE",
-            "-addext", "keyUsage=digitalSignature,keyEncipherment",
-            "-addext", "extendedKeyUsage=serverAuth",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            key.to_str().unwrap(),
+            "-out",
+            cert.to_str().unwrap(),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=127.0.0.1",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1,DNS:localhost",
+            "-addext",
+            "basicConstraints=CA:FALSE",
+            "-addext",
+            "keyUsage=digitalSignature,keyEncipherment",
+            "-addext",
+            "extendedKeyUsage=serverAuth",
         ])
         .output()
         .expect("openssl");
-    assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+    assert!(
+        made.status.success(),
+        "{}",
+        String::from_utf8_lossy(&made.stderr)
+    );
     let name = format!("surrealastic-tls-{}", std::process::id());
     let _ = docker(&["rm", "-f", &name]);
     let started = docker(&[
-        "run", "-d", "--name", &name,
-        "-p", "127.0.0.1:8019:8000",
-        "-v", &format!("{}:/tls:ro", dir.display()),
-        "-e", "SURREAL_USER=venus",
-        "-e", "SURREAL_PASS=venus",
+        "run",
+        "-d",
+        "--name",
+        &name,
+        "-p",
+        "127.0.0.1:8019:8000",
+        "-v",
+        &format!("{}:/tls:ro", dir.display()),
+        "-e",
+        "SURREAL_USER=venus",
+        "-e",
+        "SURREAL_PASS=venus",
         "surrealdb/surrealdb:v2.7.0",
-        "start", "--web-crt", "/tls/cert.pem", "--web-key", "/tls/key.pem",
-        "--bind", "0.0.0.0:8000", "--user", "venus", "--pass", "venus",
+        "start",
+        "--web-crt",
+        "/tls/cert.pem",
+        "--web-key",
+        "/tls/key.pem",
+        "--bind",
+        "0.0.0.0:8000",
+        "--user",
+        "venus",
+        "--pass",
+        "venus",
         "rocksdb:/tmp/tls.db",
     ]);
-    assert!(started.status.success(), "{}", String::from_utf8_lossy(&started.stderr));
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
     let cleanup = name.clone();
     let _drop = scopeguard_stop(cleanup);
     for _ in 0..40 {
-        let ready = docker(&["exec", &name, "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000"]);
+        let ready = docker(&[
+            "exec",
+            &name,
+            "/surreal",
+            "is-ready",
+            "--endpoint",
+            "http://127.0.0.1:8000",
+        ]);
         if ready.status.success() {
             break;
         }

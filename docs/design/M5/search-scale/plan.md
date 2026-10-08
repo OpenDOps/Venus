@@ -17,28 +17,26 @@ Steps 4–10 run on two search nodes and one graph node, so a search copy can be
 
 ## Where the board is
 
-Steps 1–4 are done (2026-10-07). Steps 5–14 are not started. Step 7 waits until [M4](../../M4/README.md) is closed; the others do not. Detail per step is the [summary](#steps-summary) below.
+Steps 1–7 are done (step 7 on 2026-10-08). Steps 8–14 are not started. Next is [step 8](#8-step-query). The [M4](../../M4/README.md) person pass does not block the board. Detail per step is the [summary](#steps-summary) below.
 
-**Shipped.** Compose profile `graph` runs SurrealDB `v2.7.0`: one graph node (`:8000`, namespace `graph`, no `SEARCH` index) and two search nodes (`:8001`, `:8002`, namespace `search` only), one volume and a 1 GB cap each. Both search nodes have the BM25 indexes. Postgres holds `search_cluster` (`shard_count` 2, `replica_count` 1) and four `search_allocation` rows; step 6 moves those into `layout_db`. `crates/surrealastic` replicates any SurrealDB database: the `repl_*` map, a fenced writer lease, a guarded `_repl_log` in the same transaction as the data, fan-out with ack, rendezvous placement, and TLS. It has no page, doc, or shard type. Nothing writes a wiki page yet, and a shard is not a replica set yet.
+**Shipped.** Compose profile `graph` runs SurrealDB `v2.7.0`: one graph node (`:8000`, namespace `graph`, no `SEARCH` index) and two search nodes (`:8001`, `:8002`, namespace `search` only), one volume and a 1 GB cap each. Both search nodes have the BM25 indexes. Postgres holds the fixture wiki in `layout_db` (`shard_count` 2, `replica_count` 1); `search_cluster`, `search_node`, and `search_allocation` are gone. `crates/surrealastic` replicates any SurrealDB database and lays one out: the `repl_*` map, `layout_db`, a fenced writer lease, a guarded `_repl_log` in the same transaction as the data, fan-out with ack, rendezvous placement, and TLS. A layout write commits on one set, records each item in `_layout_item` and the commit’s item list in `_layout_commit`, then applies by `key % shard_count`, including a cursor entry on a shard with no items. A shard that cannot ack stays queued and is rebuilt from `_layout_commit` after its cursor. Refill reads the item table, not a sibling shard. The crate has no page, doc, or field hash. `venus-graph` projects one job with one `layout.write`: `hkey` is the item key, `doc_id` is the item, and `serve` holds `writer:{ws}`. After `last_flushed` commits, the sidecar upserts `graph_jobs`. `serve` claims that row with `SKIP LOCKED` and, with no fixture, records the sha.
 
-**Layers.** The same six as [scale.md](../scale.md#layers). Replication is the only one shipped.
+**Layers.** The same six as [scale.md](../scale.md#layers). Replication and the layout are shipped.
 
 | Layer | Shipped | Still to build |
 |---|---|---|
-| **Venus** (`venus-graph`) | The crate exists. It does not call surrealastic. | [6](#6-step-project) one write per job. [7](#7-step-enqueue) `graph_jobs` after flush. [8](#8-step-query) the router. |
-| **Layout** (surrealastic) | — | [5](#5-step-layout) commit set, `_layout_item`, shard cursor, queued apply, refill, `schema` hook. [9](#9-step-recover) refill after a trimmed log, queue rebuild on takeover. [14](#14-step-split) split and rebuild. |
-| **Replication** (surrealastic) | [4](#4-step-repl-core) log, fence, fan-out, placement. | [9](#9-step-recover) catch-up, snapshot, takeover, divergence, retention. [12](#12-step-graph-copies) graph ack 2 of 3. |
-| **Graph commit set** | One node and the graph schema. | [6](#6-step-project) writes it. [12](#12-step-graph-copies) three copies. [13](#13-step-backup) archive and restore. |
-| **Search shards** | Two nodes, search schema, allocation rows. | [6](#6-step-project) items by `hkey`. [11](#11-step-third-node) the third node, replacement, `removed`. |
-| **Postgres** | `repl_lease`, `repl_node`, `repl_set`, `repl_copy`. Step 3’s `search_cluster`. | [5](#5-step-layout) `layout_db`. [6](#6-step-project) migrates `search_cluster` into it. [10](#10-step-monitor) node state. [11](#11-step-third-node) `repl_node_seq`. |
+| **Venus** (`venus-graph`) | [6](#6-step-project) one `layout.write` per job, `hkey` as the item key, migrate into `layout_db`, `serve` holds the writer lease. [7](#7-step-enqueue) `graph_jobs` after flush; `serve` claims with `SKIP LOCKED` while it holds the writer lease. | [8](#8-step-query) the router. |
+| **Layout** (surrealastic) | [5](#5-step-layout) commit set, `_layout_item`, `_layout_commit`, shard cursor, queued apply, refill, `schema` hook. | [9](#9-step-recover) refill after a trimmed log, queue rebuild on takeover, an ahead shard copy refilled from the commit set. [14](#14-step-split) split and rebuild. |
+| **Replication** (surrealastic) | [4](#4-step-repl-core) log, fence, fan-out, placement. | [9](#9-step-recover) catch-up, snapshot, takeover fence, occupied lsn, hole fill, divergence, retention. [12](#12-step-graph-copies) graph ack 2 of 3. |
+| **Graph commit set** | One node, the graph schema, and one commit per job (`page.hkey`, headings, mentions, edges, `_layout_item`). | [12](#12-step-graph-copies) three copies. [13](#13-step-backup) archive and restore. |
+| **Search shards** | Two nodes. One database per shard copy. Items land by `hkey % shard_count`, each row carrying `indexed_sha`. | [11](#11-step-third-node) the third node, replacement, `removed`. |
+| **Postgres** | `repl_lease`, `repl_node`, `repl_set`, `repl_copy`, `layout_db`. Step 3’s `search_cluster` has been carried into `layout_db`. | [10](#10-step-monitor) node state. [11](#11-step-third-node) `repl_node_seq`. |
 
 **Further, by step.**
 
 | Step | Adds |
 |---|---|
-| [5](#5-step-layout) | The layout: one commit on the graph set, then each item on `key % shard_count`, with the cursor in that shard. |
-| [6](#6-step-project) | Venus on that layout. `hkey` is the key, `doc_id` is the item, one `layout.write` per job. |
-| [7](#7-step-enqueue) | `graph_jobs` after `last_flushed`. A down cluster does not fail a flush. Waits for M4. |
+| [7](#7-step-enqueue) | `graph_jobs` after `last_flushed`. A down cluster does not fail a flush. |
 | [8](#8-step-query) | Word search across shards: two choices, one hedge, failover, `min_commit`, hydrate from the graph. |
 | [9](#9-step-recover) | A copy that missed entries catches up; a wiped copy returns by snapshot; a new writer keeps every acked entry and rebuilds the shard queue. |
 | [10](#10-step-monitor) | Nodes go `suspect`, `down`, and `up`. Each set is green, yellow, or red. |
@@ -70,10 +68,9 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 ## Gate
 
 
-| Steps           | When                                                            |
-| --------------- | --------------------------------------------------------------- |
-| **1–6, 8–14**   | Now. They do not change Flush.                                  |
-| **7**           | [M4](../../M4/README.md) **closed**. Hook after `last_flushed`. |
+| Steps    | When                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------- |
+| **1–14** | When `dependsOn` is done. Step 7 hooks after `last_flushed`. The M4 person pass does not block it. |
 
 
 
@@ -84,8 +81,8 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 2. `crates/surrealastic` has no Venus types. Every replicated write is a guarded log entry with `lsn`, `prev`, `prev_fence`, and `fence`, in one transaction with its data. Map in the `repl_*` tables and `layout_db`, no role column. Leases carry a `fence`.
 3. Fixture docs: one `layout.write`. The commit set acks with the items in `_layout_item`, then the layout applies each item by `key` and moves that shard’s `_layout:cursor`. A stale fence is refused. A copy that missed an entry refuses the next one with `gap`. Entries stay within 256 items and 4 MiB. A shard with no acking copy stays queued and is applied when a copy returns, without a second write; a new writer rebuilds that queue from the cursors. Every new copy gets its schema from `ensure`.
 4. `@@` merges every shard and never runs on a graph node. Two random choices, one hedge after p95, failover in the same request, `min_lsn`, `partial` after 2 s, hydrate within 100 ms, `unverified` when the graph does not answer. Reads continue while Postgres is down.
-5. A lagging copy catches up from another copy’s `_repl_log`. A wiped or too-far-behind copy returns by snapshot plus catch-up. A writer takeover keeps every acked entry. A divergent commit-set copy hands its tags to `lost`. A divergent shard copy is rebuilt from another copy of that shard. The log is trimmed. A search shard with no copy, or with a cursor behind the trimmed commit log, is refilled from `_layout_item` on the commit set, never from a sibling shard.
-6. After M4 is closed, flush upserts `graph_jobs` and still commits if every SurrealDB process is down.
+5. A lagging copy catches up from another copy’s `_repl_log` when that log is the history just chosen. A wiped or too-far-behind copy returns by snapshot plus catch-up. A writer takeover stores the new fence before it chooses a reference or appends. On a graph set it propagates the reference tip before any new lsn, and it keeps every acked entry. An entry the majority can ack without is left divergent. A write that committed on fewer copies than `ack` keeps that lsn until it is acked or restored away. An lsn nobody committed, sitting under a newer lsn, is an empty log row. A divergent commit-set copy hands its tags to `lost`. A divergent shard copy is refilled from the commit set, not from its sibling. The log is trimmed. A search shard with no copy, or with a cursor behind the trimmed commit log, is refilled from `_layout_item` on the commit set, never from a sibling shard.
+6. Flush upserts `graph_jobs` after `last_flushed` and still commits if every SurrealDB process is down.
 7. A third search node takes a new copy after one node is stopped past the delay, `replica_count` still 1, `shard_count` still 2.
 8. Each wiki graph has three copies acked on two. Losing one graph copy loses no acked write and does not stop writes. Losing two stops graph writes; reads continue.
 9. The monitor marks nodes `suspect`, `down`, and `up`. Health is green, yellow, or red per set.
@@ -102,13 +99,13 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 | Later                                               | Why not here                                                                  |
 | --------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `replica_count = 2`                                 | Not the HA default. Placement tests still cover three copies.                 |
-| Headings from sidecar, glossary, tree-sitter, regex | Next board. Fixtures only.                                                    |
+| Headings from sidecar, glossary, tree-sitter, regex | [Extraction](../extraction/plan.md). Fixtures only on this board.             |
 | Re-extract from git in the graph `rebuild` hook     | Needs the next board’s extractor. Here the hook restores from backup, then re-runs fixture jobs. |
 | Gist re-projection after the semantic pass          | Needs the semantic model.                                                     |
 | Semantic model, NER, HNSW                           | Later.                                                                        |
 | Surrealastic as its own proxy binary                | [scale.md](../scale.md#why-a-layer-not-a-surrealdb-patch) allows it without a design change. A library is enough now. |
 | SurrealDB Enterprise, Raft between SurrealDB nodes  | Postgres chooses the writer. The layer replicates the log.                    |
-| Tantivy instead of SurrealDB `SEARCH`               | The cluster can take that index later ([scale.md — compared with Elasticsearch](../scale.md#compared-with-elasticsearch)). This board keeps SurrealDB `SEARCH`. |
+| Tantivy instead of SurrealDB `SEARCH`               | [Tantivy](../tantivy/plan.md), after this board’s read path. This board keeps SurrealDB `SEARCH`. |
 
 
 
@@ -118,7 +115,7 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 1. Search nodes run `surrealdb/surrealdb:v2.7.0`. Schema is namespace `search` only.
 2. Order: one `layout.write`. The commit set acks per its policy. The layout then applies items to every `in_sync` shard copy in parallel (acked on one). A failed copy is `lagging` and the cluster is yellow. The caller does not see the shard.
 3. One fenced writer per wiki, through `crates/surrealastic`. Copies of one set are in distinct zones. No leader among copies. Copies never connect to each other.
-4. Catch up a copy from another copy of **that** set’s `_repl_log`, or by snapshot. Refill a search set from `_layout_item` on the commit set only when it has no copy or its cursor is behind the retained commit log. Not from a sibling shard, not from markdown while a graph copy or backup exists.
+4. Catch up a graph copy from another copy of **that** set’s `_repl_log`, or by snapshot, when that copy is the reference tip and the fill happens before any new lsn. An entry the majority can ack without stays divergent. Refill a search shard from `_layout_item` and `_layout_commit` on the commit set when it has no copy, its cursor is behind the retained commit log, or it is ahead of the sibling. Not from a sibling shard, not from markdown while a graph copy or backup exists.
 5. Postgres is not on the per-write or per-read path. It is written when a lease is claimed or renewed, or a node or copy changes state.
 6. SurrealDB WebSocket RPC for writes, catch-up, and reads. HTTP `/export`, `/import`, `/health`. No gRPC, no compression, no second port on a SurrealDB node.
 7. Every default in [scale.md — defaults](../scale.md#defaults) is an environment variable of that name. Tests set the timers low; they do not change the rules.
@@ -141,6 +138,7 @@ Every section of [scale.md](../scale.md) and the step that builds it.
 | The log, guarded write, body rule               | 4    |
 | Write path: one write, graph body, items        | 6    |
 | Write path: fan-out, one in flight, ack, `REPL_LAG_MAX` | 4 |
+| Write path: occupied lsn, empty hole fill, takeover fence | 9; graph short-of-ack in 12 |
 | Protocol, TLS                                   | 4 (WebSocket, TLS), 9 (export and import), 10 (probe) |
 | Catch-up, snapshot, writer takeover, divergence | 9; graph quorum in 12 |
 | Log retention                                   | 9; archive before trim in 13 |
@@ -154,7 +152,7 @@ Every section of [scale.md](../scale.md) and the step that builds it.
 | Node ids from `repl_node_seq`, state `removed`  | 11   |
 | Restore, case by case                           | 9, 10, 11, 12, 13 |
 | Postgres tables, lease statement                | 4 (`repl_*`), 5 (`layout_db`) |
-| Compared with Elasticsearch; Tantivy upgrade    | Not this board. The index stays SurrealDB `SEARCH`. |
+| Compared with Elasticsearch; Tantivy upgrade    | [M5 plan](../plan.md) board 3. This board keeps SurrealDB `SEARCH`. |
 
 
 
@@ -170,10 +168,10 @@ What each step **adds** to the product (not how to test it — that is under eac
 | [3](#3-step-schema)       | [`step-schema`](#3-step-schema)             | ✅ **done.** Search indexes on :8001 and :8002. Allocation rows.                              |
 | [4](#4-step-repl-core)    | [`step-repl-core`](#4-step-repl-core)       | ✅ **done.** `surrealastic` replication: map, leases, guarded log, fan-out with ack, placement, TLS. |
 | [5](#5-step-layout)       | [`step-layout`](#5-step-layout)             | ✅ **done.** `surrealastic` layout: commit set, `_layout_item`, `key % shard_count`, shard cursor, queued apply, refill, `schema` hook. |
-| [6](#6-step-project)      | [`step-project`](#6-step-project)           | **pending.** Venus bodies on the layout: `hkey` as `key`, `doc_id` as item, `search_cluster` migrated into `layout_db`, one write per job. |
-| [7](#7-step-enqueue)      | [`step-enqueue`](#7-step-enqueue)           | **pending.** `graph_jobs` after flush. M4 closed.                                            |
+| [6](#6-step-project)      | [`step-project`](#6-step-project)           | ✅ **done.** Venus bodies on the layout: `hkey` as `key`, `doc_id` as item, `search_cluster` migrated into `layout_db`, one write per job. |
+| [7](#7-step-enqueue)      | [`step-enqueue`](#7-step-enqueue)           | ✅ **done.** `graph_jobs` after flush. A down cluster does not fail a flush. One writer claims the row. |
 | [8](#8-step-query)        | [`step-query`](#8-step-query)               | **pending.** Router: map cache, two choices, hedge, failover, `min_lsn`, merge, hydrate.      |
-| [9](#9-step-recover)      | [`step-recover`](#9-step-recover)           | **pending.** Catch-up, snapshot, takeover, divergence, retention. Shard refill stays in the layout. |
+| [9](#9-step-recover)      | [`step-recover`](#9-step-recover)           | **pending.** Catch-up, snapshot, takeover with the fence stored first, divergence, occupied lsn, hole fill, retention. Shard refill stays in the layout. |
 | [10](#10-step-monitor)      | [`step-monitor`](#10-step-monitor)           | **pending.** Monitor lease, probes, node states, position sweep, writer reactions.           |
 | [11](#11-step-third-node) | [`step-third-node`](#11-step-third-node)    | **pending.** Third node joins by rendezvous, replacement after the delay, draining, `removed` state, ids never reused. R stays 1. |
 | [12](#12-step-graph-copies) | [`step-graph-copies`](#12-step-graph-copies) | **pending.** Three graph copies, ack 2 of 3, quorum takeover, graph `lost`.               |
@@ -185,7 +183,7 @@ What each step **adds** to the product (not how to test it — that is under eac
 
 ## Steps
 
-[Steps summary](#steps-summary). Do them in order. Step 7 waits until [M4](../../M4/README.md) is closed; no other step waits for it. A step is not started until its `dependsOn` steps are done. Test scenarios under each step are the accept rules. Encode them as tests where the How line names a command; do not invent extra scenarios.
+[Steps summary](#steps-summary). Do them in order. A step is not started until its `dependsOn` steps are done. The [M4](../../M4/README.md) person pass does not block step 7. Test scenarios under each step are the accept rules. Encode them as tests where the How line names a command; do not invent extra scenarios.
 
 Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a copy that does not answer), volume removal, and the layer’s `fault` cargo feature (drop one copy’s connection, stop the writer after the k-th copy commits, commit on one copy only). The `fault` feature is off in every non-test build.
 
@@ -365,8 +363,8 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 - `ensure(set)` on each copy: creates the database and `_repl` / `_repl_log` ([scale.md — the log](../scale.md#the-log)). `_repl_log` ids are integers.
 - Guarded write ([scale.md](../scale.md#guarded-write)): one SurrealQL transaction per entry with the five checks, the body, the `_repl_log` `UPSERT`, and the `_repl:state` update. Replies `ok`, `already`, `fenced`, `gap at N`, `divergent`, each with the copy’s `applied_lsn` and `applied_fence`.
 - Body rule: bodies are built from `upsert(id, content)`, `delete(id)`, `delete_range(table, from, to)`, and `insert_relation(id, in, out, content)`, with parameters bound. Raw SurrealQL is refused if it contains `rand::`, `time::now`, `CREATE` without an id, `+=`, or `-=`. `at` and any time value are parameters filled once by the writer.
-- Writer: one queue per set. On claim, the head is the highest `applied_lsn` among reachable copies (full takeover in step 9). Entry `n` is `head + 1`, `prev = n − 1`, `prev_fence` = fence of the head entry.
-- Fan-out ([scale.md — write path](../scale.md#write-path)): every `in_sync` copy of the set in parallel. One entry in flight per copy, in `lsn` order. The call returns when `ack` copies answered `ok` or `already`. The other copies keep their entry in flight. A copy that replies `gap`, times out, or falls `REPL_LAG_MAX` behind becomes `lagging` and leaves the live stream. `fenced` stops this writer. `repl_copy` is written only when a copy changes state.
+- Writer: one queue per set. On claim, the head is the highest `applied_lsn` among reachable copies (full takeover in step 9, including the fence write before any new data entry). Entry `n` is `head + 1`, `prev = n − 1`, `prev_fence` = fence of the head entry.
+- Fan-out ([scale.md — write path](../scale.md#write-path)): every `in_sync` copy of the set in parallel. One entry in flight per copy, in `lsn` order. The call returns when `ack` copies answered `ok` or `already`. The other copies keep their entry in flight. A copy that replies `gap`, times out, or falls `REPL_LAG_MAX` behind becomes `lagging` and leaves the live stream. `fenced` stops this writer. `repl_copy` is written only when a copy changes state. An lsn that committed on fewer copies than `ack`, and an empty row for an lsn nobody committed, are step 9.
 - Connections: one WebSocket per node per process, signed in once, requests multiplexed. `wss://` URLs use `rustls` with the configured CA. No compression.
 - Placement ([scale.md — placement](../scale.md#placement)): a pure function `homes(set_id, copies, members)` with xxh3 rendezvous, `weight`, the zone rule, `node_id` tie-break, `down` nodes still members, `draining` nodes not. Fewer zones than `copies` returns fewer homes.
 - Health per set from `repl_copy` and `repl_node`: green, yellow, red ([scale.md — failure detection](../scale.md#failure-detection)).
@@ -442,9 +440,9 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 - Item table ([scale.md — item table](../scale.md#item-table)): the commit entry carries the `_layout_item` upsert (or delete) of each item, id = `key`, in the same transaction as `commit_body`. A row whose `item` differs throws `key collision` and the whole entry rolls back.
 - Shard cursor ([scale.md — shard cursor](../scale.md#shard-cursor)): every shard entry sets `_layout:cursor.commit` in its own transaction. `lag(db)` is commit head minus cursor per shard. `read` with `min_commit` skips a copy whose cursor is lower and lists the shard in `partial` with reason `behind` when no copy qualifies.
 - Schema ([scale.md — schema](../scale.md#schema)): the hook `schema(set) → statements`. `ensure` applies it to every new copy before the first entry or import. A schema change is one guarded entry of `define` ops; the `define` body op accepts only `DEFINE` and `REMOVE` statements. This extends step 4’s `ensure` and body ops; step 4’s tests keep passing unchanged.
-- `write` returns when the commit set has acked. It then applies each item to shard `key % shard_count`. While `shard_count_next` is set, it also applies the item to `key % shard_count_next`. One entry per touched shard, at most `REPL_ENTRY_DOCS` items and `REPL_ENTRY_BYTES`. A delete item removes its `rids` on the shard and its `_layout_item` row.
+- `write` returns when the commit set has acked. It then applies each item to shard `key % shard_count`. While `shard_count_next` is set, it also applies the item to `key % shard_count_next`. Every shard gets an entry for that commit, including one with no items, and that entry sets `_layout:cursor`. Packs stay within `REPL_ENTRY_DOCS` and `REPL_ENTRY_BYTES`. A delete item removes its `rids` on the shard and its `_layout_item` row. The commit entry also writes `_layout_commit:{lsn}` so the delete remains after the item row is gone.
 - A shard copy that gaps, times out, or falls behind is `lagging` and is caught up by surrealastic replication. The write result does not name a shard.
-- A shard with no acking copy keeps that commit queued, behind earlier queued commits, in commit order. When a copy is up, the layout applies them. The commit set is not written again. On start, the layout rebuilds the queue: for each shard, the commits after its cursor.
+- A shard with no acking copy keeps that commit queued, behind earlier queued commits, in commit order. When a copy is up, the layout applies them. The commit set is not written again. On start, the layout rebuilds the queue from `_layout_commit` after each shard’s cursor. A copy is `in_sync` only once replay has reached the head. Refill refuses a database whose `applied_lsn` is already past 0.
 - A shard with no copy left is refilled ([scale.md — refill](../scale.md#refill)): note commit head `L0`, create empty copies with the schema, range-read `_layout_item` in `REPL_CATCHUP_BATCH` pages, write the items that land on the shard within the entry limits (last entry sets the cursor to `L0`), then apply commits after `L0`. A sibling shard is not a source. The owner hook is not called.
 - The caller is told the write failed only when the commit set cannot ack.
 - Live tests use a scratch commit set on :8000 (ack 1) and shard copies on :8001 and :8002 (ack 1), `shard_count = 2`, and drop the databases at the end.
@@ -501,7 +499,7 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | **title**     | Venus bodies on the layout; one write per job           |
 | **dependsOn** | `step-layout`                                           |
 | **kind**      | implement                                               |
-| **status**    | **pending** ([board](./SS.state.yaml); breakpoint `human`) |
+| **status**    | **done** ([board](./SS.state.yaml); breakpoint `human`) |
 
 
 #### Work
@@ -569,12 +567,9 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | **n**         | 7                                                            |
 | **id**        | `step-enqueue`                                               |
 | **title**     | Enqueue `graph_jobs` after flush                             |
-| **dependsOn** | `step-project`; [M4](../../M4/README.md) closed              |
+| **dependsOn** | `step-project`                                           |
 | **kind**      | implement                                                    |
-| **status**    | **pending** ([board](./SS.state.yaml); breakpoint `human`)   |
-
-
-**Gate:** M4 closed.
+| **status**    | **done** ([board](./SS.state.yaml); breakpoint `human`)   |
 
 #### Work
 
@@ -699,10 +694,13 @@ Venus search on it:
 
 - Catch-up ([scale.md](../scale.md#catch-up)): on `gap at N` or a `lagging` copy, read `_repl_log:N+1..` from an in-sync copy of that set, `REPL_CATCHUP_BATCH` entries per range read, and replay each as a guarded write in order on that set’s queue. At the head, the copy rejoins the live stream as `in_sync`.
 - Snapshot ([scale.md](../scale.md#snapshot)) when a copy is new, empty, behind the oldest retained entry, or divergent: read `L0` and its fence from the source, `GET /export`, recreate the target database, `POST /import`, set `_repl:state`, catch up from `L0`. At most `REPL_MAX_BUILDS_PER_NODE` snapshots into one node at once; the rest queue.
-- Takeover ([scale.md](../scale.md#writer-takeover)): on claim, read `_repl:state` from `copies − ack + 1` copies when `ack > 1`, else from every reachable copy. Fewer answer: that set’s writes wait. The highest `(applied_lsn, applied_fence)` is the reference; a `lagging` copy is not picked while enough others answer. Fill the others from it, then continue from its head with the new fence.
-- Divergence ([scale.md](../scale.md#divergence)): on `divergent`, find the common point (highest `lsn` where the copy’s and the reference’s `(lsn, fence)` agree), then snapshot from an in-sync copy of that set. On the commit set, pass the tags past that point to `lost(set, tags)`. On a shard set, do not call the owner.
+- Takeover ([scale.md](../scale.md#writer-takeover)): on claim, read `_repl:state` from `copies − ack + 1` copies when `ack > 1`, else from every reachable copy. Fewer answer: that set’s writes wait. Store the new `fence` on each copy in that read with `UPDATE _repl:state SET fence = $fence WHERE applied_lsn = $seen AND fence < $fence` before any data entry and before the reference is chosen. Zero rows: read again. Continue only when each of those copies has the new fence and `applied_lsn` is unchanged since the fence write. On a graph set the highest `(applied_lsn, applied_fence)` in that stable majority is the reference. Propagate its last entry to the other copies before any new lsn. An entry that majority does not contain is left on its copy as divergent. A `lagging` copy is not picked while enough others answer.
+- A search shard does not take its ahead copy as the source for the sibling. Empty that copy and refill it from `_layout_item` and `_layout_commit`. Continue from a copy that can still ack.
+- Occupied lsn ([scale.md — when a write does not reach ack](../scale.md#when-a-write-does-not-reach-ack)): `Ok(lsn)` only at `ack`. While a body has committed on fewer copies than `ack` and a resend can still succeed, that lsn stays occupied and the same entry is resent (`already` on a copy that has it). The caller does not submit a second body. When the other copies rejected the body itself, restore the copies that committed back to `prev`, roll the tip back, and return the error. `lost` is not called.
+- Hole fill: when every copy rejected an entry and a newer lsn is already issued, commit an empty `_repl_log` row at the failed lsn with tag `hole`, then resend the successors. `rollback_head` runs only when that lsn is still the tip and nobody committed it. `lost` ignores `hole`.
+- Divergence ([scale.md](../scale.md#divergence)): on `divergent`, find the common point (highest `lsn` where the copy’s and the reference’s `(lsn, fence)` agree). A graph copy is snapshotted from the reference. On the commit set, pass the tags past that point to `lost(set, tags)`, skipping `hole`. The owner’s re-run is a new lsn after that tail is outside the reference. A shard copy is emptied and refilled from the commit set. Do not call the owner. Do not read the sibling shard’s `_repl_log`.
 - No copy left on a shard, or its cursor below the oldest retained commit entry: the layout refills it from `_layout_item` ([scale.md — refill](../scale.md#refill)). No copy left on the commit set: call `rebuild(set)`.
-- Takeover on the layout: the new writer reads each shard’s `_layout:cursor` and applies the commits after it in order, from the commit set’s log.
+- Takeover on the layout: the new writer reads each shard’s `_layout:cursor` and applies `_layout_commit` after it in order. A delete is in that list.
 - Retention ([scale.md](../scale.md#log-retention)): delete `_repl_log:..=X` where every copy of the set has applied `X`, and anything past `REPL_LOG_RETAIN` (24 h, or beyond the newest 1M entries). A copy behind the oldest entry returns through a snapshot. Commit-set retention does not wait for shard cursors.
 
 
@@ -710,8 +708,11 @@ Venus search on it:
 #### Do not
 
 - Let one copy connect to another.
-- Refill a search shard from a sibling shard.
+- Refill a search shard from a sibling shard, or catch a divergent shard copy up from that sibling’s `_repl_log`.
 - Pick a lagging copy as the takeover reference while enough others answer.
+- Append a data entry on takeover before the new fence is stored on the read set.
+- Allocate a new lsn while a body that committed on fewer copies than `ack` is still on a copy.
+- Leave an lsn with no `_repl_log` row under an issued successor.
 - Run catch-up and live writes for one set on different queues.
 - Trim entries a reachable copy has not applied, unless they are past `REPL_LOG_RETAIN`.
 - Move a copy to another node (step 11).
@@ -729,8 +730,12 @@ Venus search on it:
 | Wiped, trimmed | Remove :8002’s volume after the log is trimmed. The copies return by snapshot from :8001 plus catch-up, with the same `(applied_lsn, applied_fence)` and rows. |
 | Fuzzy export   | Writes continue during the export. After catch-up from `L0`, both copies have the same rows.                                    |
 | Build cap      | Three snapshots into one node: never more than two at once.                                                                      |
-| Takeover       | Stop the writer after :8001 committed an entry and before :8002 did. A second process claims the lease, picks :8001 as reference, and fills :8002. No acked entry is missing. |
-| Divergent      | Commit an entry on :8002 only under the old fence. Pause :8002, take over (reference :8001), write one entry, resume :8002. Its next write replies `divergent`. The owner hook is not called. :8002 is rebuilt by snapshot from :8001. |
+| Takeover       | Stop the writer after :8001 committed an entry and before :8002 did. A second process claims the lease, stores the new fence on the reachable copies with `applied_lsn` unchanged, picks :8001 as reference, and fills :8002. No acked entry is missing. |
+| Fence first    | After claim and before the first data entry, every copy in the read set has `_repl:state.fence` equal to the new fence. An entry that still carries the old fence is refused `fenced` and does not advance `applied_lsn`. |
+| Occupied lsn   | `ack` 2. One copy commits, the other rejects the body. The committed copy is restored to `prev`, the caller receives the error, and a retry is a single new log row. The rejected body is absent. A resendable miss (transport) keeps the same lsn until the second copy answers `already` or `ok`. |
+| Hole           | Two overlapping writes. The older body fails on every copy after the newer lsn is issued. An empty `_repl_log` row with tag `hole` occupies the older lsn, the newer body commits after it, and both copies have a contiguous log. |
+| Divergent      | Commit an entry on :8002 only under the old fence. Pause :8002, take over (reference :8001), write one entry, resume :8002. Its next write replies `divergent`. The owner hook is not called. :8002 is rebuilt by snapshot from :8001. This set is its own source of truth, not a layout shard. |
+| Shard divergent | One copy of shard 1 has an entry the other does not. Takeover continues from the copy that can still ack. The ahead copy is emptied and refilled from `_layout_item` and `_layout_commit`. Shard 0 is not read. The owner hook is not called. |
 | Rebuild        | Wipe both copies of shard 0. The layout refills it from `_layout_item` (`key % 2 = 0`). Shard 1 is not read. The owner hook is not called. |
 | Refill after trim | Stop both copies of shard 1, write and trim the commit set past shard 1’s cursor, start them. Shard 1 is refilled from `_layout_item` into empty databases, then catches up; a doc deleted during the outage is gone, and no `_repl_log` read goes below `L0`. |
 | Queued takeover | Pause shard 1, write two commits, stop the writer. A second process claims the lease and applies both commits to shard 1 in order from its cursor. |
@@ -878,8 +883,9 @@ Venus search on it:
 
 - Services `surreal-graph-1` (`127.0.0.1:8004`) and `surreal-graph-2` (`:8005`): own volumes, same image and cap, graph schema only. `repl_node` 4 and 5 in pool `graph`, zones 4 and 5.
 - Graph set policy ([scale.md — replica sets and policy](../scale.md#replica-sets-and-policy)): `GRAPH_COPIES` (1 by default, 3 on this profile), `ack` a majority. The new copies join by snapshot from :8000 plus catch-up.
-- Takeover reads `_repl:state` from 2 of 3. Fewer reachable: graph writes wait; reads continue from any in-sync copy.
-- Graph `lost(set, tags)` hook: re-run the jobs named in the tags (fixture jobs here; `graph_jobs` rows once step 7 is done).
+- Takeover reads `_repl:state` from 2 of 3, stores the new fence on those copies, and re-reads any copy whose `applied_lsn` moved, before it appends. Fewer reachable: graph writes wait; reads continue from any in-sync copy.
+- A graph body that committed on one copy and was rejected by another stays on that lsn when a resend can succeed, and is restored away when it cannot. The job is re-run from `lost` only after a divergent tail is outside the reference. Propagate an unacked graph entry only when it is the tip of the majority reference, and do it before any new lsn.
+- Graph `lost(set, tags)` hook: re-run the jobs named in the tags (fixture jobs here; `graph_jobs` rows once step 7 is done). Skip the tag `hole`.
 - Packs and hydrate pick any in-sync graph copy through the router, with `min_lsn` when they must see a job.
 
 
@@ -888,6 +894,8 @@ Venus search on it:
 
 - Ack a graph entry on one copy when `copies` is 3.
 - Pick a graph takeover reference without a majority.
+- Append a graph entry before the new fence is stored on the two copies the reference was chosen from.
+- Submit a second graph body while the first has committed on fewer than two copies and is still on one of them.
 - Put two graph copies in one zone.
 - Rebuild the graph from markdown while a graph copy exists.
 
@@ -900,7 +908,8 @@ Venus search on it:
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Majority ack   | Stop :8005. Graph entries ack on :8000 and :8004. Stop :8004 too: graph writes wait, reads still answer from :8000. Yellow, then red. |
 | No lost ack    | Ack an entry on two copies, then wipe one of them. The entry is on the reference after takeover and on the rebuilt copy.     |
-| Divergent      | Commit an entry on :8005 only under the old fence (not acked). Pause :8005, take over on :8000 and :8004, write one entry, resume :8005. It replies `divergent`, its job reaches `lost` and is re-run, and :8005 is rebuilt by snapshot to the reference’s `(applied_lsn, applied_fence)`. |
+| Divergent      | Commit an entry on :8005 only under the old fence (not acked). Pause :8005, take over on :8000 and :8004, write one entry, resume :8005. It replies `divergent`, its job reaches `lost` and is re-run, and :8005 is rebuilt by snapshot to the reference’s `(applied_lsn, applied_fence)`. The reference log does not also contain that old body. |
+| Short of ack   | `ack` 2. One graph copy commits, another rejects the body, the third is down. The committed copy is restored to `prev`. `lost` is not called. The retry acks on two copies as one new lsn, and the rejected body is absent. |
 | Quorum wait    | With only :8000 reachable, a new writer’s takeover waits. When :8004 returns, it picks the higher of the two.                |
 | Fresh read     | A read with `min_lsn` of the last acked entry never returns from a graph copy behind it.                                     |
 

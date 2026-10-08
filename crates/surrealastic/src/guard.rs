@@ -88,11 +88,12 @@ pub fn classify(err: &str) -> Option<ApplyStatus> {
     None
 }
 
-fn quote_ident(name: &str) -> String {
-    if name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+pub(crate) fn quote_ident(name: &str) -> String {
+    if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
     {
         name.to_string()
     } else {

@@ -207,7 +207,7 @@ steps:
         evidence: "2026-10-06 sync-provider.test.ts — mount-editor / editor-container / boot have no SharedWorker / hub-shared-worker / shared-worker-socket / hub-relay / serviceWorker; hub-shared-worker.js + hub-relay.js import no yjs / y-protocols / @blocksuite; unset VITE_SYNC_URL constructs no SharedWorker. pnpm test 214 passed; pnpm test:e2e (m0+m2) 16 passed; pnpm test:e2e:m3 2 passed 1 skipped."
   step-verify: # 9
     n: 9
-    state: pending # breakpoint human: Manual path and the H2 legacy cleanup are open
+    state: pending # breakpoint human: Manual path is open. H2 baseline cleaned 2026-10-08.
     breakpoint: human
     pr: null
     dodResults:
@@ -215,8 +215,8 @@ steps:
         status: pass
         evidence: "2026-10-06 pnpm test:e2e:m4 m4-create-rename (not skipped) — create in spec → spec/<uuid>.md + pages.yaml + page_identity; rename → git mv; delete → git rm. Compose hub + sidecar rebuilt from the working tree."
       - name: Exit held
-        status: pending
-        evidence: "2026-10-06 pnpm wiki:verify (apps/web/scripts/m4-verify-wiki.mjs; clones wiki HEAD --no-hardlinks, decodes the catalog from Postgres) — 29 pages / 11 folders: .md set, pages.yaml pages + folders, page_identity, .venus/ids, card hrefs + text, links.json all match, except 4 H2 legacy pages with no hub body (64d7aca4, a2c00a9a, f12cf50f, 6d9e0dad): no .md, and home.md links 3 of them. Pages created after the H2 fix all verify. Clear with runbook M4 Baseline (Delete + Flush), then rerun. Negative check: a moved file, a stale file, and a wrong YAML name in a scratch copy each fail."
+        status: pass
+        evidence: "2026-10-08 pnpm wiki:verify ok — wiki HEAD 5a4d87deea09d25e4125c73439e8fbb9c46f3b76. Catalog nodes for 64d7aca4, a2c00a9a, f12cf50f, and 6d9e0dad (and empty folder design-6d9e0dad) deleted on the hub; home.md keeps the three missing cards; links.json matches. 27 pages, 11 folders, 27 live page_identity rows."
       - name: Smoke
         status: pass
         evidence: "2026-10-06 pnpm test:e2e:m4 16 passed (m4-create-rename, m4-tree, m4-header, m4-link incl. rename+move, m4-shared-worker); moves are in m4-tree drop and m4-link (no separate m4-move spec). pnpm test:e2e:m1 10 passed; pnpm test:e2e:m3 2 passed 1 skipped + test:e2e:m3:live 1 passed; M2 pane in pnpm test:e2e."

@@ -72,5 +72,8 @@ fn env_u64(name: &str, default: u64) -> u64 {
 }
 
 fn env_string(name: &str, default: &str) -> String {
-    env::var(name).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| default.to_string())
+    env::var(name)
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| default.to_string())
 }

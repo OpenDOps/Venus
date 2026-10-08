@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use surrealastic::{pack_items, shard_for, shards_for, Body, Item, log_tail_start};
+use surrealastic::{log_tail_start, pack_items, shard_for, shards_for, Body, Item};
 
 fn item(key: i64) -> Item {
     Item {
@@ -52,7 +52,10 @@ fn entry_limit() {
     assert_eq!(packs.len(), 2);
     assert!(packs.iter().all(|pack| pack.len() <= 256));
     assert!(packs.iter().all(|pack| {
-        pack.iter().map(|item| item.body.logged().to_string().len()).sum::<usize>() < 4 * 1024 * 1024
+        pack.iter()
+            .map(|item| item.body.logged().to_string().len())
+            .sum::<usize>()
+            < 4 * 1024 * 1024
     }));
     assert_eq!(packs[0].len() + packs[1].len(), 300);
 }
@@ -71,10 +74,15 @@ fn schema_define_refuses_non_ddl() {
 fn refill_log_starts_after_l0() {
     assert_eq!(log_tail_start(40), 41);
     assert!(log_tail_start(0) > 0);
-    let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/layout.rs")).unwrap();
+    let source =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/layout.rs")).unwrap();
     assert!(
         !source.contains("_repl_log:1") && !source.contains("_repl_log:0"),
         "refill must not read the log from the start"
+    );
+    assert!(
+        source.contains("note_health(&set_id, false)"),
+        "a shard write must not open a TCP probe"
     );
 }
 

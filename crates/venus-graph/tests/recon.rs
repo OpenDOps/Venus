@@ -195,7 +195,11 @@ fn names_leader(text: &str) -> bool {
 fn copies() {
     let steps = between(PLAN, "### 4. step-repl-core", "## After this board");
     let cluster = between(README, "## Cluster", "## Memory");
-    for (name, text) in [("scale.md", SCALE), ("README cluster", cluster), ("steps 4–13", steps)] {
+    for (name, text) in [
+        ("scale.md", SCALE),
+        ("README cluster", cluster),
+        ("steps 4–13", steps),
+    ] {
         assert!(
             !names_leader(text),
             "{name} must not name a leader copy or a promotion"
@@ -259,7 +263,10 @@ fn coverage() {
         .step_by(2)
         .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_uppercase() || c == '_'))
         .collect();
-    assert!(names.len() >= 12, "scale.md defaults must name its settings");
+    assert!(
+        names.len() >= 12,
+        "scale.md defaults must name its settings"
+    );
     for name in names {
         assert!(steps.contains(name), "steps 4–13 must use {name}");
     }

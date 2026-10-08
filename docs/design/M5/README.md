@@ -1,6 +1,6 @@
 # M5 — Semantic graph
 
-**Status:** in progress — [search-scale](./search-scale/plan.md) steps 1–4 done (step 4, the replication core, 2026-10-07). Board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M7 — lease](../venus-implementation-plan.md#m7--lease--freeze-week). Does **not** delay `last_flushed`.
+**Status:** in progress — [plan](./plan.md) board 1 is the search cluster. [search-scale](./search-scale/plan.md) steps 1–7 done (step 7 on 2026-10-08). Next on that board is [step 8](./search-scale/plan.md#8-step-query). Board [SS.state.yaml](./search-scale/SS.state.yaml). Store and extractors for the **spatial** wiki graph ([LifeIndexing](../Agents/LifeIndexing.md) AB1). **Gate:** [M4](../M4/README.md) closed — catalog `docId`, `gitPath`, `<!-- venus:doc:… -->`, and `.venus/links.json` exist. Does **not** replace [M7 — lease](../venus-implementation-plan.md#m7--lease--freeze-week). Does **not** delay `last_flushed`.
 
 Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeIndexing](../Agents/LifeIndexing.md). This folder is *how* that graph is built and where it is stored.
 
@@ -11,8 +11,11 @@ Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeInd
 | [connect.md](./connect.md) | Direct references between pages, then background semantic binds |
 | [store.md](./store.md) | SurrealDB graph schema, clocks, Compose |
 | [scale.md](./scale.md) | Graph store vs search projection. **Surrealastic** replicates each database and places integer keys across shards. Venus writes once per job. |
-| [search-scale](./search-scale/README.md) | `surreal-search` cluster: shards, copies, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
-| [plan.md](./plan.md) | Points at the search-scale board. Extractors are the next board. |
+| [plan.md](./plan.md) | Three boards: search cluster, extraction, optional Tantivy. What each lands and why. |
+| [search-scale](./search-scale/README.md) | Board 1. `surreal-search` cluster: shards, copies, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
+| [extraction](./extraction/README.md) | Board 2. Pages, mentions, and `links_to` inside a page and across pages. Plan: [extraction/plan.md](./extraction/plan.md). |
+| [graph-view](./graph-view/README.md) | Board 3. Sigma.js WebGL view of that graph. Plan: [graph-view/plan.md](./graph-view/plan.md). |
+| [tantivy](./tantivy/README.md) | Board 4, optional. Tantivy replaces SurrealDB `SEARCH`. Plan: [tantivy/plan.md](./tantivy/plan.md). |
 
 ## What this is
 
@@ -50,7 +53,7 @@ In-document work must stay autonomous and fast. Do not call an LLM to find a fun
 | Job | Choice | Rejected for this job |
 |---|---|---|
 | **Graph store** | **SurrealDB 2**, namespace `graph`. `RELATE` edges and exact mention keys. Rust SDK. | Postgres `crdt_*` (live Yjs, not a graph). A second graph engine. Embedding cosine stored as a bind. |
-| **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and copied by surrealastic ([scale](./scale.md), [search-scale — cluster](./search-scale/README.md#cluster)). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. A Tantivy index is a later swap of `SEARCH`, same cluster ([scale — compared with Elasticsearch](./scale.md#compared-with-elasticsearch)). |
+| **Lexical search** | `surreal-search` cluster: a projection of heading and mention text, `SEARCH` only on those nodes, sharded and copied by surrealastic ([scale](./scale.md), [search-scale — cluster](./search-scale/README.md#cluster)). Planned replacement of that index: [Compared with Elasticsearch](#compared-with-elasticsearch). | Elasticsearch as a second engine. SurrealDB Enterprise as the shard manager. Full-text indexes on the graph process. |
 | **In-doc code names** | **tree-sitter** on fenced code only | CodeGraph CLI and Aider. Those analyze the **product** repo at `productSha` ([code-bind](../Agents/code-bind.md)). They are not the wiki indexer. |
 | **Glossary / slang** | **`daachorse`** Aho–Corasick automaton compiled from `glossary.md` (plus page titles and unique headings) | An LLM pass over every paragraph. |
 | **Emails, phones, UUIDs, hashes, API paths** | **`regex`** (Rust engine, linear time) | NER for patterns that are regular. |
@@ -58,6 +61,31 @@ In-document work must stay autonomous and fast. Do not call an LLM to find a fun
 | **Semantic page↔page binds** | Cheap JSON completion, separate model key, **after** extract | BGE-M3 vectors as the edge. LanceDB as a second store. Cursor subscription as the completions API. |
 
 **Vectors are not this slice.** Cosine on embeddings is candidate **search**, not a bind ([LifeIndexing — logical](../Agents/LifeIndexing.md#logical-llm--background)). If heading-body recall for the semantic job is too weak later, store BGE-M3 (BAAI) vectors on the **search** namespace (HNSW) and use them only to pick candidates. Do not add LanceDB while that namespace can hold those vectors. Do not create a `related` edge from a neighbor in vector space.
+
+## Compared with Elasticsearch
+
+Surrealastic takes Elasticsearch’s cluster and leaves Lucene. The process is Rust. The index on this board is SurrealDB `SEARCH` (BM25 on RocksDB), not Lucene. Rust removes the JVM. It does not, by itself, make a query faster than Lucene.
+
+| | Elasticsearch | Surrealastic |
+|---|---|---|
+| Unit of scale | A shard of documents | A shard of integer keys. Venus passes `hkey`. |
+| Copies | One extra copy by default. Two copies of the shard. | `replica_count = 1`. Two copies, distinct zones. |
+| Who takes a write | One copy accepts the index operation. The others apply it after. | Every in-sync copy applies the same log entry. Search returns when one copy has committed. Copies stay equal. |
+| Where a copy sits | Allocation, with a delay before a shard moves off a dead node. | Rendezvous. `REPL_REALLOCATE_DELAY_MS` (60 s) before a replacement copy. |
+| Query | A coordinator asks every shard and merges hits. | The router asks every shard, hedges one slow copy, merges hits. |
+| Score | BM25 inside one shard. Scores from two shards are not one scale. | The same. A new wiki has one shard, so the scale is the wiki. |
+| When a hit is visible | After the next refresh, about 1 s by default. | In the transaction that committed the log entry. |
+| Growing the index | Split, or build the index again, when the shard count must change. | Split by doubling. The layout replays current items onto the new shard sets. |
+| Membership | Master-eligible nodes publish cluster state. | Postgres holds the lease and the copy map. A search does not read Postgres. |
+| If every copy of a shard is gone | Restore a snapshot, or build the index again. | Replay `_layout_item` from the graph commit set. |
+
+**Faster here.** No JVM warmup and no garbage-collection pause on the router. A committed entry is searchable immediately. Search ack waits for the fastest copy, and the copies are written in parallel. A wiki that still has one shard pays no scatter across shards. Each search node has an explicit cap (1 GB, 64 MB block cache) instead of a JVM heap plus the page cache.
+
+**Still decided by the index.** Elasticsearch batches documents into immutable Lucene segments, then walks postings at query time. Surrealastic applies a guarded transaction of at most 256 docs on every in-sync copy. That costs more per document and buys a fresher, recoverable index. On a large corpus a Lucene query is still the faster query. This board uses SurrealDB BM25 because the same engine holds the graph and a shard is an ordinary SurrealDB database that the layout can refill.
+
+**Search backend replacement.** The search-node index is planned to be replaced. The layout does not read the body. It stores an item key, a tag, and statements, and it replicates those. A later shard applies the same item to a Tantivy index instead of SurrealDB `SEARCH`. The graph process stays SurrealDB. The commit set, the copies, the router, and the split stay. That is the upgrade that can pass Elasticsearch on the query. [search-scale](./search-scale/plan.md) keeps SurrealDB `SEARCH` until that swap. Step-by-step: [tantivy/plan.md](./tantivy/plan.md).
+
+The current `SEARCH` indexes are whole-term BM25 after the `wiki` analyzer (`class` tokenizer, lowercase, ascii). Prefix search and fuzzy / edit-distance search are unsupported. Both arrive with Tantivy.
 
 ## Pipeline
 
@@ -101,5 +129,5 @@ Glossary file changed: rescan **mentions** on every page (CPU, no model). Run th
 - Treat phone numbers and UUIDs as semantic binds.
 - Merge two pages because they embed near each other.
 - Run CodeGraph or Aider over `wiki/`.
-- Show the graph as a published page. AB2 reads it later; this folder does not ship chat.
+- Publish the graph as a wiki page. The view is [board 3](./graph-view/plan.md). This folder does not ship chat.
 - Shard documents or place copies with `hash %` the node count ([scale.md — placement](./scale.md#placement)).

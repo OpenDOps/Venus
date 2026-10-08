@@ -65,7 +65,12 @@ fn tls_config(ca_path: &str) -> anyhow::Result<rustls::ClientConfig> {
 }
 
 /// Connect with an explicit PEM (the TLS test). `None` uses web PKI roots only.
-pub async fn dial_wss(addr: &str, ca_pem: Option<&str>, user: &str, pass: &str) -> anyhow::Result<()> {
+pub async fn dial_wss(
+    addr: &str,
+    ca_pem: Option<&str>,
+    user: &str,
+    pass: &str,
+) -> anyhow::Result<()> {
     let sd = if let Some(pem) = ca_pem {
         let mut roots = rustls::RootCertStore::empty();
         let mut reader = std::io::BufReader::new(pem.as_bytes());
@@ -94,22 +99,34 @@ pub async fn dial_wss(addr: &str, ca_pem: Option<&str>, user: &str, pass: &str) 
     Ok(())
 }
 
-pub async fn cached(map: &Mutex<HashMap<String, Arc<Conn>>>, node_id: &str, url: &str, config: &Config) -> anyhow::Result<Arc<Conn>> {
-    let mut guard = map.lock().await;
-    if let Some(conn) = guard.get(node_id) {
+pub async fn cached(
+    map: &Mutex<HashMap<String, Arc<Conn>>>,
+    node_id: &str,
+    url: &str,
+    config: &Config,
+) -> anyhow::Result<Arc<Conn>> {
+    if let Some(conn) = map.lock().await.get(node_id) {
         return Ok(Arc::clone(conn));
     }
     let conn = Arc::new(Conn {
         db: dial(url, config).await?,
         gate: Mutex::new(()),
     });
+    let mut guard = map.lock().await;
+    if let Some(existing) = guard.get(node_id) {
+        return Ok(Arc::clone(existing));
+    }
     guard.insert(node_id.to_string(), Arc::clone(&conn));
     Ok(conn)
 }
 
+fn quoted(name: &str) -> String {
+    crate::guard::quote_ident(name)
+}
+
 pub async fn ensure(conn: &Conn, namespace: &str, database: &str) -> anyhow::Result<()> {
-    let ns = namespace.to_string();
-    let db = database.to_string();
+    let ns = quoted(namespace);
+    let db = quoted(database);
     let sql = format!(
         r#"
 DEFINE NAMESPACE IF NOT EXISTS {ns};
@@ -123,7 +140,7 @@ DEFINE FIELD IF NOT EXISTS applied_fence ON _repl TYPE int DEFAULT 0;
 DEFINE TABLE IF NOT EXISTS _repl_log SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS fence ON _repl_log TYPE int;
 DEFINE FIELD IF NOT EXISTS tag ON _repl_log TYPE string;
-DEFINE FIELD IF NOT EXISTS body ON _repl_log TYPE object;
+DEFINE FIELD IF NOT EXISTS body ON _repl_log FLEXIBLE TYPE object;
 DEFINE FIELD IF NOT EXISTS at ON _repl_log TYPE datetime;
 UPSERT _repl:state SET fence = fence ?? 0, applied_lsn = applied_lsn ?? 0, applied_fence = applied_fence ?? 0;
 "#
@@ -138,7 +155,12 @@ UPSERT _repl:state SET fence = fence ?? 0, applied_lsn = applied_lsn ?? 0, appli
     Ok(())
 }
 
-pub async fn apply(conn: &Conn, namespace: &str, database: &str, entry: &Entry) -> anyhow::Result<ApplyReply> {
+pub async fn apply(
+    conn: &Conn,
+    namespace: &str,
+    database: &str,
+    entry: &Entry,
+) -> anyhow::Result<ApplyReply> {
     accept_sql(&entry.body.sql())?;
     let sql = script(namespace, database, entry);
     let _gate = conn.gate.lock().await;
@@ -177,24 +199,28 @@ fn gap_at(status: &ApplyStatus) -> i64 {
 
 fn parse_reply(response: &mut surrealdb::Response) -> anyhow::Result<ApplyReply> {
     let mut fallback = String::new();
-    let mut last_err: Option<surrealdb::Error> = None;
-    for index in 0usize..24 {
+    let mut real_err: Option<surrealdb::Error> = None;
+    let mut missed = 0_u32;
+    for index in 0usize..4096 {
         match response.take::<surrealdb::Value>(index) {
             Ok(value) => {
+                missed = 0;
                 let text = value.to_string();
                 if text == "NONE" {
                     continue;
                 }
-                fallback.push_str(&text);
-                fallback.push('\n');
                 if let Some(reply) = reply_from_text(&text) {
                     return Ok(reply);
                 }
             }
             Err(err) => {
                 let text = error_text(&err);
-                fallback.push_str(&text);
-                fallback.push('\n');
+                if text.contains("Query index") || text.contains("out of bounds") {
+                    break;
+                }
+                if text.contains("not executed") {
+                    continue;
+                }
                 if let Some(status) = classify(&text) {
                     return Ok(ApplyReply {
                         applied_lsn: gap_at(&status),
@@ -202,11 +228,18 @@ fn parse_reply(response: &mut surrealdb::Response) -> anyhow::Result<ApplyReply>
                         status,
                     });
                 }
-                last_err = Some(err);
+                missed = missed.saturating_add(1);
+                if real_err.is_none() && missed < 4 {
+                    fallback = text;
+                    real_err = Some(err);
+                }
+                if missed >= 4 {
+                    break;
+                }
             }
         }
     }
-    if let Some(err) = last_err {
+    if let Some(err) = real_err {
         return Err(err).context(format!("guarded write returned no status: {fallback}"));
     }
     anyhow::bail!("guarded write returned no status: {fallback}")
@@ -239,9 +272,8 @@ fn reply_from_text(text: &str) -> Option<ApplyReply> {
 fn status_word(text: &str) -> Option<&'static str> {
     let lower = text.to_ascii_lowercase();
     let at = lower.find("status")?;
-    let rest = text[at + "status".len()..].trim_start_matches(|c: char| {
-        c == ':' || c == ' ' || c == '"' || c == '\'' || c == '='
-    });
+    let rest = text[at + "status".len()..]
+        .trim_start_matches(|c: char| c == ':' || c == ' ' || c == '"' || c == '\'' || c == '=');
     let rest = rest.to_ascii_lowercase();
     if rest.starts_with("already") {
         Some("already")
@@ -252,18 +284,34 @@ fn status_word(text: &str) -> Option<&'static str> {
     }
 }
 
-pub async fn log_ids(conn: &Conn, namespace: &str, database: &str, from: i64, to: i64) -> anyhow::Result<Vec<i64>> {
+pub async fn log_ids(
+    conn: &Conn,
+    namespace: &str,
+    database: &str,
+    from: i64,
+    to: i64,
+) -> anyhow::Result<Vec<i64>> {
     let sql = format!(
-        "USE NS {namespace} DB {database}; SELECT id FROM _repl_log:{from}..={to};"
+        "USE NS {} DB {}; SELECT id FROM _repl_log:{from}..={to};",
+        quoted(namespace),
+        quoted(database)
     );
     let _gate = conn.gate.lock().await;
     let mut response = conn.db.query(sql).await.context("log range")?;
     Ok(record_ids(&response_text(&mut response)))
 }
 
-pub async fn explain_log(conn: &Conn, namespace: &str, database: &str, from: i64, to: i64) -> anyhow::Result<String> {
+pub async fn explain_log(
+    conn: &Conn,
+    namespace: &str,
+    database: &str,
+    from: i64,
+    to: i64,
+) -> anyhow::Result<String> {
     let sql = format!(
-        "USE NS {namespace} DB {database}; SELECT * FROM _repl_log:{from}..={to} EXPLAIN;"
+        "USE NS {} DB {}; SELECT * FROM _repl_log:{from}..={to} EXPLAIN;",
+        quoted(namespace),
+        quoted(database)
     );
     let _gate = conn.gate.lock().await;
     let mut response = conn.db.query(sql).await.context("explain")?;
@@ -272,7 +320,9 @@ pub async fn explain_log(conn: &Conn, namespace: &str, database: &str, from: i64
 
 pub async fn state_of(conn: &Conn, namespace: &str, database: &str) -> anyhow::Result<(i64, i64)> {
     let sql = format!(
-        "USE NS {namespace} DB {database}; SELECT applied_lsn, applied_fence FROM ONLY _repl:state;"
+        "USE NS {} DB {}; SELECT applied_lsn, applied_fence FROM ONLY _repl:state;",
+        quoted(namespace),
+        quoted(database)
     );
     let _gate = conn.gate.lock().await;
     let mut response = conn.db.query(sql).await.context("read state")?;
@@ -289,7 +339,11 @@ pub async fn query_json(
     database: &str,
     sql: &str,
 ) -> anyhow::Result<serde_json::Value> {
-    let script = format!("USE NS {namespace} DB {database}; {sql}");
+    let script = format!(
+        "USE NS {} DB {}; {sql}",
+        quoted(namespace),
+        quoted(database)
+    );
     let _gate = conn.gate.lock().await;
     let mut response = conn
         .db
@@ -300,31 +354,282 @@ pub async fn query_json(
         let Ok(value) = response.take::<surrealdb::Value>(index) else {
             continue;
         };
-        if value.to_string() == "NONE" {
+        let text = value.to_string();
+        if text == "NONE" {
             continue;
         }
-        let text = value.to_string();
-        return Ok(surrealdb::value::from_value::<serde_json::Value>(value)
-            .unwrap_or(serde_json::Value::String(text)));
+        if let Ok(json) = surrealdb::value::from_value::<serde_json::Value>(value.clone()) {
+            return Ok(json);
+        }
+        if let Some(parsed) = surreal_display_json(&text) {
+            return Ok(parsed);
+        }
+        return Ok(serde_json::Value::String(text));
     }
     Ok(serde_json::Value::Null)
+}
+
+/// Surreal's `Display` is not JSON: `{ id: row:1, n: 1 }`. Record ids become strings.
+pub(crate) fn surreal_display_json(text: &str) -> Option<serde_json::Value> {
+    let mut parser = Disp { s: text, i: 0 };
+    let value = parser.parse_value()?;
+    parser.skip();
+    if parser.i != parser.s.len() {
+        return None;
+    }
+    Some(value)
+}
+
+struct Disp<'a> {
+    s: &'a str,
+    i: usize,
+}
+
+impl Disp<'_> {
+    fn skip(&mut self) {
+        while let Some(c) = self.rest().chars().next() {
+            if !c.is_whitespace() {
+                break;
+            }
+            self.i += c.len_utf8();
+        }
+    }
+
+    fn rest(&self) -> &str {
+        &self.s[self.i..]
+    }
+
+    fn peek(&mut self) -> Option<char> {
+        self.skip();
+        self.rest().chars().next()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let c = self.rest().chars().next()?;
+        self.i += c.len_utf8();
+        Some(c)
+    }
+
+    fn eat(&mut self, want: char) -> bool {
+        if self.peek() == Some(want) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn parse_value(&mut self) -> Option<serde_json::Value> {
+        match self.peek()? {
+            '{' => self.parse_object(),
+            '[' => self.parse_array(),
+            '"' => self.parse_string('"').map(serde_json::Value::String),
+            '\'' => self.parse_string('\'').map(serde_json::Value::String),
+            '-' | '0'..='9' => self.parse_number(),
+            _ => self.parse_word(),
+        }
+    }
+
+    fn parse_object(&mut self) -> Option<serde_json::Value> {
+        if !self.eat('{') {
+            return None;
+        }
+        let mut map = serde_json::Map::new();
+        loop {
+            if self.eat('}') {
+                break;
+            }
+            let key = if matches!(self.peek(), Some('"' | '\'')) {
+                let quote = self.peek()?;
+                self.parse_string(quote)?
+            } else {
+                self.ident()?
+            };
+            if !self.eat(':') {
+                return None;
+            }
+            let value = self.parse_value()?;
+            map.insert(key, value);
+            if self.eat(',') {
+                continue;
+            }
+            if !self.eat('}') {
+                return None;
+            }
+            break;
+        }
+        Some(serde_json::Value::Object(map))
+    }
+
+    fn parse_array(&mut self) -> Option<serde_json::Value> {
+        if !self.eat('[') {
+            return None;
+        }
+        let mut items = Vec::new();
+        loop {
+            if self.eat(']') {
+                break;
+            }
+            items.push(self.parse_value()?);
+            if self.eat(',') {
+                continue;
+            }
+            if !self.eat(']') {
+                return None;
+            }
+            break;
+        }
+        Some(serde_json::Value::Array(items))
+    }
+
+    fn parse_string(&mut self, quote: char) -> Option<String> {
+        if !self.eat(quote) {
+            return None;
+        }
+        let mut out = String::new();
+        loop {
+            let c = self.bump()?;
+            if c == quote {
+                break;
+            }
+            if c == '\\' {
+                match self.bump()? {
+                    'n' => out.push('\n'),
+                    'r' => out.push('\r'),
+                    't' => out.push('\t'),
+                    other => out.push(other),
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        Some(out)
+    }
+
+    fn parse_number(&mut self) -> Option<serde_json::Value> {
+        self.skip();
+        let start = self.i;
+        if self.rest().starts_with('-') {
+            self.i += 1;
+        }
+        let digits = self
+            .rest()
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        if digits == 0 {
+            return None;
+        }
+        self.i += digits;
+        if self.rest().starts_with('.') {
+            let frac = self.rest()[1..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+            if frac > 0 {
+                self.i += 1 + frac;
+            }
+        }
+        let text = &self.s[start..self.i];
+        let number = if let Ok(n) = text.parse::<i64>() {
+            serde_json::Number::from(n)
+        } else {
+            serde_json::Number::from_f64(text.parse().ok()?)?
+        };
+        Some(serde_json::Value::Number(number))
+    }
+
+    fn parse_word(&mut self) -> Option<serde_json::Value> {
+        let word = self.ident()?;
+        match word.as_str() {
+            "true" => return Some(serde_json::Value::Bool(true)),
+            "false" => return Some(serde_json::Value::Bool(false)),
+            "none" | "null" | "NONE" | "NULL" => return Some(serde_json::Value::Null),
+            _ => {}
+        }
+        if matches!(word.as_str(), "d" | "u") && matches!(self.peek(), Some('\'' | '"')) {
+            let quote = self.peek()?;
+            return self.parse_string(quote).map(serde_json::Value::String);
+        }
+        if self.peek() == Some(':') {
+            self.bump();
+            let id = self.record_key()?;
+            return Some(serde_json::Value::String(format!("{word}:{id}")));
+        }
+        Some(serde_json::Value::String(word))
+    }
+
+    fn record_key(&mut self) -> Option<String> {
+        match self.peek()? {
+            '"' => self.parse_string('"'),
+            '\'' => self.parse_string('\''),
+            '⟨' => {
+                self.bump();
+                let start = self.i;
+                while self.rest().chars().next()? != '⟩' {
+                    self.bump();
+                }
+                let key = self.s[start..self.i].to_string();
+                self.bump();
+                Some(key)
+            }
+            '-' | '0'..='9' => match self.parse_number()? {
+                serde_json::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            },
+            _ => self.ident(),
+        }
+    }
+
+    fn ident(&mut self) -> Option<String> {
+        self.skip();
+        let mut out = String::new();
+        while let Some(c) = self.rest().chars().next() {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                out.push(c);
+                self.i += c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if out.is_empty() {
+            None
+        } else {
+            Some(out)
+        }
+    }
 }
 
 /// Run a script that already names its namespace. Used to remove a database.
 pub async fn exec(conn: &Conn, sql: &str) -> anyhow::Result<String> {
     let _gate = conn.gate.lock().await;
-    let mut response = conn.db.query(sql).await.with_context(|| format!("script {sql}"))?;
+    let mut response = conn
+        .db
+        .query(sql)
+        .await
+        .with_context(|| format!("script {sql}"))?;
     Ok(response_text(&mut response))
 }
 
-pub async fn raw(conn: &Conn, namespace: &str, database: &str, sql: &str) -> anyhow::Result<String> {
-    let script = format!("USE NS {namespace} DB {database}; {sql}");
+pub async fn raw(
+    conn: &Conn,
+    namespace: &str,
+    database: &str,
+    sql: &str,
+) -> anyhow::Result<String> {
+    let script = format!(
+        "USE NS {} DB {}; {sql}",
+        quoted(namespace),
+        quoted(database)
+    );
     let _gate = conn.gate.lock().await;
     let mut response = conn
         .db
         .query(script)
         .await
-        .with_context(|| format!("raw {sql}"))?;
+        .with_context(|| format!("raw {namespace} {database}"))?
+        .check()
+        .with_context(|| format!("raw {namespace} {database}"))?;
     Ok(response_text(&mut response))
 }
 
@@ -367,4 +672,24 @@ fn field_i64(text: &str, field: &str) -> Option<i64> {
         .take_while(|c| c.is_ascii_digit() || *c == '-')
         .collect();
     num.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::surreal_display_json;
+
+    #[test]
+    fn record_ids_become_json_strings() {
+        let parsed = surreal_display_json("[{ id: row:1, n: 1 }]").unwrap();
+        assert_eq!(parsed, serde_json::json!([{"id": "row:1", "n": 1}]));
+    }
+
+    #[test]
+    fn a_logged_body_round_trips() {
+        let text = r#"{ statements: ["UPSERT row:1 SET n = $p0;"], params: { p0: "a" }, at: d'2026-10-08T00:00:00Z' }"#;
+        let parsed = surreal_display_json(text).unwrap();
+        assert_eq!(parsed["statements"][0], "UPSERT row:1 SET n = $p0;");
+        assert_eq!(parsed["params"]["p0"], "a");
+        assert_eq!(parsed["at"], "2026-10-08T00:00:00Z");
+    }
 }

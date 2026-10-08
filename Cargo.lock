@@ -5673,10 +5673,15 @@ name = "venus-graph"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde_json",
+ "sha2",
  "sqlx",
  "surrealastic",
  "surrealdb",
+ "tempfile",
  "tokio",
+ "venus-hub",
+ "venus-sidecar",
 ]
 
 [[package]]

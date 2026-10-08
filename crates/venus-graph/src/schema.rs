@@ -65,6 +65,7 @@ fn render_graph() -> String {
             ("indexed_sha", "string"),
             ("search_sha", "option<string>"),
             ("search_error", "option<string>"),
+            ("hkey", "int"),
             ("pass", "int"),
             ("gist", "option<string>"),
             ("index_error", "option<string>"),

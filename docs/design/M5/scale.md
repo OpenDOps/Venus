@@ -1,6 +1,6 @@
 # Scale — graph store and search store
 
-**Status:** design. Same engine as [store.md](./store.md): **SurrealDB**. Two roles: the **graph** (truth for links, mentions, and model binds) and **search** (a projection of heading and mention text). **Surrealastic** (`crates/surrealastic`) is the extension between them and Venus: replication, sharding, and clustering, in the style of a search cluster, on stock SurrealDB servers. Venus calls it once per job. Cluster summary, search schema, and memory: [search-scale](./search-scale/README.md). First board: [search-scale/plan.md](./search-scale/plan.md).
+**Status:** design. Same engine as [store.md](./store.md): **SurrealDB**. Two roles: the **graph** (truth for links, mentions, and model binds) and **search** (a projection of heading and mention text). **Surrealastic** (`crates/surrealastic`) is the extension between them and Venus: replication, sharding, and clustering, in the style of a search cluster, on stock SurrealDB servers. Venus calls it once per job. Cluster summary, search schema, and memory: [search-scale](./search-scale/README.md). Boards: [plan.md](./plan.md). First board: [search-scale/plan.md](./search-scale/plan.md).
 
 Traversal, mentions, and model edges stay in the graph namespace ([store](./store.md)). A `@@` query hits the search namespace only, then hydrates ids from the graph when the graph answers.
 
@@ -217,11 +217,20 @@ DEFINE TABLE _layout_item SCHEMAFULL;          -- id = key, an integer: _layout_
 DEFINE FIELD item   ON _layout_item TYPE string;
 DEFINE FIELD tag    ON _layout_item TYPE string;
 DEFINE FIELD rids   ON _layout_item TYPE array<string>;
-DEFINE FIELD body   ON _layout_item TYPE object;  -- statements + parameters
-DEFINE FIELD commit ON _layout_item TYPE int;     -- commit lsn that last wrote this row
+DEFINE FIELD body   ON _layout_item FLEXIBLE TYPE object;  -- statements + parameters
+DEFINE FIELD commit ON _layout_item TYPE int;            -- commit lsn that last wrote this row
 ```
 
-The commit entry upserts or deletes these rows in the same transaction as the graph body. If `_layout_item:{key}` exists with a different `item`, the entry throws `key collision`, and the whole commit is not acked. With 63-bit keys this is not expected; it is refused rather than overwritten.
+`body` is `FLEXIBLE`. Without that, a SCHEMAFULL object is stored empty and a refill writes no statements. `_repl_log.body` is `FLEXIBLE TYPE object` for the same reason: nested parameters have to survive the log row.
+
+The same commit entry also upserts `_layout_commit:{lsn}` with `items`, a `FLEXIBLE` array of `{ key, item, tag, rids, body, delete }`. That row is the commit’s item list. A delete is an entry in it. The current `_layout_item` row is gone after the delete, so a later writer cannot rebuild the queue from that table alone.
+
+```surql
+DEFINE TABLE _layout_commit SCHEMAFULL;             -- id = commit lsn
+DEFINE FIELD items ON _layout_commit FLEXIBLE TYPE array;
+```
+
+The commit entry upserts or deletes the item rows in the same transaction as the graph body and the `_layout_commit` row. If `_layout_item:{key}` exists with a different `item`, the entry throws `key collision`, and the whole commit is not acked. With 63-bit keys this is not expected; it is refused rather than overwritten.
 
 Ids are integers, so the table is read in key order by range (`_layout_item:$from..`), `REPL_CATCHUP_BATCH` rows at a time. A shard is filled from the current items, not from the history of the log.
 
@@ -232,7 +241,7 @@ Each shard database holds one row, `_layout:cursor`, with `commit`: the highest 
 | Use | Rule |
 |---|---|
 | Queue | A shard’s pending commits are those after its cursor, up to the commit head. |
-| Takeover | The new writer reads each shard’s cursor from that set’s takeover reference and reads those commits from the commit set’s `_repl_log` by range. They are applied in commit order. Nothing is lost when the old writer’s memory is gone. |
+| Takeover | The new writer reads each shard’s cursor and applies `_layout_commit` from the next lsn through the commit head, in order. A delete is still in that list when the item row is already gone. |
 | Behind the log | A cursor below the oldest retained commit entry: that shard is refilled. |
 | Fresh read | `read(db, query, min_commit)` starts each shard read with `if _layout:cursor.commit < $min_commit THROW "behind"`. A copy that is behind fails over. No copy at `min_commit`: the shard is in `partial` with reason `behind`. |
 | Lag | `lag(db)` is the commit head minus each shard’s cursor. A pack may say that word search lags. |
@@ -244,7 +253,7 @@ Used for a shard with no copy, a shard behind the oldest retained commit entry, 
 1. On an in-sync commit-set copy, read `L0 = applied_lsn`.
 2. Each target copy starts from an empty database, also when the shard still had rows (an item deleted before `L0` has no row left to delete it by). `ensure` it, with the schema.
 3. Read `_layout_item` by key range. Keep the items whose `key` lands on the target shard. Write them as shard entries within `REPL_ENTRY_DOCS` and `REPL_ENTRY_BYTES`. The last one sets the cursor to `L0`.
-4. Apply the commits after `L0` from the queue.
+4. Apply the commits after `L0` from `_layout_commit`. An empty item list for this shard still sets the cursor.
 
 Rows read after `L0` may already hold a later version. Applying the commits after `L0` over them is safe: bodies replace rows, so the shard ends at the same state as the commit set. One pass over the items fills every new set of a split.
 
@@ -261,20 +270,32 @@ sequenceDiagram
   L->>G: entry n: commit_body and the _layout_item rows
   G-->>L: acked
   L-->>V: commit n
-  par every touched shard set, ack 1
-    L->>S: entry m: items whose key lands on s
+  par every shard set, ack 1
+    L->>S: entry m: items for s, or only the cursor
   end
   Note over L,S: a shard that cannot ack stays queued; V is not called again
 ```
 
 1. **Commit.** One entry on the commit set: the graph body (pages, headings, mentions, outbound edges) and the `_layout_item` upserts and deletes for the items. Acked on 2 of 3. Not acked (or `key collision`): the call fails, and nothing is sent to a shard.
 2. **Return.** The caller receives `commit`. It does not learn which shard lagged.
-3. **Apply.** The layout groups items by `shard = key % shard_count`. While `shard_count_next` is set, each item also goes to `key % shard_count_next`. One entry per touched shard, at most `REPL_ENTRY_DOCS` (256) items or `REPL_ENTRY_BYTES` (4 MiB). Each entry also sets that shard’s `_layout:cursor`. Every touched shard set at once. Acked on 1.
-4. **Queue.** A shard with no acking copy keeps that commit queued, behind any earlier queued commits; they apply in commit order. When a copy is up, the layout applies them. The commit set is not written again. The queue is the writer’s memory, and a new writer rebuilds it from the [shard cursors](#shard-cursor).
+3. **Apply.** The layout groups items by `shard = key % shard_count`. While `shard_count_next` is set, each item also goes to `key % shard_count_next`. Every shard gets an entry for that commit, including a shard with no items: that entry only sets `_layout:cursor`, so lag and a fresh read mean this commit. A shard that has items gets one entry per pack, at most `REPL_ENTRY_DOCS` (256) items or `REPL_ENTRY_BYTES` (4 MiB), and the last pack sets the cursor. The shard sets are applied together. Acked on 1.
+4. **Queue.** A shard with no acking copy keeps that commit queued, behind any earlier queued commits; they apply in commit order. When a copy is up, the layout applies them. The commit set is not written again. The queue is the writer’s memory. A new writer rebuilds it from `_layout_commit` after each [shard cursor](#shard-cursor).
 
 Fan-out inside one set is parallel across its copies. **One write in flight per copy**, in `lsn` order: entry `n + 1` goes to a copy after that copy answered `n`. A copy more than `REPL_LAG_MAX` (64) entries or 1 s behind the head leaves the live stream, becomes `lagging`, and is filled by [catch-up](#catch-up).
 
 The ack waits for the `ack`-th fastest copy, not the slowest. Postgres is written only when a copy changes state. The shard cursor is how a read knows the projection has caught up. Venus does not write `page.search_error`, and it does not stamp `page.search_sha` from a shard ack.
+
+#### When a write does not reach ack
+
+The caller is given `Ok(lsn)` only when `ack` copies have committed that entry. A slower copy may still be inside its transaction when the call returns. That commit is the same lsn.
+
+**The body can still land.** At least one copy has committed, fewer than `ack` have, and every miss is transport or a copy that is only behind. That lsn stays the head and stays occupied by that body. The writer resends the same entry. A copy that already has it answers `already`. The caller does not submit another body for that job while the lsn is occupied. Catch-up of this entry is what reaches `ack`.
+
+**Ack can never be reached.** At least one copy committed, and every other copy that answered rejected the body itself, so a resend fails the same way. Each copy that committed is restored to `prev` from a copy that does not have the entry, by the same snapshot a divergent copy uses. When this lsn is still the tip, the head returns to `prev`. The caller receives the error and may submit a new body. The rejected body is not in the log. `lost` is not called, because the entry never became history.
+
+**Nobody committed, and a later lsn is already issued.** The head moves back only when this lsn is still the tip. A newer entry has already taken the next lsn, so a rollback would leave a hole: every copy answers `gap` on the successor, and no `_repl_log` row exists to fill it. The writer commits an empty entry at this same lsn (`prev` unchanged, empty body, tag `hole`) on `ack` copies, then resends the successors already issued. The caller of the failed body still receives that error. `lost` ignores the tag `hole`. An empty entry is used only when no copy committed the original body.
+
+A process that dies while an lsn is occupied leaves the choice to [takeover](#writer-takeover). On a graph set the entry is propagated when it is the tip of the reference just chosen, and that happens before any new lsn. It is discarded, and the job runs again from `lost`, when the majority that can still ack does not contain it. On a shard set the ahead copy is refilled from the commit set.
 
 ### Protocol
 
@@ -334,17 +355,27 @@ The writer process holds no data. Every log is on its copies. When the lease mov
 
 1. The new process claims lease `writer:{workspace_id}`. Postgres returns a higher `fence`.
 2. For each set it reads `_repl:state` from copies: `copies − ack + 1` of them when `ack > 1` (a **majority** for a graph set), else **every reachable** copy (a search set). Fewer than that reachable: that set’s writes wait.
-3. The copy with the highest `(applied_lsn, applied_fence)` is the **reference**. By quorum overlap, for a graph set it holds every acked entry.
-4. The others are caught up from the reference.
-5. New entries continue from the reference’s head, with the new fence. The old process, if it is still alive, is `fenced` on every copy.
+3. It stores that fence on each copy in the read set before it appends any data entry and before it chooses the reference. The write touches one row and adds no log entry:
+
+```surql
+UPDATE _repl:state SET fence = $fence WHERE applied_lsn = $seen AND fence < $fence;
+```
+
+   `$seen` is the `applied_lsn` just read. Zero rows means the row moved: read it again. A late commit from the dead process updates this same row, so it either lands before the fence write and shows up in the re-read, or it conflicts with the fence write and aborts. Repeat until every copy in the read set has `fence` equal to the new fence and `applied_lsn` unchanged since that write.
+4. For a graph set, the copy with the highest `(applied_lsn, applied_fence)` in that stable majority is the **reference**. It holds every acked entry, because any majority overlaps any acknowledged pair. Propagate its last entry to the other copies before any new lsn, when that entry is the tip just chosen and no different successor has been written. An entry that this majority does not contain stays off the reference. The copy that has it is divergent. Taking it as the tip would let one copy override the two that `ack` required, and a caller that was never given `Ok` would run the job again on top of that body.
+5. For a search shard, `ack` is 1, so one copy’s commit is the acknowledgement, and the commit set already holds the item. The highest shard copy is not the repair source. An ahead copy is emptied and refilled from `_layout_item` and `_layout_commit`. The writer continues from a copy that can still ack. A sibling `_repl_log` is not copied onto the other copy: that log can be a projection the commit set has already replaced.
+6. Graph copies that are behind the reference are caught up from its `_repl_log`. A shard copy that is behind is brought forward from `_layout_commit` after its cursor.
+7. New entries continue from the reference’s head. Their fence is the one already stored. The old process, if it is still alive, fails the guard with `fenced`.
 
 A `lagging` copy is never chosen as the reference while a quorum of others answers.
 
 ## Divergence
 
-A copy can hold an entry that no one else has: the old writer sent it, that one copy committed, and the write was never acked. After takeover the new history continues without it. The copy’s next write fails the guard (`applied_lsn > prev`, or the fence at `prev` differs), and the reply is `divergent`.
+A copy can hold an entry that no one else has: the old writer sent it, that one copy committed, and the write was never acked. Propagate it when it is the last entry of the reference just chosen, and do that before any new lsn. Leave it divergent when the copies that can still meet `ack` without it do not contain it. The copy’s next write then fails the guard (`applied_lsn > prev`, or the fence at `prev` differs).
 
-A divergent copy is rebuilt by [snapshot](#snapshot) from an in-sync copy of the same set. On the commit set, before the rebuild, the writer reads the copy’s entries past the common point and passes their `tag`s to `lost(set, tags)`. The graph owner re-runs those jobs. On a shard set, the layout does not call the owner: the copy is snapshot from an in-sync copy, or refilled from `_layout_item` when no other copy of that shard remains. Nothing that was acked is lost: a graph entry acked on 2 of 3 is in the reference. A search item that was acked on the commit set is in `_layout_item`.
+A divergent graph copy is rebuilt by [snapshot](#snapshot) from the reference. Before that rebuild, the writer reads the copy’s entries past the common point and passes their `tag`s to `lost(set, tags)`. The owner re-runs those jobs as a new lsn after the extra tail is outside the reference, so both bodies are not in the log. The tag `hole` is not passed to `lost`.
+
+A divergent shard copy is rebuilt from the commit set, not from its sibling. The layout empties it and refills it from `_layout_item` and `_layout_commit`. The owner is not called. One shard commit was enough to acknowledge the write, and the item is already on the commit set, so the projection comes back from there. Copying the ahead copy’s `_repl_log` onto the sibling would install a projection the commit set may already have replaced.
 
 ## Log retention
 
@@ -493,10 +524,13 @@ Node state is written by one monitor. Copy state is written by that wiki’s wri
 | Node restarted inside the delay | Its copies report `applied_lsn` from their own disk. Catch-up. Usually seconds. |
 | Node down past the delay | Replacement copy on the next ranked node: snapshot, then catch-up. |
 | Volume wiped | `applied_lsn = 0`. Log from 1 retained: replay. Otherwise snapshot, then catch-up. |
-| Copy divergent | `lost(tags)`, then snapshot from an in-sync copy. |
+| Copy divergent | Graph: `lost(tags)`, then snapshot from the reference. The tag `hole` is skipped. Shard: empty the copy and refill it from the commit set. The sibling log is not the source. |
 | Writer stalls past its lease | Its writes are `fenced` on every copy. |
-| Writer dies mid-write | Next writer: reference = highest copy of a majority (graph) or of all reachable (search). Others caught up from it. |
-| Writer dies with shard commits queued | Next writer reads each shard’s `_layout:cursor` and applies the commits after it, in order, from the commit set’s log. |
+| Writer dies mid-write | Next writer stores the new fence on the read set and re-reads any copy whose `applied_lsn` moved. A graph set takes the highest stable copy of a majority and propagates that tip before any new lsn. A search shard continues from a copy that can still ack, and an ahead shard copy is refilled from the commit set. A late commit is either inside that decision or aborted on `_repl:state`. |
+| Write committed on fewer copies than `ack`, body can be resent | Same lsn stays occupied. Resend until `ack`. The caller does not submit a second body. |
+| Write committed on fewer copies than `ack`, body cannot be resent | Restore those copies to `prev`, roll the tip back, return the error. The caller’s new body is the only one in the log. |
+| Older lsn failed on every copy after a newer lsn was issued | Empty `_repl_log` row, tag `hole`, at the older lsn. Successors keep their lsns. |
+| Writer dies with shard commits queued | Next writer reads each shard’s `_layout:cursor` and applies `_layout_commit` after it, in order. |
 | Shard cursor behind the retained commit log | Refill from `_layout_item`. |
 | One graph copy | Writes continue on 2 of 3. Reads from the others. |
 | Two graph copies | Reads continue from the third. Writes wait until a second copy is in sync. |
@@ -604,26 +638,7 @@ Not taken: Raft between SurrealDB processes (the layer is the only writer; Postg
 
 ## Compared with Elasticsearch
 
-Surrealastic takes Elasticsearch’s cluster and leaves Lucene. The process is Rust. The index on this board is SurrealDB `SEARCH` (BM25 on RocksDB), not Lucene. Rust removes the JVM. It does not, by itself, make a query faster than Lucene.
-
-| | Elasticsearch | Surrealastic |
-|---|---|---|
-| Unit of scale | A shard of documents | A shard of integer keys. Venus passes `hkey`. |
-| Copies | One extra copy by default. Two copies of the shard. | `replica_count = 1`. Two copies, distinct zones. |
-| Who takes a write | One copy accepts the index operation. The others apply it after. | Every in-sync copy applies the same log entry. Search returns when one copy has committed. Copies stay equal. |
-| Where a copy sits | Allocation, with a delay before a shard moves off a dead node. | Rendezvous. `REPL_REALLOCATE_DELAY_MS` (60 s) before a replacement copy. |
-| Query | A coordinator asks every shard and merges hits. | The router asks every shard, hedges one slow copy, merges hits. |
-| Score | BM25 inside one shard. Scores from two shards are not one scale. | The same. A new wiki has one shard, so the scale is the wiki. |
-| When a hit is visible | After the next refresh, about 1 s by default. | In the transaction that committed the log entry. |
-| Growing the index | Split, or build the index again, when the shard count must change. | Split by doubling. The layout replays current items onto the new shard sets. |
-| Membership | Master-eligible nodes publish cluster state. | Postgres holds the lease and the copy map. A search does not read Postgres. |
-| If every copy of a shard is gone | Restore a snapshot, or build the index again. | Replay `_layout_item` from the graph commit set. |
-
-**Faster here.** No JVM warmup and no garbage-collection pause on the router. A committed entry is searchable immediately. Search ack waits for the fastest copy, and the copies are written in parallel. A wiki that still has one shard pays no scatter across shards. Each search node has an explicit cap (1 GB, 64 MB block cache) instead of a JVM heap plus the page cache.
-
-**Still decided by the index.** Elasticsearch batches documents into immutable Lucene segments, then walks postings at query time. Surrealastic applies a guarded transaction of at most 256 docs on every in-sync copy. That costs more per document and buys a fresher, recoverable index. On a large corpus a Lucene query is still the faster query. SurrealDB BM25 is the index because the same engine holds the graph and a shard is an ordinary SurrealDB database that the layout can refill.
-
-**Tantivy later.** The layout does not read the body. It stores an item key, a tag, and statements, and it replicates those. A later shard can apply the same item to a Tantivy index instead of SurrealDB `SEARCH`. The commit set, the copies, the router, and the split stay. That is the upgrade that can pass Elasticsearch on the query. This board does not add that index. [search-scale](./search-scale/plan.md) keeps SurrealDB `SEARCH`.
+Moved to [M5 README — Compared with Elasticsearch](./README.md#compared-with-elasticsearch).
 
 ## Do not
 
@@ -639,11 +654,15 @@ Surrealastic takes Elasticsearch’s cluster and leaves Lucene. The process is R
 - Reuse a `node_id`.
 - Use `rand::*`, `time::now()`, id-less `CREATE`, or increments in a replicated body.
 - Choose a lagging copy as the takeover reference while a quorum answers.
+- Give the caller a new lsn while a body that committed on fewer copies than `ack` is still on a copy.
+- Leave an lsn with no `_repl_log` row between a copy’s `applied_lsn` and the head.
+- Append a data entry during takeover before the new fence is stored on the copies the reference was chosen from.
 - Read from a `joining` or `lagging` copy.
 - Place two copies of one set in one zone.
 - Use `hash % N` for documents or copies.
 - Move copies when a node is `down` for less than the delay.
-- Rebuild a search shard from a sibling shard, or a graph from markdown while a graph copy or backup exists.
+- Rebuild a search shard from a sibling shard, or catch a divergent shard copy up from that sibling’s `_repl_log`.
+- Rebuild a graph from markdown while a graph copy or backup exists.
 - Return a per-shard failure from `layout.write`. The caller hears only that the commit set did not ack.
 - Put Postgres on the per-write or per-read path.
 - Flip `shard_count` before every new set has an in-sync copy at its head.

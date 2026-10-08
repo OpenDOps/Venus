@@ -839,7 +839,7 @@ needFromDoc = bodyDirty
 | **title** | Close-out: create, rename, link, move, header undo |
 | **dependsOn** | `step-shared-worker` |
 | **kind** | implement |
-| **status** | **pending** — automated smoke green 2026-10-06; person pass and H2 legacy cleanup open ([board](./M4.state.yaml); breakpoint `human`) |
+| **status** | **pending** — H2 baseline cleaned 2026-10-08 (`pnpm wiki:verify` ok); person pass still open ([board](./M4.state.yaml); breakpoint `human`) |
 
 **Adds:** board `done`. Person + clone + smoke. SharedWorker is an optimization; exit 1–12 must hold on the fallback path.
 

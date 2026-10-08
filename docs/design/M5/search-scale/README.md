@@ -2,7 +2,7 @@
 
 **Status:** step-repl-core done. Every search shard and every wiki graph is a set of equal copies, written through **surrealastic** (`crates/surrealastic`) with a fence, a contiguous `lsn`, and a per-copy log ([scale.md](../scale.md)). Step 5 adds the layout in that same crate and moves the step-3 allocation rows onto it. Profile `graph` starts the three processes. Image `surrealdb/surrealdb:v2.7.0`. First board: [plan.md](./plan.md).
 
-Word search is a projection of heading and mention text. It is not the graph. Edges, `mention.norm`, and model binds stay on `surreal-graph`. How this cluster compares with Elasticsearch, and how a Tantivy index can replace `SEARCH` later: [scale.md — compared with Elasticsearch](../scale.md#compared-with-elasticsearch).
+Word search is a projection of heading and mention text. It is not the graph. Edges, `mention.norm`, and model binds stay on `surreal-graph`. How this cluster compares with Elasticsearch, and how a Tantivy index replaces `SEARCH` later: [M5 README — Compared with Elasticsearch](../README.md#compared-with-elasticsearch).
 
 ## What runs on a search node
 
