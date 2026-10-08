@@ -46,7 +46,7 @@ Most API names (`layout.write`, `ensure`, `fence`) appear as inline code in pros
 | 4 | Patterns | `regex` | Prose, inline code, and fences, skipping claimed spans | `mention` kinds `email`, `phone`, `uuid`, `hash`, `endpoint` |
 | 5 | NER (optional) | `tokenizers` + BERT-class model in ONNX via `ort` | Leftover prose sentences only | `mention` kinds `person`, `org` |
 | 6 | Full text | SurrealDB BM25 on the search shards | Title, heading body, keywords, mention text | `@@` rows |
-| 7 | Vectors | BGE-M3 in ONNX via `ort` + `tokenizers` | Heading body | 1 024-dim vector, HNSW index on the search shards |
+| 7 | Vectors | BGE-M3 in ONNX via `ort` + `tokenizers` ([M5 board 5](../M5/vectors/plan.md)) | Heading body | 1 024-dim vector, HNSW index on the search shards |
 
 A heading whose `body_hash`, dictionary id, and fence-language set are unchanged is not re-extracted and not re-embedded.
 
@@ -143,7 +143,7 @@ The graph namespace gets no vector field and no index, the same rule as its no-`
 | 5 | code | tree-sitter grammars above, symbols, same-page linking |
 | 6 | patterns | regex kinds and normalization |
 | 7 | ner | ONNX + `tokenizers` behind the flag, fixture sentences |
-| 8 | vectors | BGE-M3 ONNX, HNSW on search, recompute on `body_hash` only |
+| 8 | vectors | Run [M5 board 5](../M5/vectors/plan.md) on the uploaded docs: BGE-M3 ONNX, HNSW on search, recompute on `body_hash` only |
 | 9 | query | API above, hybrid ranking |
 | 10 | eval | Exit questions |
 

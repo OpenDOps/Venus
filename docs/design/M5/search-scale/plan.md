@@ -102,7 +102,7 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 | Headings from sidecar, glossary, tree-sitter, regex | [Extraction](../extraction/plan.md). Fixtures only on this board.             |
 | Re-extract from git in the graph `rebuild` hook     | Needs the next board’s extractor. Here the hook restores from backup, then re-runs fixture jobs. |
 | Gist re-projection after the semantic pass          | Needs the semantic model.                                                     |
-| Semantic model, NER, HNSW                           | Later.                                                                        |
+| Semantic model, NER, HNSW                           | NER is extraction, off by default. HNSW is [vectors](../vectors/plan.md). The model is [semantic](../semantic/plan.md). |
 | Surrealastic as its own proxy binary                | [scale.md](../scale.md#why-a-layer-not-a-surrealdb-patch) allows it without a design change. A library is enough now. |
 | SurrealDB Enterprise, Raft between SurrealDB nodes  | Postgres chooses the writer. The layer replicates the log.                    |
 | Tantivy instead of SurrealDB `SEARCH`               | [Tantivy](../tantivy/plan.md), after this board’s read path. This board keeps SurrealDB `SEARCH`. |
@@ -152,7 +152,7 @@ Every section of [scale.md](../scale.md) and the step that builds it.
 | Node ids from `repl_node_seq`, state `removed`  | 11   |
 | Restore, case by case                           | 9, 10, 11, 12, 13 |
 | Postgres tables, lease statement                | 4 (`repl_*`), 5 (`layout_db`) |
-| Compared with Elasticsearch; Tantivy upgrade    | [M5 plan](../plan.md) board 3. This board keeps SurrealDB `SEARCH`. |
+| Compared with Elasticsearch; Tantivy upgrade    | [M5 plan](../plan.md) board 4. This board keeps SurrealDB `SEARCH`. |
 
 
 
@@ -1030,4 +1030,4 @@ Venus search on it:
 
 ## After this board
 
-Next board: read committed markdown and the sidecar into the graph, then project each doc with this writer. The graph `rebuild` hook gains re-extraction from git. NER and the semantic model stay behind that.
+Next board: [extraction](../extraction/plan.md) reads committed markdown and the sidecar into the graph, then projects each doc with this writer. The graph `rebuild` hook gains re-extraction from git. Heading vectors are [board 5](../vectors/plan.md). The semantic model is [board 6](../semantic/plan.md). NER stays off on the extraction board.

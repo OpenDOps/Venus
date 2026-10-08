@@ -37,7 +37,7 @@ Not started. Next is [step 1](#1-step-read), after [extraction step 3](../extrac
 | Later | Why not here |
 | --- | --- |
 | Every mention as a node | The map is pages and headings. Mentions are a later layer. |
-| Semantic edges | connect.md. Draw them when they exist, as another edge kind. |
+| Semantic edges | [Board 6](../semantic/plan.md). Draw them when they exist, as another edge kind. |
 | A published wiki page | The view reads the graph. It is not a `wiki/*.md` page. |
 | 3D | WebGL 2D is enough and keeps labels readable. |
 

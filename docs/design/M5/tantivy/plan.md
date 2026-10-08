@@ -37,9 +37,9 @@ Not started. Next is [step 1](#1-step-index), after [search-scale step 8](../sea
 
 | Later | Why not here |
 | --- | --- |
-| HNSW / BGE-M3 | A different index. Not required for prefix or fuzzy. |
+| HNSW / BGE-M3 | [Vectors](../vectors/plan.md). A different index. Not required for prefix or fuzzy. |
 | Forking SurrealDB to embed Tantivy | The search process is replaced. The graph server is not patched. |
-| Semantic edges | connect.md. |
+| Semantic edges | [Semantic graph](../semantic/plan.md). |
 | Changing `hkey`, shard count, or ack | The layout already decided those. |
 
 

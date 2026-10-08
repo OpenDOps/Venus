@@ -11,11 +11,13 @@ Contract of *what* is linked (heading binds, edge types, clocks, pack): [LifeInd
 | [connect.md](./connect.md) | Direct references between pages, then background semantic binds |
 | [store.md](./store.md) | SurrealDB graph schema, clocks, Compose |
 | [scale.md](./scale.md) | Graph store vs search projection. **Surrealastic** replicates each database and places integer keys across shards. Venus writes once per job. |
-| [plan.md](./plan.md) | Three boards: search cluster, extraction, optional Tantivy. What each lands and why. |
+| [plan.md](./plan.md) | Six boards: search cluster, extraction, graph view, optional Tantivy, vectors, semantic graph. What each lands and why. |
 | [search-scale](./search-scale/README.md) | Board 1. `surreal-search` cluster: shards, copies, HA default (3 nodes, `replica_count = 1`). Plan: [search-scale/plan.md](./search-scale/plan.md). |
 | [extraction](./extraction/README.md) | Board 2. Pages, mentions, and `links_to` inside a page and across pages. Plan: [extraction/plan.md](./extraction/plan.md). |
 | [graph-view](./graph-view/README.md) | Board 3. Sigma.js WebGL view of that graph. Plan: [graph-view/plan.md](./graph-view/plan.md). |
 | [tantivy](./tantivy/README.md) | Board 4, optional. Tantivy replaces SurrealDB `SEARCH`. Plan: [tantivy/plan.md](./tantivy/plan.md). |
+| [vectors](./vectors/README.md) | Board 5. One BGE-M3 vector per heading, HNSW on the search shards, bound through the existing graph. Plan: [vectors/plan.md](./vectors/plan.md). |
+| [semantic](./semantic/README.md) | Board 6. LLM edges with a required quote. Plan: [semantic/plan.md](./semantic/plan.md). |
 
 ## What this is
 
@@ -58,9 +60,9 @@ In-document work must stay autonomous and fast. Do not call an LLM to find a fun
 | **Glossary / slang** | **`daachorse`** Aho–Corasick automaton compiled from `glossary.md` (plus page titles and unique headings) | An LLM pass over every paragraph. |
 | **Emails, phones, UUIDs, hashes, API paths** | **`regex`** (Rust engine, linear time) | NER for patterns that are regular. |
 | **Person / org / team** | Optional **ONNX** NER (`ort` + `tokenizers`), tiny model, **off** until a fixture shows the three tools above miss it | A Python NER service. A general LLM. |
-| **Semantic page↔page binds** | Cheap JSON completion, separate model key, **after** extract | BGE-M3 vectors as the edge. LanceDB as a second store. Cursor subscription as the completions API. |
+| **Semantic page↔page binds** | Cheap JSON completion, separate model key, **after** extract ([board 6](./semantic/plan.md)) | BGE-M3 vectors as the edge. LanceDB as a second store. Cursor subscription as the completions API. |
 
-**Vectors are not this slice.** Cosine on embeddings is candidate **search**, not a bind ([LifeIndexing — logical](../Agents/LifeIndexing.md#logical-llm--background)). If heading-body recall for the semantic job is too weak later, store BGE-M3 (BAAI) vectors on the **search** namespace (HNSW) and use them only to pick candidates. Do not add LanceDB while that namespace can hold those vectors. Do not create a `related` edge from a neighbor in vector space.
+**Vectors are [board 5](./vectors/plan.md).** Cosine on embeddings is candidate **search**, not a bind ([LifeIndexing — logical](../Agents/LifeIndexing.md#logical-llm--background)). Store one BGE-M3 (BAAI) vector per heading on the **search** namespace (HNSW). A query returns nearest headings, then one hop of the graph extraction already wrote binds those hits to word hits. The semantic job may use the same neighbors as candidates ([board 6](./semantic/plan.md)). Do not add LanceDB while that namespace can hold those vectors. Do not create a `related` edge from a neighbor in vector space. A fine-tuned DistilBERT can later tag a heading against a fixed theme list; that classification is future work on [extraction](./extraction/README.md), and it is not this index.
 
 ## Compared with Elasticsearch
 

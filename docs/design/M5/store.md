@@ -167,7 +167,7 @@ DEFINE TABLE supersedes  TYPE RELATION IN heading OUT heading SCHEMAFULL;
 
 The block above is the shape. The migration is one `DEFINE FIELD` per table. `source = symbol` on `defines` is the fence definition (there is no separate `defines_symbol` table). `source = glossary` on `defines` points at a `term`. `source = model` points at a heading.
 
-No full-text index in this namespace. `SEARCH` lives on the search projection ([search-scale — schema](./search-scale/README.md#schema)). No HNSW index in this slice.
+No full-text index in this namespace. `SEARCH` lives on the search projection ([search-scale — schema](./search-scale/README.md#schema)). HNSW lives on those same search shards ([vectors](./vectors/plan.md)), not here.
 
 ### Replace rules
 

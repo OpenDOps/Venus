@@ -71,7 +71,7 @@ Candidate headings the model may bind to, in order:
 1. Direct 1-hop.
 2. Glossary terms this page mentioned → their definition headings.
 3. Compact-map headings whose title or gist shares a mentioned term.
-4. Optional later: HNSW neighbors. **Not in this slice.** If a target is not in 1–3, the model does not get the whole wiki body to hunt.
+4. HNSW neighbors, when [board 5](./vectors/plan.md) has a vector for this heading. If a target is not in 1–4, the model does not get the whole wiki body to hunt.
 
 `constrains` and `contradicts` need the dirty heading **body** (or a claim inside it) against that candidate set. Gist-vs-gist of the whole wiki is not allowed.
 

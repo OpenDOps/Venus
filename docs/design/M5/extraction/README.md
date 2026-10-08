@@ -13,6 +13,8 @@ Committed pages become one graph. Each page is headings and mentions. `links_to`
 | Patterns | `regex` | `email`, `phone`, `uuid`, `hash`, `endpoint` |
 | NER | `ort`, off unless `graph_meta.ner` | `person`, `org`, `team` mentions |
 
-No network. No model. No second markdown parser. Offsets are UTF-8 bytes inside the sidecar slice.
+No network on the static passes. No second markdown parser. Offsets are UTF-8 bytes inside the sidecar slice. The optional NER model is the only model, and it stays off.
 
-Folder `contains`, `transcludes`, and semantic edges stay [connect.md](../connect.md). Drawing the graph is [board 3](../graph-view/plan.md).
+**Theme tags are future work.** A fine-tuned DistilBERT can multi-label a heading against a fixed theme list (what subject the heading covers). That is a classification job, which is what a BERT-family encoder is good at. BERT-base is unnecessary for it. An off-the-shelf BERT does not know this wiki’s themes, and it cannot invent theme names. The glossary already tags a heading when the theme word is actually written. A classifier would only add a label when the heading is about that theme and never uses the word. The tag would sit on the heading. It would not be an edge. This board does not train or run that classifier.
+
+Folder `contains` and `transcludes` stay [connect.md](../connect.md). Heading vectors are [board 5](../vectors/plan.md). Model edges are [board 6](../semantic/plan.md). Drawing the graph is [board 3](../graph-view/plan.md).

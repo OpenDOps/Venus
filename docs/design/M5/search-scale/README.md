@@ -125,7 +125,7 @@ DEFINE INDEX heading_text ON heading FIELDS text, body SEARCH ANALYZER wiki BM25
 DEFINE INDEX mention_text ON mention FIELDS text, norm SEARCH ANALYZER wiki BM25;
 ```
 
-SurrealDB 3 spells `SEARCH` as `FULLTEXT`. `HIGHLIGHTS` stays off until a person sees snippets. No HNSW. No `RELATE`.
+SurrealDB 3 spells `SEARCH` as `FULLTEXT`. `HIGHLIGHTS` stays off until a person sees snippets. No HNSW on this board ([vectors](../vectors/plan.md) adds it). No `RELATE`.
 
 A log entry replaces each document’s rows in one guarded transaction on every `in_sync` copy. The layout applies that entry after the commit set acks. A copy that failed is `lagging`, and the cluster is yellow until catch-up. The owner does not stamp `page.search_sha` from a shard ack.
 

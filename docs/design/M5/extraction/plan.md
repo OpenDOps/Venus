@@ -37,8 +37,9 @@ Not started. Next is [step 1](#1-step-load). Board 1’s router, recovery, third
 | Later | Why not here |
 | --- | --- |
 | Folder `contains`, `transcludes` | [connect.md](../connect.md). This board writes `links_to` for in-document and cross-page hrefs. |
-| Semantic edges and gist | The model, after extract. |
-| HNSW / BGE-M3 | Candidate recall, not a bind. |
+| Semantic edges and gist | [Board 6](../semantic/plan.md). One model call per dirty page, after this board’s links exist. |
+| HNSW / BGE-M3 | [Board 5](../vectors/plan.md). Candidate search, not a bind. |
+| Theme tags | Future. A fine-tuned DistilBERT can label a heading against a fixed theme list. Not a board until that list exists. BERT-base is not the model. |
 | Graph view | [Board 3](../graph-view/plan.md). This board writes the edges. It does not draw them. |
 | Tantivy | [Board 4](../tantivy/plan.md). Search stays SurrealDB `SEARCH`. |
 | Product-repo symbols | CodeGraph / Aider at `productSha`. Fences here are illustrations. |
