@@ -10,9 +10,9 @@ use crate::{DEV_REPLICA_COUNT, DEV_SHARD_COUNT, WORKSPACE_ID};
 
 /// Graph node, then the two search nodes. Zones differ so placement can use both.
 const NODES: &[(&str, &str, &str, &str)] = &[
-    ("0", "graph", "http://127.0.0.1:8000", "0"),
-    ("1", "search", "http://127.0.0.1:8001", "1"),
-    ("2", "search", "http://127.0.0.1:8002", "2"),
+    ("0", "graph", "http://127.0.0.1:28730", "0"),
+    ("1", "search", "http://127.0.0.1:28731", "1"),
+    ("2", "search", "http://127.0.0.1:28732", "2"),
 ];
 
 pub const LAYOUT_EPOCH: i32 = 1;
@@ -93,7 +93,7 @@ pub async fn ensure_wiki(
     ensure_wiki_pool(&pool, ws, shard_count, replica_count).await
 }
 
-/// Point a node at a different SurrealDB URL. Used when the graph port is not :8000.
+/// Point a node at a different SurrealDB URL. Used when the graph port is not :28730.
 pub async fn set_node_url(database_url: &str, node_id: &str, url: &str) -> anyhow::Result<()> {
     let pool = PgPool::connect(database_url)
         .await

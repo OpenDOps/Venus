@@ -78,7 +78,7 @@ fn sidecar_queue_does_not_poll_export() {
 fn sidecar_cut_is_not_hub_export() {
     let cut =
         fs::read_to_string(repo_root().join("crates/venus-sidecar/src/cut.rs")).expect("cut.rs");
-    for needle in ["/export", "reqwest", ":3000/api/block"] {
+    for needle in ["/export", "reqwest", ":28710/api/block"] {
         assert!(
             !cut.contains(needle),
             "step-pin-cut must not GET hub export ({needle})"
@@ -90,7 +90,7 @@ fn sidecar_cut_is_not_hub_export() {
 fn sidecar_flush_does_not_poll_export() {
     let http =
         fs::read_to_string(repo_root().join("crates/venus-sidecar/src/http.rs")).expect("http.rs");
-    for needle in ["/export", "reqwest", ":3000/api/block"] {
+    for needle in ["/export", "reqwest", ":28710/api/block"] {
         assert!(
             !http.contains(needle),
             "POST /flush must not GET hub export ({needle})"
@@ -102,7 +102,7 @@ fn sidecar_flush_does_not_poll_export() {
 fn sidecar_git_is_not_hub_export() {
     let git =
         fs::read_to_string(repo_root().join("crates/venus-sidecar/src/git.rs")).expect("git.rs");
-    for needle in ["/export", "reqwest", "get_doc", ":3000/api/block"] {
+    for needle in ["/export", "reqwest", "get_doc", ":28710/api/block"] {
         assert!(
             !git.contains(needle),
             "git2 snapshot must not GET hub export ({needle})"

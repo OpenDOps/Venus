@@ -245,6 +245,6 @@ The graph schema, `layout.write`, and `mention.norm` stay. `HIGHLIGHTS` stay off
 | --- | --- |
 | Cutover | The fixture headings come back from Tantivy. No search query opens a SurrealDB `SEARCH` index. |
 | Prefix live | A prefix query on the fixture wiki returns the heading the whole-term query returns for the full word. |
-| Graph | Exact `norm` and a graph traversal still answer from `:8000`. |
+| Graph | Exact `norm` and a graph traversal still answer from `:28730`. |
 
 - **How:** `cargo test -p venus-graph --test tantivy` with profile `graph` up.

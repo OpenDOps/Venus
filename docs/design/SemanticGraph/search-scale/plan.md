@@ -19,7 +19,7 @@ Steps 4–10 run on two search nodes and one graph node, so a search copy can be
 
 Steps 1–7 are done (step 7 on 2026-10-08). Steps 8–14 are not started. Next is [step 8](#8-step-query). The [M4](../../M4/README.md) person pass does not block the board. Detail per step is the [summary](#steps-summary) below.
 
-**Shipped.** Compose profile `graph` runs SurrealDB `v2.7.0`: one graph node (`:8000`, namespace `graph`, no `SEARCH` index) and two search nodes (`:8001`, `:8002`, namespace `search` only), one volume and a 1 GB cap each. Both search nodes have the BM25 indexes. Postgres holds the fixture wiki in `layout_db` (`shard_count` 2, `replica_count` 1); `search_cluster`, `search_node`, and `search_allocation` are gone. `crates/surrealastic` replicates any SurrealDB database and lays one out: the `repl_*` map, `layout_db`, a fenced writer lease, a guarded `_repl_log` in the same transaction as the data, fan-out with ack, rendezvous placement, and TLS. A layout write commits on one set, records each item in `_layout_item` and the commit’s item list in `_layout_commit`, then applies by `key % shard_count`, including a cursor entry on a shard with no items. A shard that cannot ack stays queued and is rebuilt from `_layout_commit` after its cursor. Refill reads the item table, not a sibling shard. The crate has no page, doc, or field hash. `venus-graph` projects one job with one `layout.write`: `hkey` is the item key, `doc_id` is the item, and `serve` holds `writer:{ws}`. After `last_flushed` commits, the sidecar upserts `graph_jobs`. `serve` claims that row with `SKIP LOCKED` and, with no fixture, records the sha.
+**Shipped.** Compose profile `graph` runs SurrealDB `v2.7.0`: one graph node (`:28730`, namespace `graph`, no `SEARCH` index) and two search nodes (`:28731`, `:28732`, namespace `search` only), one volume and a 1 GB cap each. Both search nodes have the BM25 indexes. Postgres holds the fixture wiki in `layout_db` (`shard_count` 2, `replica_count` 1); `search_cluster`, `search_node`, and `search_allocation` are gone. `crates/surrealastic` replicates any SurrealDB database and lays one out: the `repl_*` map, `layout_db`, a fenced writer lease, a guarded `_repl_log` in the same transaction as the data, fan-out with ack, rendezvous placement, and TLS. A layout write commits on one set, records each item in `_layout_item` and the commit’s item list in `_layout_commit`, then applies by `key % shard_count`, including a cursor entry on a shard with no items. A shard that cannot ack stays queued and is rebuilt from `_layout_commit` after its cursor. Refill reads the item table, not a sibling shard. The crate has no page, doc, or field hash. `venus-graph` projects one job with one `layout.write`: `hkey` is the item key, `doc_id` is the item, and `serve` holds `writer:{ws}`. After `last_flushed` commits, the sidecar upserts `graph_jobs`. `serve` claims that row with `SKIP LOCKED` and, with no fixture, records the sha.
 
 **Layers.** The same six as [scale.md](../scale.md#layers). Replication and the layout are shipped.
 
@@ -50,18 +50,18 @@ Steps 1–7 are done (step 7 on 2026-10-08). Steps 8–14 are not started. Next 
 End state of this board:
 
 ```text
-surreal-graph    :8000   node 0  pool graph    zone 0   a copy of each wiki graph
-surreal-search-0 :8001   node 1  pool search   zone 1   copies by rendezvous
-surreal-search-1 :8002   node 2  pool search   zone 2   copies by rendezvous
-surreal-search-2 :8003   node 3  pool search   zone 3   step 11
-surreal-graph-1  :8004   node 4  pool graph    zone 4   step 12
-surreal-graph-2  :8005   node 5  pool graph    zone 5   step 12
+surreal-graph    :28730  node 0  pool graph    zone 0   a copy of each wiki graph
+surreal-search-0 :28731  node 1  pool search   zone 1   copies by rendezvous
+surreal-search-1 :28732  node 2  pool search   zone 2   copies by rendezvous
+surreal-search-2 :28733  node 3  pool search   zone 3   step 11
+surreal-graph-1  :28734  node 4  pool graph    zone 4   step 12
+surreal-graph-2  :28735  node 5  pool graph    zone 5   step 12
 venus-graph serve        writer, router, monitor; crates/surrealastic linked in
 Postgres                 repl_lease, repl_node, repl_set, repl_copy, layout_db
 REPL_ARCHIVE_URL         file:// in dev and tests, s3:// in production   step 13
 ```
 
-In dev, `node_id` is the port minus 8000, and the zone is the `node_id`. `node_id`s are never reused. Tests read homes from `repl_copy`. They do not hardcode which nodes a set lands on.
+In dev, `node_id` is the port minus 28730, and the zone is the `node_id`. `node_id`s are never reused. Tests read homes from `repl_copy`. They do not hardcode which nodes a set lands on.
 
 Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endian, shifted right by 1. The layout applies `shard = key % shard_count` ([scale.md](../scale.md#shards)). The board’s fixture wiki uses `shard_count = 2`; a new wiki gets 1. With two copies per shard on two search nodes, both shards are on both nodes. Step 14 doubles the fixture wiki to 4 shards.
 
@@ -77,7 +77,7 @@ Venus passes `key = hkey`, `hkey` = first 8 bytes of `sha256(doc_id)`, big-endia
 
 ## Exit
 
-1. Profile `graph` starts three graph copies (`127.0.0.1:8000`, `:8004`, `:8005`) and three search nodes (`:8001`, `:8002`, `:8003`). One volume each. Search nodes have no graph namespace.
+1. Profile `graph` starts three graph copies (`127.0.0.1:28730`, `:28734`, `:28735`) and three search nodes (`:28731`, `:28732`, `:28733`). One volume each. Search nodes have no graph namespace.
 2. `crates/surrealastic` has no Venus types. Every replicated write is a guarded log entry with `lsn`, `prev`, `prev_fence`, and `fence`, in one transaction with its data. Map in the `repl_*` tables and `layout_db`, no role column. Leases carry a `fence`.
 3. Fixture docs: one `layout.write`. The commit set acks with the items in `_layout_item`, then the layout applies each item by `key` and moves that shard’s `_layout:cursor`. A stale fence is refused. A copy that missed an entry refuses the next one with `gap`. Entries stay within 256 items and 4 MiB. A shard with no acking copy stays queued and is applied when a copy returns, without a second write; a new writer rebuilds that queue from the cursors. Every new copy gets its schema from `ensure`.
 4. `@@` merges every shard and never runs on a graph node. Two random choices, one hedge after p95, failover in the same request, `min_lsn`, `partial` after 2 s, hydrate within 100 ms, `unverified` when the graph does not answer. Reads continue while Postgres is down.
@@ -165,7 +165,7 @@ What each step **adds** to the product (not how to test it — that is under eac
 | ------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | [1](#1-step-recon)        | [`step-recon`](#1-step-recon)               | ✅ **done.** Full binary, search schema only. P=2, R=1. HA target is 3 nodes, R=1.           |
 | [2](#2-step-compose)      | [`step-compose`](#2-step-compose)           | ✅ **done.** Graph + two search nodes, three volumes.                                         |
-| [3](#3-step-schema)       | [`step-schema`](#3-step-schema)             | ✅ **done.** Search indexes on :8001 and :8002. Allocation rows.                              |
+| [3](#3-step-schema)       | [`step-schema`](#3-step-schema)             | ✅ **done.** Search indexes on :28731 and :28732. Allocation rows.                              |
 | [4](#4-step-repl-core)    | [`step-repl-core`](#4-step-repl-core)       | ✅ **done.** `surrealastic` replication: map, leases, guarded log, fan-out with ack, placement, TLS. |
 | [5](#5-step-layout)       | [`step-layout`](#5-step-layout)             | ✅ **done.** `surrealastic` layout: commit set, `_layout_item`, `key % shard_count`, shard cursor, queued apply, refill, `schema` hook. |
 | [6](#6-step-project)      | [`step-project`](#6-step-project)           | ✅ **done.** Venus bodies on the layout: `hkey` as `key`, `doc_id` as item, `search_cluster` migrated into `layout_db`, one write per job. |
@@ -258,9 +258,9 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 #### Work
 
 - Profile `graph`.
-- `surreal-graph`: `127.0.0.1:8000`, volume `surreal-graph-data`, `rocksdb:/data/graph.db`, `mem_limit` 1g, `SURREAL_ROCKSDB_BLOCK_CACHE_SIZE` 64 MB.
-- `surreal-search-0`: `127.0.0.1:8001`, volume `surreal-search-0-data`, `rocksdb:/data/search.db`, same cap and cache.
-- `surreal-search-1`: `127.0.0.1:8002`, volume `surreal-search-1-data`, same command and cap.
+- `surreal-graph`: `127.0.0.1:28730`, volume `surreal-graph-data`, `rocksdb:/data/graph.db`, `mem_limit` 1g, `SURREAL_ROCKSDB_BLOCK_CACHE_SIZE` 64 MB.
+- `surreal-search-0`: `127.0.0.1:28731`, volume `surreal-search-0-data`, `rocksdb:/data/search.db`, same cap and cache.
+- `surreal-search-1`: `127.0.0.1:28732`, volume `surreal-search-1-data`, same command and cap.
 - User and pass from Compose env. Healthcheck per port. `pids_limit` and dropped capabilities, same posture as `hub`.
 
 
@@ -280,11 +280,11 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | Name             | Pass                                                                    |
 | ---------------- | ----------------------------------------------------------------------- |
 | Profile off      | `docker compose up` without `--profile graph` starts none of the three. |
-| Three processes  | With the profile, :8000, :8001, and :8002 are healthy, 1g each.         |
-| Independent disk | A row on :8001 survives a recreate of :8002.                            |
+| Three processes  | With the profile, :28730, :28731, and :28732 are healthy, 1g each.         |
+| Independent disk | A row on :28731 survives a recreate of :28732.                            |
 
 
-- **How:** `cargo test -p venus-graph --test compose`. Fail if default `docker compose config --services` lists a surreal service, if a host port is `0.0.0.0`, or if :8001 and :8002 share a volume.
+- **How:** `cargo test -p venus-graph --test compose`. Fail if default `docker compose config --services` lists a surreal service, if a host port is `0.0.0.0`, or if :28731 and :28732 share a volume.
 
 
 
@@ -308,8 +308,8 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 
 #### Work
 
-- Crate `crates/venus-graph`. Apply [store.md](../store.md#schema) to :8000 only.
-- Apply the [search schema](./README.md#schema) to :8001 and :8002. Idempotent.
+- Crate `crates/venus-graph`. Apply [store.md](../store.md#schema) to :28730 only.
+- Apply the [search schema](./README.md#schema) to :28731 and :28732. Idempotent.
 - Seed `search_cluster` (`shard_count = 2`, `replica_count = 1`) and four `search_allocation` rows: shard 0 primary on node 0, replica on node 1; shard 1 primary on node 1, replica on node 0.
 - `page.search_sha` and `page.search_error` live on the graph `page` table.
 - The graph migrator refuses a `SEARCH` index. Search migrator does not create `links_to`.
@@ -328,12 +328,12 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 
 | Name                | Pass                                                                      |
 | ------------------- | ------------------------------------------------------------------------- |
-| Graph has no index  | :8000 has `links_to` and no full-text index.                              |
-| Search has no graph | :8001 and :8002 have `heading_text` and `mention_text` and no `links_to`. |
+| Graph has no index  | :28730 has `links_to` and no full-text index.                              |
+| Search has no graph | :28731 and :28732 have `heading_text` and `mention_text` and no `links_to`. |
 | Allocation          | The four rows above. A second migrate does not add a second primary.      |
 
 
-- **How:** `cargo test -p venus-graph --test schema`. Fail if :8000 has a `SEARCH` index, if a search node has `links_to` or namespace `graph`, or if a second migrate adds a primary.
+- **How:** `cargo test -p venus-graph --test schema`. Fail if :28730 has a `SEARCH` index, if a search node has `links_to` or namespace `graph`, or if a second migrate adds a primary.
 
 
 
@@ -369,7 +369,7 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 - Placement ([scale.md — placement](../scale.md#placement)): a pure function `homes(set_id, copies, members)` with xxh3 rendezvous, `weight`, the zone rule, `node_id` tie-break, `down` nodes still members, `draining` nodes not. Fewer zones than `copies` returns fewer homes.
 - Health per set from `repl_copy` and `repl_node`: green, yellow, red ([scale.md — failure detection](../scale.md#failure-detection)).
 - Every default from [scale.md — defaults](../scale.md#defaults) is read from the environment with that name.
-- Live tests use scratch sets in namespace `search`, database `repl_t_{uuid}`, on :8001 and :8002, and drop them at the end.
+- Live tests use scratch sets in namespace `search`, database `repl_t_{uuid}`, on :28731 and :28732, and drop them at the end.
 
 
 
@@ -402,10 +402,11 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | Divergent     | A copy whose `applied_lsn > prev`, or whose `applied_fence ≠ prev_fence`, refuses with `divergent`. Nothing is written.              |
 | Atomic        | A body that fails mid-way leaves no data, no log row, and `_repl:state` unchanged.                                                    |
 | Range read    | `_repl_log:98..=101` returns 98, 99, 100, 101 in that order. `EXPLAIN` shows a range read, not a table scan.                          |
-| Ack policy    | Two copies, `ack` 1: with :8002 paused, a write returns after :8001 commits. `ack` 2: the same write is not acked until :8002 resumes.|
-| One copy down | Stop :8002, then write with `ack` 1. :8001 has the entry. The copy on :8002 is `lagging`. Yellow.                                     |
+| Ack policy    | Two copies, `ack` 1: with :28732 paused, a write returns after :28731 commits. `ack` 2: the same write is not acked until :28732 resumes.|
+| One copy down | Stop :28732, then write with `ack` 1. :28731 has the entry. The copy on :28732 is `lagging`. Yellow.                                     |
+| Late timeout  | Pause :28732, then write with `ack` 1. The write returns with that copy `in_sync`. When its send times out, it is `lagging`. Yellow. |
 | One in flight | 200 writes in a burst: never two entries in flight to one copy. Every copy applies them in `lsn` order.                              |
-| Lag max       | Pause :8002 while writing 100 entries. It becomes `lagging` at `REPL_LAG_MAX`. Writes to :8001 do not wait for it.                    |
+| Lag max       | Pause :28732 while writing 100 entries. It becomes `lagging` at `REPL_LAG_MAX`. Writes to :28731 do not wait for it.                    |
 | Quiet map     | 100 writes with every copy in sync change no `repl_copy` row.                                                                         |
 | TLS           | A SurrealDB container started with `--web-crt` / `--web-key` from a test CA: `wss://` with that CA connects; without it, it is refused. |
 
@@ -445,7 +446,7 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 - A shard with no acking copy keeps that commit queued, behind earlier queued commits, in commit order. When a copy is up, the layout applies them. The commit set is not written again. On start, the layout rebuilds the queue from `_layout_commit` after each shard’s cursor. A copy is `in_sync` only once replay has reached the head. Refill refuses a database whose `applied_lsn` is already past 0.
 - A shard with no copy left is refilled ([scale.md — refill](../scale.md#refill)): note commit head `L0`, create empty copies with the schema, range-read `_layout_item` in `REPL_CATCHUP_BATCH` pages, write the items that land on the shard within the entry limits (last entry sets the cursor to `L0`), then apply commits after `L0`. A sibling shard is not a source. The owner hook is not called.
 - The caller is told the write failed only when the commit set cannot ack.
-- Live tests use a scratch commit set on :8000 (ack 1) and shard copies on :8001 and :8002 (ack 1), `shard_count = 2`, and drop the databases at the end.
+- Live tests use a scratch commit set on :28730 (ack 1) and shard copies on :28731 and :28732 (ack 1), `shard_count = 2`, and drop the databases at the end.
 
 
 #### Do not
@@ -468,7 +469,7 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | Commit returns | Pause both copies of shard 1. A write that touches shard 0 and shard 1 returns after the commit set acks. Shard 0 has its items. Shard 1 is queued. |
 | Queued apply   | Start shard 1’s copies. The queued commit appears there without a second write. The commit set has one entry.                        |
 | Queue order    | Pause shard 1, make three writes that touch it, start it. The three commits apply in commit order; the cursor ends at the third.   |
-| One copy down  | Pause :8002, then write. The copy on :8001 has the item. The copy on :8002 is `lagging`. The result is one commit.                   |
+| One copy down  | Pause :28732, then write. The copy on :28731 has the item. The copy on :28732 is `lagging`. The result is one commit.                   |
 | Item table     | After a write, `_layout_item:{key}` on the commit set holds `item`, `tag`, `rids`, `body`, and `commit`. Same transaction: a failed commit entry leaves no item row. |
 | Key collision  | A second item with the same `key` and a different `item` fails the write with `key collision`. Nothing is applied; the commit set has no new entry. |
 | Delete item    | A delete item removes its `rids` on the shard and its `_layout_item` row.                                                           |
@@ -542,11 +543,11 @@ Fault injection in live tests: `docker stop`, `docker start`, `docker pause` (a 
 | Indexed sha      | Every search row’s `indexed_sha` equals its graph page’s `indexed_sha`, on every copy, after a second projection of doc 0 with a new sha. |
 | Search lag       | With both search nodes stopped, `lag(db)` is above 0 for both shards; after start and apply it is 0. |
 | Both copies      | Doc 0 and doc 1 are on both search nodes, each in its shard database. Copies of a set have the same `(applied_lsn, applied_fence)`. The shard cursor has reached the commit. Green. |
-| Search node down | Stop :8002, then project. The write returns one commit. :8001 has both docs. The copies on :8002 are `lagging`. Yellow. `search_error` is unset. |
+| Search node down | Stop :28732, then project. The write returns one commit. :28731 has both docs. The copies on :28732 are `lagging`. Yellow. `search_error` is unset. |
 | All copies down  | Stop both search nodes. The write returns after the graph acks. Graph heading remains. The shard cursor is behind the commit. Red for search. `search_error` is unset. |
 | Retry            | Start the search nodes again. The layout applies the queued commit. The graph log has one job entry, not two.                 |
 | Entry limit      | 300 bulk docs in one shard become two entries of at most 256 docs, each under 4 MiB.                                         |
-| Graph not acked  | Stop :8000, then project. Nothing is sent to search. The job stays pending.                                                  |
+| Graph not acked  | Stop :28730, then project. Nothing is sent to search. The job stays pending.                                                  |
 | Serve            | `venus-graph serve` holds `writer:{ws}`; a second `serve` for the same workspace holds nothing and writes nothing.          |
 
 
@@ -653,16 +654,16 @@ Venus search on it:
 
 | Name          | Pass                                                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Merged words  | The query returns both fixture headings, one from each shard, no duplicates. :8000 has no `SEARCH` index.                      |
+| Merged words  | The query returns both fixture headings, one from each shard, no duplicates. :28730 has no `SEARCH` index.                      |
 | Exact         | `norm` on the graph finds the UUID while both search nodes are stopped.                                                        |
 | Spread        | 1 000 reads of one set split between its two copies within 40–60%.                                                             |
-| Failover      | Stop :8001. `@@` returns both docs from :8002 in the same request. No `repl_copy` or `repl_node` row changes.                  |
+| Failover      | Stop :28731. `@@` returns both docs from :28732 in the same request. No `repl_copy` or `repl_node` row changes.                  |
 | Hedge         | Pause the copy the router picked. The answer comes from the other copy after about p95, not after the timeout. One hedge sent. |
 | Fresh read    | A read with `min_lsn` of the last write never answers from a copy behind it; it fails over.                                    |
-| Fresh words   | Pause :8002, project a new heading for doc 0, resume :8002 without catch-up done. `@@` with `min_commit` of that job never returns the old heading; with no copy at it, the shard is in `partial` with reason `behind`. |
+| Fresh words   | Pause :28732, project a new heading for doc 0, resume :28732 without catch-up done. `@@` with `min_commit` of that job never returns the old heading; with no copy at it, the shard is in `partial` with reason `behind`. |
 | Partial       | Pause both copies of shard 1. Within 2 s, hits from shard 0 return and shard 1 is in `partial` with reason `timeout`.          |
 | Pack lag      | With shard 1 queued, a pack says word search lags; after apply it does not.                                                     |
-| Graph down    | Stop :8000. `@@` returns both headings, marked `unverified`.                                                                   |
+| Graph down    | Stop :28730. `@@` returns both headings, marked `unverified`.                                                                   |
 | Dropped hit   | Delete doc 0 on the graph only. Its search hit is not returned.                                                                |
 | Postgres down | Close the router’s Postgres connection after the map loads. Reads keep answering from the cached map.                          |
 | Map reload    | Change a `repl_copy` row. The router sees it within 1 s by `NOTIFY`, and within 30 s with `NOTIFY` blocked.                     |
@@ -724,23 +725,23 @@ Venus search on it:
 
 | Name           | Pass                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Catch-up       | Stop :8002, project a new body for doc 0, start :8002. Its next entry gets `gap at N`. Only `_repl_log` entries after N are replayed from :8001. Copy `in_sync`. Green. |
-| Batch          | :8002 misses 1 200 entries. Catch-up uses three range reads of at most 500.                                                     |
-| Wiped, log kept | Remove :8002’s volume while the log still starts at 1. The copies return by replay from 1, without a snapshot.                |
-| Wiped, trimmed | Remove :8002’s volume after the log is trimmed. The copies return by snapshot from :8001 plus catch-up, with the same `(applied_lsn, applied_fence)` and rows. |
+| Catch-up       | Stop :28732, project a new body for doc 0, start :28732. Its next entry gets `gap at N`. Only `_repl_log` entries after N are replayed from :28731. Copy `in_sync`. Green. |
+| Batch          | :28732 misses 1 200 entries. Catch-up uses three range reads of at most 500.                                                     |
+| Wiped, log kept | Remove :28732’s volume while the log still starts at 1. The copies return by replay from 1, without a snapshot.                |
+| Wiped, trimmed | Remove :28732’s volume after the log is trimmed. The copies return by snapshot from :28731 plus catch-up, with the same `(applied_lsn, applied_fence)` and rows. |
 | Fuzzy export   | Writes continue during the export. After catch-up from `L0`, both copies have the same rows.                                    |
 | Build cap      | Three snapshots into one node: never more than two at once.                                                                      |
-| Takeover       | Stop the writer after :8001 committed an entry and before :8002 did. A second process claims the lease, stores the new fence on the reachable copies with `applied_lsn` unchanged, picks :8001 as reference, and fills :8002. No acked entry is missing. |
+| Takeover       | Stop the writer after :28731 committed an entry and before :28732 did. A second process claims the lease, stores the new fence on the reachable copies with `applied_lsn` unchanged, picks :28731 as reference, and fills :28732. No acked entry is missing. |
 | Fence first    | After claim and before the first data entry, every copy in the read set has `_repl:state.fence` equal to the new fence. An entry that still carries the old fence is refused `fenced` and does not advance `applied_lsn`. |
 | Occupied lsn   | `ack` 2. One copy commits, the other rejects the body. The committed copy is restored to `prev`, the caller receives the error, and a retry is a single new log row. The rejected body is absent. A resendable miss (transport) keeps the same lsn until the second copy answers `already` or `ok`. |
 | Hole           | Two overlapping writes. The older body fails on every copy after the newer lsn is issued. An empty `_repl_log` row with tag `hole` occupies the older lsn, the newer body commits after it, and both copies have a contiguous log. |
-| Divergent      | Commit an entry on :8002 only under the old fence. Pause :8002, take over (reference :8001), write one entry, resume :8002. Its next write replies `divergent`. The owner hook is not called. :8002 is rebuilt by snapshot from :8001. This set is its own source of truth, not a layout shard. |
+| Divergent      | Commit an entry on :28732 only under the old fence. Pause :28732, take over (reference :28731), write one entry, resume :28732. Its next write replies `divergent`. The owner hook is not called. :28732 is rebuilt by snapshot from :28731. This set is its own source of truth, not a layout shard. |
 | Shard divergent | One copy of shard 1 has an entry the other does not. Takeover continues from the copy that can still ack. The ahead copy is emptied and refilled from `_layout_item` and `_layout_commit`. Shard 0 is not read. The owner hook is not called. |
 | Rebuild        | Wipe both copies of shard 0. The layout refills it from `_layout_item` (`key % 2 = 0`). Shard 1 is not read. The owner hook is not called. |
 | Refill after trim | Stop both copies of shard 1, write and trim the commit set past shard 1’s cursor, start them. Shard 1 is refilled from `_layout_item` into empty databases, then catches up; a doc deleted during the outage is gone, and no `_repl_log` read goes below `L0`. |
 | Queued takeover | Pause shard 1, write two commits, stop the writer. A second process claims the lease and applies both commits to shard 1 in order from its cursor. |
-| Retention      | After every copy applies 100 entries, they are deleted with one range delete. With :8002 down, entries it lacks stay until `REPL_LOG_RETAIN`. |
-| Retention cap  | With `REPL_LOG_RETAIN` set to 50 entries and :8002 down, the log keeps the newest 50; :8002 returns by snapshot.                  |
+| Retention      | After every copy applies 100 entries, they are deleted with one range delete. With :28732 down, entries it lacks stay until `REPL_LOG_RETAIN`. |
+| Retention cap  | With `REPL_LOG_RETAIN` set to 50 entries and :28732 down, the log keeps the newest 50; :28732 returns by snapshot.                  |
 
 
 - **How:** `cargo test -p surrealastic --test recover --features fault` and `cargo test -p venus-graph --test hooks`, with profile `graph` up.
@@ -789,12 +790,12 @@ Venus search on it:
 
 | Name             | Pass                                                                                                         |
 | ---------------- | ------------------------------------------------------------------------------------------------------------ |
-| Monitor          | Stop :8002. It is `suspect` after about 3 s and `down` after 10 s, and its copies are `lagging`. Start it: `up`, then its copies catch up and are `in_sync`. |
-| Suspect          | Pause :8002 for 5 s. It goes `suspect`, not `down`. Reads go to :8001. Nothing moves.                         |
+| Monitor          | Stop :28732. It is `suspect` after about 3 s and `down` after 10 s, and its copies are `lagging`. Start it: `up`, then its copies catch up and are `in_sync`. |
+| Suspect          | Pause :28732 for 5 s. It goes `suspect`, not `down`. Reads go to :28731. Nothing moves.                         |
 | One monitor      | Two `serve` processes: one holds `monitor`. Stop it. The other takes the lease within 10 s and keeps probing.|
-| Down skips       | While :8002 is `down`, writes ack on :8001 and send nothing to :8002.                                        |
+| Down skips       | While :28732 is `down`, writes ack on :28731 and send nothing to :28732.                                        |
 | Sweep            | A copy not written for 30 s has its `repl_copy.applied_lsn` refreshed from its own `_repl:state`.           |
-| Health           | Green with all up; yellow with :8002 down; red for search with both search nodes down; green again after restart. |
+| Health           | Green with all up; yellow with :28732 down; red for search with both search nodes down; green again after restart. |
 
 
 - **How:** `cargo test -p venus-graph --test monitor` with profile `graph` up.
@@ -821,7 +822,7 @@ Venus search on it:
 
 #### Work
 
-- Service `surreal-search-2`: `127.0.0.1:8003`, its own volume, same image, cap, and search schema. Node 3, zone 3. `shard_count` and `replica_count` stay 2 and 1.
+- Service `surreal-search-2`: `127.0.0.1:28733`, its own volume, same image, cap, and search schema. Node 3, zone 3. `shard_count` and `replica_count` stay 2 and 1.
 - Migration in `crates/surrealastic` (additive to step 4’s tables): sequence `repl_node_seq`, and `removed` added to the `repl_node.state` check. Placement members exclude `draining` and `removed`. Step 4’s placement tests keep passing unchanged.
 - Join ([scale.md — replacement and join](../scale.md#replacement-and-join)): insert `repl_node` 3 with its id from `repl_node_seq` (an id that has a row is refused), pool `search`, `NOTIFY repl_map`. Each writer recomputes rendezvous homes. Where node 3 is now a home, a `joining` copy is filled by snapshot from an in-sync copy plus catch-up and becomes `in_sync`. Only then is the copy that dropped out removed and its database dropped.
 - Replacement: a node `down` past `REPL_REALLOCATE_DELAY_MS` gets, for each of its sets, a `joining` copy on the next ranked node that is not `down`, not draining, and in an unused zone, filled by snapshot and catch-up. When the original home is back and `in_sync`, the replacement is removed. When an operator sets the dead node `removed`, the replacement is already the next home and stays.
@@ -846,7 +847,7 @@ Venus search on it:
 
 | Name             | Pass                                                                                                                       |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Third node       | :8003 is healthy and has the search schema. `layout_db.replica_count` is still 1.                                          |
+| Third node       | :28733 is healthy and has the search schema. `layout_db.replica_count` is still 1.                                          |
 | Join moves few   | The copies that moved are exactly the rendezvous difference between two and three nodes. No other copy is rewritten.      |
 | Restart in delay | Stop and start a search node inside the delay. No new copy is placed. Its copies catch up.                                 |
 | Re-replicate     | With a search node stopped past the delay, each shard has two `in_sync` copies on the other two nodes. Green.              |
@@ -881,8 +882,8 @@ Venus search on it:
 
 #### Work
 
-- Services `surreal-graph-1` (`127.0.0.1:8004`) and `surreal-graph-2` (`:8005`): own volumes, same image and cap, graph schema only. `repl_node` 4 and 5 in pool `graph`, zones 4 and 5.
-- Graph set policy ([scale.md — replica sets and policy](../scale.md#replica-sets-and-policy)): `GRAPH_COPIES` (1 by default, 3 on this profile), `ack` a majority. The new copies join by snapshot from :8000 plus catch-up.
+- Services `surreal-graph-1` (`127.0.0.1:28734`) and `surreal-graph-2` (`:28735`): own volumes, same image and cap, graph schema only. `repl_node` 4 and 5 in pool `graph`, zones 4 and 5.
+- Graph set policy ([scale.md — replica sets and policy](../scale.md#replica-sets-and-policy)): `GRAPH_COPIES` (1 by default, 3 on this profile), `ack` a majority. The new copies join by snapshot from :28730 plus catch-up.
 - Takeover reads `_repl:state` from 2 of 3, stores the new fence on those copies, and re-reads any copy whose `applied_lsn` moved, before it appends. Fewer reachable: graph writes wait; reads continue from any in-sync copy.
 - A graph body that committed on one copy and was rejected by another stays on that lsn when a resend can succeed, and is restored away when it cannot. The job is re-run from `lost` only after a divergent tail is outside the reference. Propagate an unacked graph entry only when it is the tip of the majority reference, and do it before any new lsn.
 - Graph `lost(set, tags)` hook: re-run the jobs named in the tags (fixture jobs here; `graph_jobs` rows once step 7 is done). Skip the tag `hole`.
@@ -906,11 +907,11 @@ Venus search on it:
 
 | Name           | Pass                                                                                                                          |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Majority ack   | Stop :8005. Graph entries ack on :8000 and :8004. Stop :8004 too: graph writes wait, reads still answer from :8000. Yellow, then red. |
+| Majority ack   | Stop :28735. Graph entries ack on :28730 and :28734. Stop :28734 too: graph writes wait, reads still answer from :28730. Yellow, then red. |
 | No lost ack    | Ack an entry on two copies, then wipe one of them. The entry is on the reference after takeover and on the rebuilt copy.     |
-| Divergent      | Commit an entry on :8005 only under the old fence (not acked). Pause :8005, take over on :8000 and :8004, write one entry, resume :8005. It replies `divergent`, its job reaches `lost` and is re-run, and :8005 is rebuilt by snapshot to the reference’s `(applied_lsn, applied_fence)`. The reference log does not also contain that old body. |
+| Divergent      | Commit an entry on :28735 only under the old fence (not acked). Pause :28735, take over on :28730 and :28734, write one entry, resume :28735. It replies `divergent`, its job reaches `lost` and is re-run, and :28735 is rebuilt by snapshot to the reference’s `(applied_lsn, applied_fence)`. The reference log does not also contain that old body. |
 | Short of ack   | `ack` 2. One graph copy commits, another rejects the body, the third is down. The committed copy is restored to `prev`. `lost` is not called. The retry acks on two copies as one new lsn, and the rejected body is absent. |
-| Quorum wait    | With only :8000 reachable, a new writer’s takeover waits. When :8004 returns, it picks the higher of the two.                |
+| Quorum wait    | With only :28730 reachable, a new writer’s takeover waits. When :28734 returns, it picks the higher of the two.                |
 | Fresh read     | A read with `min_lsn` of the last acked entry never returns from a graph copy behind it.                                     |
 
 

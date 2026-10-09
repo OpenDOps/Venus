@@ -18,7 +18,7 @@ Fixture: `apps/web/e2e/fixtures/dot.png`.
 
 | Spec | Proves |
 |---|---|
-| `providers/blob-source.test.ts` — origin | `ws://` → `http://127.0.0.1:3000` |
+| `providers/blob-source.test.ts` — origin | `ws://` → `http://127.0.0.1:28710` |
 | `blob-source.test.ts` — env unset | no `VITE_SYNC_URL` → no HTTP blob source |
 | `blob-source.test.ts` — env set | `VenusBlobSource` as `blobSources.main` |
 | `blob-source.test.ts` — POST/GET | mocked `fetch`: set then get; `list` is `[]` |

@@ -5,7 +5,7 @@
 interface ImportMetaEnv {
   /** Absolute `ws://…` (Vite) or `same-origin` (Compose/k8s web). */
   readonly VITE_SYNC_URL?: string;
-  /** Sidecar origin for Flush + git log (`http://127.0.0.1:3002`). Unset hides chrome. */
+  /** Sidecar origin for Flush + git log (`http://127.0.0.1:28720`). Unset hides chrome. */
   readonly VITE_SIDECAR_URL?: string;
   /** Show Flush / git-log debug bar (with `VITE_SIDECAR_URL`). Playwright m3/m4. */
   readonly VITE_DEBUG?: string;

@@ -1,6 +1,6 @@
 //! ss-cluster step-schema.
-//! Graph has no index: :8000 has `links_to` and no full-text index.
-//! Search has no graph: :8001 and :8002 have the search indexes and no `links_to`.
+//! Graph has no index: :28730 has `links_to` and no full-text index.
+//! Search has no graph: :28731 and :28732 have the search indexes and no `links_to`.
 //! Allocation: the fixture wiki lives in `layout_db`. A second migrate leaves it.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
@@ -27,18 +27,57 @@ fn docker(args: &[&str]) -> Output {
         .unwrap_or_else(|err| panic!("docker {}: {err}", args.join(" ")))
 }
 
-fn compose(args: &[&str]) -> String {
-    let mut full = vec!["compose"];
-    full.extend_from_slice(args);
-    let out = docker(&full);
-    assert!(
-        out.status.success(),
-        "docker {} failed\n{}\n{}",
-        full.join(" "),
-        String::from_utf8_lossy(&out.stderr),
-        String::from_utf8_lossy(&out.stdout)
-    );
-    String::from_utf8_lossy(&out.stdout).into_owned()
+/// `compose up --wait` fails at once on a container Docker still reports
+/// `unhealthy` after an unpause, or whose name a removal from another test
+/// binary still holds. Both clear within seconds.
+fn graph_up(services: &[&str]) {
+    let mut args = vec![
+        "compose",
+        "--profile",
+        "graph",
+        "up",
+        "-d",
+        "--wait",
+        "--wait-timeout",
+        "300",
+        "--no-deps",
+    ];
+    args.extend_from_slice(services);
+    for attempt in 1..=5 {
+        for service in services {
+            wait_healthy(&format!("venus-{service}-1"));
+        }
+        let out = docker(&args);
+        if out.status.success() {
+            return;
+        }
+        assert!(
+            attempt < 5,
+            "docker {}\n{}\n{}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// Docker reports a container `unhealthy` while paused and until its next probe
+/// after unpause. `compose up --wait` fails on that instead of waiting.
+fn wait_healthy(id: &str) {
+    for _ in 0..60 {
+        let out = docker(&[
+            "inspect",
+            "-f",
+            "{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+            id,
+        ]);
+        let text = String::from_utf8_lossy(&out.stdout);
+        if text.trim() != "true unhealthy" {
+            return;
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
 }
 
 fn live_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -65,22 +104,10 @@ struct GraphProfile;
 
 impl GraphProfile {
     fn start() -> Self {
-        for port in [8000u16, 8001, 8002] {
+        for port in [28730u16, 28731, 28732] {
             assert_host_port_free(port);
         }
-        compose(&[
-            "--profile",
-            "graph",
-            "up",
-            "-d",
-            "--wait",
-            "--wait-timeout",
-            "300",
-            "--no-deps",
-            "surreal-graph",
-            "surreal-search-0",
-            "surreal-search-1",
-        ]);
+        graph_up(&["surreal-graph", "surreal-search-0", "surreal-search-1"]);
         Self
     }
 }
@@ -133,8 +160,8 @@ fn migrate_twice() {
     rt.block_on(async {
         for _ in 0..2 {
             migrate_surreal(
-                "127.0.0.1:8000",
-                &["127.0.0.1:8001", "127.0.0.1:8002"],
+                "127.0.0.1:28730",
+                &["127.0.0.1:28731", "127.0.0.1:28732"],
                 "venus",
                 "venus",
             )
@@ -174,14 +201,14 @@ fn search_migrator_omits_graph_edges() {
     assert!(!sql.contains("links_to"));
 }
 
-/// :8000 has `links_to` and no full-text index. A second migrate still applies.
+/// :28730 has `links_to` and no full-text index. A second migrate still applies.
 #[test]
 fn graph_has_no_index() {
     let _guard = live_lock();
     let _profile = GraphProfile::start();
     migrate_twice();
     let info = sql(
-        8000,
+        28730,
         &format!("USE NS graph DB ⟨{WORKSPACE_ID}⟩; INFO FOR DB;"),
     );
     assert!(
@@ -193,7 +220,7 @@ fn graph_has_no_index() {
         "graph database has a full-text index: {info}"
     );
     let page = sql(
-        8000,
+        28730,
         &format!("USE NS graph DB ⟨{WORKSPACE_ID}⟩; INFO FOR TABLE page;"),
     );
     assert!(
@@ -202,13 +229,13 @@ fn graph_has_no_index() {
     );
 }
 
-/// :8001 and :8002 have the search indexes and no `links_to` or namespace `graph`.
+/// :28731 and :28732 have the search indexes and no `links_to` or namespace `graph`.
 #[test]
 fn search_has_no_graph() {
     let _guard = live_lock();
     let _profile = GraphProfile::start();
     migrate_twice();
-    for port in [8001u16, 8002] {
+    for port in [28731u16, 28732] {
         let info = sql(
             port,
             &format!("USE NS search DB ⟨{WORKSPACE_ID}⟩; INFO FOR DB;"),

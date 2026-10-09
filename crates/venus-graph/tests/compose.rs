@@ -1,12 +1,14 @@
 //! ss-cluster step-compose.
 //! Profile off: default `docker compose` does not start the three SurrealDB processes.
-//! Three processes: `--profile graph` makes :8000, :8001, and :8002 healthy at 1g each.
-//! Independent disk: a row on :8001 survives a recreate of :8002.
+//! Three processes: `--profile graph` makes :28730, :28731, and :28732 healthy at 1g each.
+//! Independent disk: a row on :28731 survives a recreate of :28732.
 //! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 use venus_graph::SURREAL_IMAGE;
 
@@ -85,9 +87,9 @@ fn profile_off() {
         "host publish must not be 0.0.0.0"
     );
     for (host, volume) in [
-        ("published: \"8000\"", "surreal-graph-data"),
-        ("published: \"8001\"", "surreal-search-0-data"),
-        ("published: \"8002\"", "surreal-search-1-data"),
+        ("published: \"28730\"", "surreal-graph-data"),
+        ("published: \"28731\"", "surreal-search-0-data"),
+        ("published: \"28732\"", "surreal-search-1-data"),
     ] {
         assert!(with.contains(host), "missing {host}");
         assert!(with.contains(volume), "missing {volume}");
@@ -101,6 +103,59 @@ fn profile_off() {
         search0.contains("surreal-search-0-data") && !search0.contains("surreal-search-1-data"),
         "search-0 must mount only its own volume"
     );
+}
+
+/// `compose up --wait` fails at once on a container Docker still reports
+/// `unhealthy` after an unpause, or whose name a removal from another test
+/// binary still holds. Both clear within seconds.
+fn graph_up(services: &[&str]) {
+    let mut args = vec![
+        "compose",
+        "--profile",
+        "graph",
+        "up",
+        "-d",
+        "--wait",
+        "--wait-timeout",
+        "300",
+        "--no-deps",
+    ];
+    args.extend_from_slice(services);
+    for attempt in 1..=5 {
+        for service in services {
+            wait_healthy(&format!("venus-{service}-1"));
+        }
+        let out = docker(&args);
+        if out.status.success() {
+            return;
+        }
+        assert!(
+            attempt < 5,
+            "docker {}\n{}\n{}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// Docker reports a container `unhealthy` while paused and until its next probe
+/// after unpause. `compose up --wait` fails on that instead of waiting.
+fn wait_healthy(id: &str) {
+    for _ in 0..60 {
+        let out = docker(&[
+            "inspect",
+            "-f",
+            "{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+            id,
+        ]);
+        let text = String::from_utf8_lossy(&out.stdout);
+        if text.trim() != "true unhealthy" {
+            return;
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
 }
 
 fn live_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -139,25 +194,13 @@ fn assert_host_port_free(port: u16) {
 
 impl GraphProfile {
     fn start() -> Self {
-        for port in [8000u16, 8001, 8002] {
+        for port in [28730u16, 28731, 28732] {
             assert_host_port_free(port);
         }
         let profile = Self {
             volumes: surreal_volume_names(),
         };
-        compose(&[
-            "--profile",
-            "graph",
-            "up",
-            "-d",
-            "--wait",
-            "--wait-timeout",
-            "300",
-            "--no-deps",
-            "surreal-graph",
-            "surreal-search-0",
-            "surreal-search-1",
-        ]);
+        graph_up(&["surreal-graph", "surreal-search-0", "surreal-search-1"]);
         profile
     }
 }
@@ -223,15 +266,15 @@ fn health_ok(port: u16) {
     );
 }
 
-/// :8000, :8001, and :8002 are healthy, 1g each.
+/// :28730, :28731, and :28732 are healthy, 1g each.
 #[test]
 fn three_processes() {
     let _guard = live_lock();
     let _profile = GraphProfile::start();
     for (service, port) in [
-        ("surreal-graph", 8000u16),
-        ("surreal-search-0", 8001),
-        ("surreal-search-1", 8002),
+        ("surreal-graph", 28730u16),
+        ("surreal-search-0", 28731),
+        ("surreal-search-1", 28732),
     ] {
         let status = compose(&[
             "--profile",
@@ -275,7 +318,7 @@ fn sql(port: u16, body: &str) -> String {
     text
 }
 
-/// A row written on :8001 is still there after :8002 is recreated, and :8002 never had it.
+/// A row written on :28731 is still there after :28732 is recreated, and :28732 never had it.
 #[test]
 fn independent_disk() {
     let _guard = live_lock();
@@ -288,16 +331,16 @@ fn independent_disk() {
     );
 
     let write = "USE NS probe DB disk; UPSERT probe:keep SET ok = true;";
-    let on_primary = sql(8001, write);
+    let on_primary = sql(28731, write);
     assert!(
         on_primary.contains("\"status\":\"OK\"") && on_primary.contains("probe:keep"),
-        "row missing on :8001: {on_primary}"
+        "row missing on :28731: {on_primary}"
     );
 
-    let on_other = sql(8002, "USE NS probe DB disk; SELECT * FROM probe:keep;");
+    let on_other = sql(28732, "USE NS probe DB disk; SELECT * FROM probe:keep;");
     assert!(
         !on_other.contains("probe:keep"),
-        ":8002 must not see :8001's row: {on_other}"
+        ":28732 must not see :28731's row: {on_other}"
     );
 
     compose(&[
@@ -313,9 +356,9 @@ fn independent_disk() {
         "surreal-search-1",
     ]);
 
-    let after = sql(8001, "USE NS probe DB disk; SELECT * FROM probe:keep;");
+    let after = sql(28731, "USE NS probe DB disk; SELECT * FROM probe:keep;");
     assert!(
         after.contains("\"status\":\"OK\"") && after.contains("probe:keep"),
-        "row on :8001 did not survive recreate of :8002: {after}"
+        "row on :28731 did not survive recreate of :28732: {after}"
     );
 }

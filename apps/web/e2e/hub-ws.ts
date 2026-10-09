@@ -1,9 +1,9 @@
-/** Direct hub (Vite / `pnpm test:e2e:m1`). Compose web uses same-origin :8080. */
+/** Direct hub (Vite / `pnpm test:e2e:m1`). Compose web uses same-origin :28700. */
 import type { BrowserContext } from '@playwright/test';
 import { COLLABORATION_PATH, WORKSPACE_ID } from '../src/host/ids.js';
 
 export { WORKSPACE_ID };
-export const HUB_DIRECT_WS = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+export const HUB_DIRECT_WS = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
 
 export function expectedCollaborationWs(): string {
   const base = process.env.PLAYWRIGHT_BASE_URL;
@@ -23,11 +23,11 @@ export async function forceTabSockets(context: BrowserContext): Promise<void> {
   });
 }
 
-/** Fail if nothing listens, or if `:3000` is keck rather than `venus-hub`. */
+/** Fail if nothing listens, or if `:28710` is keck rather than `venus-hub`. */
 export async function assertHubOn3000(): Promise<void> {
   let body = '';
   try {
-    const res = await fetch('http://127.0.0.1:3000/', {
+    const res = await fetch('http://127.0.0.1:28710/', {
       signal: AbortSignal.timeout(3000),
     });
     body = (await res.text()).trim();
@@ -35,14 +35,14 @@ export async function assertHubOn3000(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
       throw new Error(
-        `hub is not up on :3000 (${msg}). Start with pnpm sync:up from the repo root.`,
+        `hub is not up on :28710 (${msg}). Start with pnpm sync:up from the repo root.`,
       );
     }
     throw err;
   }
   if (body !== 'venus-hub') {
     throw new Error(
-      `:3000 is not the Venus hub (GET / → ${JSON.stringify(body)}). Fail if keck is the process.`,
+      `:28710 is not the Venus hub (GET / → ${JSON.stringify(body)}). Fail if keck is the process.`,
     );
   }
 }
@@ -51,7 +51,7 @@ export async function assertHubOn3000(): Promise<void> {
 export async function assertSidecarOn3002(): Promise<void> {
   let body = '';
   try {
-    const res = await fetch('http://127.0.0.1:3002/', {
+    const res = await fetch('http://127.0.0.1:28720/', {
       signal: AbortSignal.timeout(3000),
     });
     body = (await res.text()).trim();
@@ -59,14 +59,14 @@ export async function assertSidecarOn3002(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     if (/ECONNREFUSED|fetch failed|AbortError|TimeoutError/i.test(msg)) {
       throw new Error(
-        `sidecar is not up on :3002 (${msg}). Start with docker compose --profile snapshot up sidecar (WIKI_DIR bind-mounted) or cargo run -p venus-sidecar with DATABASE_URL and WIKI_DIR=wiki.`,
+        `sidecar is not up on :28720 (${msg}). Start with docker compose --profile snapshot up sidecar (WIKI_DIR bind-mounted) or cargo run -p venus-sidecar with DATABASE_URL and WIKI_DIR=wiki.`,
       );
     }
     throw err;
   }
   if (body !== 'venus-sidecar') {
     throw new Error(
-      `:3002 is not venus-sidecar (GET / → ${JSON.stringify(body)}).`,
+      `:28720 is not venus-sidecar (GET / → ${JSON.stringify(body)}).`,
     );
   }
 }

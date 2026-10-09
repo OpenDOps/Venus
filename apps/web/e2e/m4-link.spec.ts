@@ -60,7 +60,7 @@ async function flushAndWait(page: Page, probe: () => Promise<boolean>) {
   await flush.click();
   const sidecar =
     process.env.VITE_SIDECAR_URL?.replace(/\/$/, '') ??
-    'http://127.0.0.1:3002';
+    'http://127.0.0.1:28720';
   await page.request.post(`${sidecar}/flush`);
   await expect
     .poll(probe, { timeout: 60_000, intervals: [250, 500, 1000] })

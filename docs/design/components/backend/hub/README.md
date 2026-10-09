@@ -41,19 +41,19 @@ docker compose up --build
 # same as: pnpm compose:up
 ```
 
-Wait until hub listens on `:3000`. Health (same probe as M1):
+Wait until hub listens on `:28710`. Health (same probe as M1):
 
 ```bash
-curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
+curl -sSSf -X POST http://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
 # {"protocol":"AFFiNE"}
 ```
 
-`GET http://127.0.0.1:3000/` returns `venus-hub`. Web UI (after `web` is up): **http://127.0.0.1:8080**.
+`GET http://127.0.0.1:28710/` returns `venus-hub`. Web UI (after `web` is up): **http://127.0.0.1:28700**.
 
-Host Vite / Playwright still open WS to `:3000`:
+Host Vite / Playwright still open WS to `:28710`:
 
 ```bash
-VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 pnpm dev
+VITE_SYNC_URL=ws://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 pnpm dev
 pnpm test:e2e:m1   # needs postgres + hub already up
 ```
 
@@ -81,7 +81,7 @@ Also:
 
 | Variable | Role |
 |---|---|
-| `HUB_LISTEN` | Bind address. Default `0.0.0.0:3000`. |
+| `HUB_LISTEN` | Bind address. Default `0.0.0.0:28710`. |
 | `HUB_OWNER` | Lease id. Default `{HOSTNAME}-{pid}`. Compose `hub` sets `hub`; `hub-b` uses `hub-b`. |
 | `HUB_LEASE_TTL_SECS` | `workspace_lease` TTL. Default `20`. Must be `>= 3 ×` heartbeat interval. |
 | `HUB_HEARTBEAT_INTERVAL_SECS` | Lease refresh period. Default `lease_ttl / 3` (6s at TTL 20). |
@@ -92,7 +92,7 @@ Also:
 | `HUB_PERSIST_INTERVAL_MS` | **Required.** Persist tick. Compose `1000`. `>= 1`. Zero would panic the interval. |
 | `HUB_COMPACT_AFTER` | **Required.** Compact when trail length reaches this. Compose `32`. `>= 1`. |
 | `HUB_CORS_ORIGINS` | CORS allow list. Unset → six localhost Vite/Compose origins. Empty → no CORS (same-origin nginx). Comma-separated `http(s)://host[:port]`. `*` is rejected. Methods `GET,HEAD,POST,DELETE`; headers `Content-Type`, `If-None-Match`. Does not echo the request origin. |
-| `HUB_GRPC_LISTEN` | Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default `0.0.0.0:3100`. Compose host bind `127.0.0.1:3100` (hub-b: `127.0.0.1:3101`). GET `/export` is advertisement pointing here. [rpc.md](../../../rpc.md) |
+| `HUB_GRPC_LISTEN` | Internal gRPC (`Hub.ExportDoc` / `ListDocs`). Default `0.0.0.0:28711`. Compose host bind `127.0.0.1:28711` (hub-b: `127.0.0.1:28713`). GET `/export` is advertisement pointing here. [rpc.md](../../../rpc.md) |
 
 Missing or blank pool / persist / compact vars is a startup error that names the variable. Missing host/user/password (and no `DATABASE_URL`) is a startup error. A `sqlite:` URL is a startup error. Do not log the DSN.
 
@@ -105,8 +105,8 @@ One live owner per `workspace_id` (many page `doc_id`s on that room). A second h
 ```bash
 pnpm compose:ha
 # or: docker compose --profile ha up --build hub-b
-# hub-b publishes 127.0.0.1:3001
-# WS to 127.0.0.1:3001/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 → 503 while hub holds the lease
+# hub-b publishes 127.0.0.1:28712
+# WS to 127.0.0.1:28712/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 → 503 while hub holds the lease
 ```
 
 SIGTERM on `hub`: flush the persist buffer, `DELETE` our `workspace_lease` rows, then exit. Crash without SIGTERM can lose ≤ one persist batch (~1s), same as keck.
@@ -140,11 +140,11 @@ After a write, wait **≥2s** before `docker compose restart hub` if you are tes
 |---|---|---|
 | `POST` | `/collaboration/:workspace_id` | `{"protocol":"AFFiNE"}` (health; no lease) |
 | `GET` | `/collaboration/:workspace_id` | No upgrade → `{"protocol":"AFFiNE"}` (health; **no** lease). `Upgrade: websocket` → protocol `AFFiNE`. Lease held by another hub → **503** `{ "error": { "code": "lease_held", … } }`. Store/hydrate failure → **500** `{ "error": { "code": "store_failed", … } }` |
-| `GET` | `/api/block/:workspace_id/export` | Advertisement JSON. Bare GET **200** `{ "advertisement": { … } }` (no `error`). `?doc=` **400** `export_http_disabled`. Yjs is gRPC `Hub.ExportDoc` (`HUB_GRPC_LISTEN`, default `:3100`). [rpc.md](../../../rpc.md) |
+| `GET` | `/api/block/:workspace_id/export` | Advertisement JSON. Bare GET **200** `{ "advertisement": { … } }` (no `error`). `?doc=` **400** `export_http_disabled`. Yjs is gRPC `Hub.ExportDoc` (`HUB_GRPC_LISTEN`, default `:28711`). [rpc.md](../../../rpc.md) |
 | `POST` | `/api/blobs/:workspace_id` | `application/octet-stream` → `{ id, exists }` |
 | `GET`/`HEAD`/`DELETE` | `/api/blobs/:workspace_id/:hash` | bytes / `Content-Length` from `octet_length` (no body) / 404 / 204 |
 
-No `/api/pages`. No `/api/block/:id/:block` CRUD. CORS: `GET`/`HEAD`/`POST`/`DELETE` and `Content-Type` / `If-None-Match`, origins from `HUB_CORS_ORIGINS` (default Vite `:5173`/`:5174` and Compose `:8080`). Empty list → no CORS layer. `DELETE` is for blobs. Page identity is catalog Yjs + sidecar SQL ([page-identity](./page-identity.md)).
+No `/api/pages`. No `/api/block/:id/:block` CRUD. CORS: `GET`/`HEAD`/`POST`/`DELETE` and `Content-Type` / `If-None-Match`, origins from `HUB_CORS_ORIGINS` (default Vite `:5173`/`:5174` and Compose `:28700`). Empty list → no CORS layer. `DELETE` is for blobs. Page identity is catalog Yjs + sidecar SQL ([page-identity](./page-identity.md)).
 
 ## Client
 

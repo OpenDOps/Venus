@@ -58,7 +58,7 @@ GET `/export` stays that pair (bind how-to). It does **not** grow with created p
 
 ## gRPC `venus.hub.v1.Hub`
 
-Listen: `HUB_GRPC_LISTEN`, default **`0.0.0.0:3100`**. Compose host bind `127.0.0.1:3100` (hub-b: `127.0.0.1:3101` → container `3100`). HTTP/WS stays `:3000`.
+Listen: `HUB_GRPC_LISTEN`, default **`0.0.0.0:28711`**. Compose host bind `127.0.0.1:28711` (hub-b: `127.0.0.1:28713` → container `28711`). HTTP/WS stays `:28710`.
 
 | RPC | Request | Success |
 |---|---|---|
@@ -71,7 +71,7 @@ grpcurl (after the server exists):
 
 ```bash
 grpcurl -plaintext -d '{"workspace_id":"77e4a2b1-8b40-5979-a73c-fd4477216d00"}' \
-  127.0.0.1:3100 venus.hub.v1.Hub/ExportDoc
+  127.0.0.1:28711 venus.hub.v1.Hub/ExportDoc
 ```
 
 With a second page: set `doc_id` to that SQL uuid.

@@ -28,7 +28,7 @@ Compose (profile graph)
 | Image | `surrealdb/surrealdb:v2.7.0` |
 | Command | `start --bind 0.0.0.0:8000 --user venus --pass … rocksdb:/data/graph.db` |
 | Volume | `surreal-graph-data` → `/data` |
-| Listen | Graph `127.0.0.1:8000`. Search nodes `127.0.0.1:8001` and `:8002`. Not published wide. |
+| Listen | Graph `127.0.0.1:28730`. Search nodes `127.0.0.1:28731` and `:28732`. Not published wide. |
 | Client | Rust crate `surrealdb` `2.7.0` in `crates/venus-graph` (`protocol-ws`, `rustls`, no embedded RocksDB). WebSocket from the `graph` service only |
 
 Namespace `graph`, database = `workspace_id` (one database per wiki). That database is a **replica set**: 1 copy in dev, 3 in HA, acked on 2 ([scale — replication layer](./scale.md#the-replication-layer)). Every write goes through `crates/surrealastic`; each copy also holds `_repl:state` and `_repl_log` ([scale — the log](./scale.md#the-log)). The search projection is namespace `search` on the nodes in [`repl_copy`](./scale.md#postgres-tables). A second wiki must not share this database.

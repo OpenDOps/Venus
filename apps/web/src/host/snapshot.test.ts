@@ -9,12 +9,12 @@ const hostDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(hostDir, '../../../..');
 
 /** Exact api-map advertisement GET. Product Yjs export is gRPC ExportDoc. */
-const EXPORT_AD_COMMAND = `curl -sSSf http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
-const EXPORT_URL = `http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
+const EXPORT_AD_COMMAND = `curl -sSSf http://127.0.0.1:28710/api/block/${WORKSPACE_ID}/export`;
+const EXPORT_URL = `http://127.0.0.1:28710/api/block/${WORKSPACE_ID}/export`;
 
 async function hubRootBody(): Promise<string | null> {
   try {
-    const res = await fetch('http://127.0.0.1:3000/', {
+    const res = await fetch('http://127.0.0.1:28710/', {
       signal: AbortSignal.timeout(1500),
     });
     return (await res.text()).trim();
@@ -39,13 +39,13 @@ const exportIsAd = exportCt.includes('json');
 
 if (hubBody && hubBody !== 'venus-hub') {
   throw new Error(
-    `:3000 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
+    `:28710 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
   );
 }
 
 if (!hubUp) {
   console.warn(
-    'snapshot.test.ts: skipping advertisement GET — nothing on 127.0.0.1:3000. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
+    'snapshot.test.ts: skipping advertisement GET — nothing on 127.0.0.1:28710. Start with pnpm sync:up (postgres + hub). Documented skip when Compose is down.',
   );
 } else if (!exportIsAd) {
   console.warn(

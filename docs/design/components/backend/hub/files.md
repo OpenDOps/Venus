@@ -17,7 +17,7 @@ Venus/
     build.rs                 tonic-build + protoc-bin-vendored; `proto/venus`
     src/
       lib.rs                 crate root: modules + DEFAULT_WORKSPACE_ID / PAGE_DOC_ID / CATALOG_DOC_ID / SUBPROTOCOL
-      main.rs                process entry (HTTP `:3000` + gRPC `:3100`)
+      main.rs                process entry (HTTP `:28710` + gRPC `:28711`)
       config.rs             env → Config (`HUB_GRPC_LISTEN`)
       protocol.rs           y-protocols + y-octo apply/encode
       room.rs                Room + Hub (`Map<doc_id, Doc>`; one persist tick per Room)
@@ -53,13 +53,13 @@ No I/O.
 
 ### `main.rs`
 
-Binary. Tracing, `Config::from_env` (pool / persist / compact env required), `connect_with` + migrate, construct `Lease` and `Hub`, bind HTTP TCP and gRPC (`HUB_GRPC_LISTEN`, default `:3100`; bind failure is fatal), `Hub::heartbeat` task (`lease_ttl / 3`, `MissedTickBehavior::Delay`; sheds stolen rooms, evicts idle), `axum::serve` with graceful shutdown, then `Hub::shutdown_with_heartbeat` even if serve returned `Err` (gRPC task aborted). Startup logs pool sizes, persist/compact knobs, CORS origin count, and gRPC bind, never the DSN.
+Binary. Tracing, `Config::from_env` (pool / persist / compact env required), `connect_with` + migrate, construct `Lease` and `Hub`, bind HTTP TCP and gRPC (`HUB_GRPC_LISTEN`, default `:28711`; bind failure is fatal), `Hub::heartbeat` task (`lease_ttl / 3`, `MissedTickBehavior::Delay`; sheds stolen rooms, evicts idle), `axum::serve` with graceful shutdown, then `Hub::shutdown_with_heartbeat` even if serve returned `Err` (gRPC task aborted). Startup logs pool sizes, persist/compact knobs, CORS origin count, and gRPC bind, never the DSN.
 
 Does **not** decode Yjs. Does **not** open rooms until HTTP asks.
 
 ### `config.rs`
 
-`Config`: `database_url`, `pg_sslmode` (logged at start; never log the DSN), `listen`, `grpc_listen` (`HUB_GRPC_LISTEN`, default `0.0.0.0:3100`), `owner`, `persist_interval` (`HUB_PERSIST_INTERVAL_MS`, required, `>= 1`), `lease_ttl` (20s, `HUB_LEASE_TTL_SECS`), `heartbeat_interval` (`ttl / 3` unless `HUB_HEARTBEAT_INTERVAL_SECS`; startup requires `ttl >= 3 × interval`), `compact_after` (`HUB_COMPACT_AFTER`, required, `>= 1`), pool (`HUB_DB_MAX_CONNECTIONS` `>= 1`, `HUB_DB_MIN_CONNECTIONS` `>= 0` and `<= max`, `HUB_DB_ACQUIRE_TIMEOUT_SECS` `>= 1`, `HUB_DB_WORK_MEM` a size with an explicit unit, normalized by `parse_work_mem` — P5), `cors_origins` (`HUB_CORS_ORIGINS`; unset → six localhost origins; empty → none; `*` rejected). Missing/blank pool or timer vars fail start naming the var.
+`Config`: `database_url`, `pg_sslmode` (logged at start; never log the DSN), `listen`, `grpc_listen` (`HUB_GRPC_LISTEN`, default `0.0.0.0:28711`), `owner`, `persist_interval` (`HUB_PERSIST_INTERVAL_MS`, required, `>= 1`), `lease_ttl` (20s, `HUB_LEASE_TTL_SECS`), `heartbeat_interval` (`ttl / 3` unless `HUB_HEARTBEAT_INTERVAL_SECS`; startup requires `ttl >= 3 × interval`), `compact_after` (`HUB_COMPACT_AFTER`, required, `>= 1`), pool (`HUB_DB_MAX_CONNECTIONS` `>= 1`, `HUB_DB_MIN_CONNECTIONS` `>= 0` and `<= max`, `HUB_DB_ACQUIRE_TIMEOUT_SECS` `>= 1`, `HUB_DB_WORK_MEM` a size with an explicit unit, normalized by `parse_work_mem` — P5), `cors_origins` (`HUB_CORS_ORIGINS`; unset → six localhost origins; empty → none; `*` rejected). Missing/blank pool or timer vars fail start naming the var.
 
 `database_url_from_env`: non-empty `DATABASE_URL` wins and is not rewritten (`pg_sslmode` is the query value, or `unset` if missing). Else `POSTGRES_HOST` + `USER` + `PASSWORD` (required) plus optional port / db and `POSTGRES_SSLMODE` (libpq tokens, default `disable`). Rejects `sqlite` and unknown `sslmode` (so a typo cannot inject query params). Percent-encodes user/password when building the URL.
 
@@ -83,7 +83,7 @@ Does **not** talk to Postgres or sockets.
 
 ### `rpc.rs`
 
-JSON envelope for HTTP GET and collab errors. Same `error` object as [`venus.rpc.v1.Error`](../../../../../proto/venus/rpc/v1/error.proto). GET `/api/block/{id}/export` is advertisement (home + catalog + gRPC bind). Product Yjs export is gRPC `Hub.ExportDoc` (listen `HUB_GRPC_LISTEN`, default `:3100`). Clients check root `error`. Contract: [rpc.md](../../../rpc.md).
+JSON envelope for HTTP GET and collab errors. Same `error` object as [`venus.rpc.v1.Error`](../../../../../proto/venus/rpc/v1/error.proto). GET `/api/block/{id}/export` is advertisement (home + catalog + gRPC bind). Product Yjs export is gRPC `Hub.ExportDoc` (listen `HUB_GRPC_LISTEN`, default `:28711`). Clients check root `error`. Contract: [rpc.md](../../../rpc.md).
 
 ### `grpc.rs`
 
@@ -158,4 +158,4 @@ No `/api/block/:id/:block` CRUD. `handle_socket`: `connect_client`, send `attach
 
 ## Deploy
 
-[`deploy/hub/Dockerfile`](../../../../../deploy/hub/Dockerfile): build on `rust:1.98.1-bookworm`, copy `proto/` (tonic-build) and the binary into `debian:bookworm-slim` with `ca-certificates`, run as `USER venus` (uid 65532). No `POSTGRES_PASSWORD` / `DATABASE_URL` in the image — Compose injects them (`venus_hub`). `EXPOSE 3000` and `EXPOSE 3100`. Do **not** `COPY deploy/octobase`.
+[`deploy/hub/Dockerfile`](../../../../../deploy/hub/Dockerfile): build on `rust:1.98.1-bookworm`, copy `proto/` (tonic-build) and the binary into `debian:bookworm-slim` with `ca-certificates`, run as `USER venus` (uid 65532). No `POSTGRES_PASSWORD` / `DATABASE_URL` in the image — Compose injects them (`venus_hub`). `EXPOSE 28710` and `EXPOSE 28711`. Do **not** `COPY deploy/octobase`.

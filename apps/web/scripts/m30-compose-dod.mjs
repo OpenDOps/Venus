@@ -15,7 +15,7 @@ import { WORKSPACE_ID } from '../src/host/ids.js';
 import { VenusHubProvider } from '../src/host/providers/venus-hub-provider.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
-const HUB = 'http://127.0.0.1:3000';
+const HUB = 'http://127.0.0.1:28710';
 const HEALTH = `${HUB}/collaboration/${WORKSPACE_ID}`;
 const COMPOSE_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -104,7 +104,7 @@ function withReady(provider, ms) {
 async function writeSpike(workspace) {
   const doc = new Y.Doc();
   const provider = new VenusHubProvider(
-    `ws://127.0.0.1:3000/collaboration/${workspace}`,
+    `ws://127.0.0.1:28710/collaboration/${workspace}`,
   );
   provider.connect('spike', doc);
   await withReady(provider, 15_000);
@@ -137,7 +137,7 @@ async function checkExportAd(workspace, label) {
 async function checkWs(workspace, label) {
   const doc = new Y.Doc();
   const provider = new VenusHubProvider(
-    `ws://127.0.0.1:3000/collaboration/${workspace}`,
+    `ws://127.0.0.1:28710/collaboration/${workspace}`,
   );
   try {
     provider.connect('spike', doc);

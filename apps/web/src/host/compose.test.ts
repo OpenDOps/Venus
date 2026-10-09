@@ -26,7 +26,7 @@ function serviceNames(src: string): string[] {
   return names;
 }
 
-test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () => {
+test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot, surreal-* graph)', () => {
   const src = readFileSync(composeFile, 'utf8');
   const names = serviceNames(src);
   expect(names, 'docker-compose.yml service keys').toEqual([
@@ -35,6 +35,9 @@ test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () =
     'hub-b',
     'sidecar',
     'web',
+    'surreal-graph',
+    'surreal-search-0',
+    'surreal-search-1',
   ]);
   expect(src).toMatch(/image:\s*postgres:16/);
   expect(src).toMatch(/pg-venus-data:/);
@@ -48,12 +51,12 @@ test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () =
   expect(src).toMatch(
     /DATABASE_URL:\s*"?postgres:\/\/venus_hub:venus@postgres:5432\/venus/,
   );
-  expect(src).toMatch(/127\.0\.0\.1:3000:3000/);
-  expect(src).toMatch(/127\.0\.0\.1:3100:3100/);
-  expect(src).toMatch(/127\.0\.0\.1:8080:80/);
-  expect(src).toMatch(/127\.0\.0\.1:3001:3000/);
-  expect(src).toMatch(/127\.0\.0\.1:3101:3100/);
-  expect(src).not.toMatch(/^\s+- ["']3000:3000["']/m);
+  expect(src).toMatch(/127\.0\.0\.1:28710:28710/);
+  expect(src).toMatch(/127\.0\.0\.1:28711:28711/);
+  expect(src).toMatch(/127\.0\.0\.1:28700:80/);
+  expect(src).toMatch(/127\.0\.0\.1:28712:28710/);
+  expect(src).toMatch(/127\.0\.0\.1:28713:28711/);
+  expect(src).not.toMatch(/^\s+- ["']28710:28710["']/m);
   expect(src).toMatch(/ensure-app-role\.sh/);
   expect(src).toMatch(/mem_limit:/);
   expect(src).toMatch(/HUB_DB_MAX_CONNECTIONS:\s*"32"/);
@@ -63,13 +66,13 @@ test('Product path is postgres, hub, and web (hub-b ha, sidecar snapshot)', () =
   expect(src).toMatch(/HUB_PERSIST_INTERVAL_MS:\s*"1000"/);
   expect(src).toMatch(/HUB_COMPACT_AFTER:\s*"32"/);
   expect(src).toMatch(/HUB_CORS_ORIGINS:/);
-  expect(src).toMatch(/HUB_GRPC_LISTEN:\s*"0.0.0.0:3100"/);
+  expect(src).toMatch(/HUB_GRPC_LISTEN:\s*"0.0.0.0:28711"/);
   expect(src).toMatch(/http:\/\/localhost:5174/);
   expect(src).not.toMatch(/^\s*octobase:/m);
   expect(src).toMatch(/profiles:\s*\["ha"\]/);
   expect(src).toMatch(/profiles:\s*\["snapshot"\]/);
   expect(src).toMatch(/deploy\/sidecar\/Dockerfile/);
-  expect(src).toMatch(/127\.0\.0\.1:3002:3002/);
+  expect(src).toMatch(/127\.0\.0\.1:28720:28720/);
 });
 
 test('docker compose config --services lists postgres hub web (hub-b is a profile)', () => {
@@ -109,7 +112,7 @@ test('hub image is slim non-root Venus, NOTICE is MIT, not AGPL keck', () => {
   expect(dockerfile).toMatch(/FROM debian:bookworm-slim/);
   expect(dockerfile).toMatch(/^USER venus$/m);
   expect(dockerfile).toMatch(/COPY proto proto/);
-  expect(dockerfile).toMatch(/EXPOSE 3100/);
+  expect(dockerfile).toMatch(/EXPOSE 28711/);
   expect(dockerfile).not.toMatch(/^ENV POSTGRES_PASSWORD=/m);
   expect(dockerfile).not.toMatch(/^ENV DATABASE_URL=/m);
   expect(dockerfile).not.toMatch(/postgres:\/\/.*:.*@/);
@@ -120,7 +123,7 @@ test('hub image is slim non-root Venus, NOTICE is MIT, not AGPL keck', () => {
   expect(notice).not.toMatch(/product image is AGPL/i);
 });
 
-const hubUp = await fetch('http://127.0.0.1:3000/', {
+const hubUp = await fetch('http://127.0.0.1:28710/', {
   signal: AbortSignal.timeout(1500),
 })
   .then((r) => r.ok)
@@ -128,17 +131,17 @@ const hubUp = await fetch('http://127.0.0.1:3000/', {
 
 if (!hubUp) {
   console.warn(
-    'compose.test.ts: skipping Server up curl — nothing on 127.0.0.1:3000. Start with pnpm sync:up.',
+    'compose.test.ts: skipping Server up curl — nothing on 127.0.0.1:28710. Start with pnpm sync:up.',
   );
 }
 
 test.skipIf(!hubUp)(
   'Server up: POST /collaboration/<M0 uuid> is AFFiNE and GET / is venus-hub',
   async () => {
-    const root = await fetch('http://127.0.0.1:3000/');
+    const root = await fetch('http://127.0.0.1:28710/');
     expect((await root.text()).trim()).toBe('venus-hub');
     const health = await fetch(
-      `http://127.0.0.1:3000/collaboration/${WORKSPACE_ID}`,
+      `http://127.0.0.1:28710/collaboration/${WORKSPACE_ID}`,
       { method: 'POST' },
     );
     expect(health.ok).toBe(true);

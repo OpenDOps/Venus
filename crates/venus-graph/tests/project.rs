@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use surrealastic::{log_ids, shard_set_id, Cluster, Config, Health};
 use venus_graph::{
@@ -115,7 +115,7 @@ async fn project_live() {
         assert!(commit > 0, "Search node down");
         assert!(
             sql(
-                8001,
+                28731,
                 &format!(
                     "USE NS search DB {}; SELECT title FROM page:{DOC0};",
                     shard_database(&ws, LAYOUT_EPOCH, (hkey(DOC0) % 2) as i32)
@@ -126,7 +126,7 @@ async fn project_live() {
         );
         assert!(
             sql(
-                8001,
+                28731,
                 &format!(
                     "USE NS search DB {}; SELECT title FROM page:{DOC1};",
                     shard_database(&ws, LAYOUT_EPOCH, (hkey(DOC1) % 2) as i32)
@@ -135,13 +135,19 @@ async fn project_live() {
             .contains("Title docb"),
             "Search node down"
         );
+        // Ack 1 returns before the paused copy answers. The probe or the send
+        // timeout marks it lagging after the write.
         for shard in 0..2 {
             let set = shard_set_id(&db_id(&ws), LAYOUT_EPOCH, shard);
-            let finger = cluster.fingerprint(&set).await.expect("fingerprint");
-            assert!(
-                finger.iter().any(|row| row.starts_with("2:lagging:")),
-                "Search node down {finger:?}"
-            );
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                let finger = cluster.fingerprint(&set).await.expect("fingerprint");
+                if finger.iter().any(|row| row.starts_with("2:lagging:")) {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "Search node down {finger:?}");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
             assert_eq!(
                 cluster.health(&set).await.expect("health"),
                 Health::Yellow,
@@ -186,7 +192,7 @@ async fn project_live() {
     );
     assert!(!item_gone.contains(DOC1), "Item {item_gone}");
     let search_gone = sql(
-        8001,
+        28731,
         &format!(
             "USE NS search DB {}; SELECT title FROM page:{DOC1};",
             shard_database(&ws, LAYOUT_EPOCH, (hkey(DOC1) % 2) as i32)
@@ -247,7 +253,7 @@ async fn project_live() {
         "Retry"
     );
     let held = sql(
-        8001,
+        28731,
         &format!(
             "USE NS search DB {}; SELECT title FROM page:hold;",
             shard_database(&ws, LAYOUT_EPOCH, (hkey("hold") % 2) as i32)
@@ -267,7 +273,7 @@ async fn project_live() {
         "Graph not acked"
     );
     let missed = sql(
-        8001,
+        28731,
         &format!(
             "USE NS search DB {}; SELECT title FROM page:miss;",
             shard_database(&ws, LAYOUT_EPOCH, (hkey("miss") % 2) as i32)
@@ -299,7 +305,7 @@ async fn schema_hook(world: &World, ws: &str) {
         ),
     );
     assert!(!log.contains("_repl_log:"), "Schema hook {log}");
-    for port in [8001_u16, 8002] {
+    for port in [28731_u16, 28732] {
         for shard in 0..2 {
             let info = sql(
                 port,
@@ -349,7 +355,7 @@ async fn serve_holds(world: &World, cluster: &Cluster) {
 async fn both_copies(cluster: &Cluster, layout: &surrealastic::Layout, ws: &str) {
     for (doc, shard) in [(DOC0, hkey(DOC0) % 2), (DOC1, hkey(DOC1) % 2)] {
         let db = shard_database(ws, LAYOUT_EPOCH, shard as i32);
-        for port in [8001_u16, 8002] {
+        for port in [28731_u16, 28732] {
             let text = sql(
                 port,
                 &format!("USE NS search DB {db}; SELECT title FROM page:{doc};"),
@@ -361,13 +367,13 @@ async fn both_copies(cluster: &Cluster, layout: &surrealastic::Layout, ws: &str)
         }
         let db_name = shard_database(ws, LAYOUT_EPOCH, shard as i32);
         let left = sql(
-            8001,
+            28731,
             &format!(
             "USE NS search DB {db_name}; SELECT applied_lsn, applied_fence FROM ONLY _repl:state;"
         ),
         );
         let right = sql(
-            8002,
+            28732,
             &format!(
             "USE NS search DB {db_name}; SELECT applied_lsn, applied_fence FROM ONLY _repl:state;"
         ),
@@ -411,7 +417,7 @@ async fn indexed_sha(world: &World, ws: &str) {
         ),
     );
     assert!(graph.contains("sha-2"), "Indexed sha {graph}");
-    for port in [8001_u16, 8002] {
+    for port in [28731_u16, 28732] {
         for table in ["page", "heading", "mention"] {
             let id = match table {
                 "page" => format!("page:{DOC0}"),
@@ -451,7 +457,7 @@ async fn entry_limit(world: &World, cluster: &Cluster) {
     let mut seen = 0_usize;
     for id in ids {
         let body = sql(
-            8001,
+            28731,
             &format!(
                 "USE NS search DB {}; SELECT body FROM _repl_log:{id};",
                 shard_database(&ws, LAYOUT_EPOCH, 0)
@@ -512,7 +518,7 @@ async fn search_log(cluster: &Cluster, ws: &str, shard: i32) -> Vec<i64> {
     log_ids(
         cluster,
         "1",
-        "http://127.0.0.1:8001",
+        "http://127.0.0.1:28731",
         "search",
         &shard_database(ws, LAYOUT_EPOCH, shard),
         1,
@@ -671,29 +677,34 @@ struct World {
 fn world() -> &'static World {
     static WORLD: OnceLock<World> = OnceLock::new();
     WORLD.get_or_init(|| {
-        for name in ["venus-surreal-search-0", "venus-surreal-search-1"] {
+        for name in [
+            "venus-surreal-graph",
+            "venus-surreal-search-0",
+            "venus-surreal-search-1",
+        ] {
             let listed = docker(&["ps", "-aq", "--filter", &format!("name={name}")]);
             for id in String::from_utf8_lossy(&listed.stdout).split_whitespace() {
                 let _ = docker(&["unpause", id]);
+                wait_healthy(id);
             }
         }
-        let listed = docker(&["ps", "-aq", "--filter", "name=venus-project-"]);
-        for id in String::from_utf8_lossy(&listed.stdout).split_whitespace() {
-            let _ = docker(&["rm", "-f", id]);
-        }
-        compose(&[
-            "--profile",
-            "graph",
-            "up",
-            "-d",
-            "--wait",
-            "--wait-timeout",
-            "300",
-            "--no-deps",
-            "surreal-search-0",
-            "surreal-search-1",
+        // Sibling tests in this process start `venus-project-*-{pid}` containers concurrently.
+        let own = format!("-{}", std::process::id());
+        let listed = docker(&[
+            "ps",
+            "-a",
+            "--filter",
+            "name=venus-project-",
+            "--format",
+            "{{.Names}}",
         ]);
-        for port in [8001_u16, 8002] {
+        for name in String::from_utf8_lossy(&listed.stdout).split_whitespace() {
+            if !name.ends_with(&own) {
+                let _ = docker(&["rm", "-f", name]);
+            }
+        }
+        graph_up(&["surreal-search-0", "surreal-search-1"]);
+        for port in [28731_u16, 28732] {
             wait_port(port);
         }
         let (graph_url, graph_port, graph_container) = ensure_graph();
@@ -737,6 +748,7 @@ fn world() -> &'static World {
 }
 
 fn ensure_graph() -> (String, u16, String) {
+    wait_healthy("venus-surreal-graph-1");
     let up = docker(&[
         "compose",
         "--profile",
@@ -749,10 +761,10 @@ fn ensure_graph() -> (String, u16, String) {
         "--no-deps",
         "surreal-graph",
     ]);
-    if up.status.success() && surreal_on(8000) {
+    if up.status.success() && surreal_on(28730) {
         return (
-            "http://127.0.0.1:8000".into(),
-            8000,
+            "http://127.0.0.1:28730".into(),
+            28730,
             service_id("surreal-graph"),
         );
     }
@@ -854,6 +866,59 @@ fn pause_graph(container: &str) -> Paused {
         String::from_utf8_lossy(&out.stderr)
     );
     Paused(vec![container.to_string()])
+}
+
+/// `compose up --wait` fails at once on a container Docker still reports
+/// `unhealthy` after an unpause, or whose name a removal from another test
+/// binary still holds. Both clear within seconds.
+fn graph_up(services: &[&str]) {
+    let mut args = vec![
+        "compose",
+        "--profile",
+        "graph",
+        "up",
+        "-d",
+        "--wait",
+        "--wait-timeout",
+        "300",
+        "--no-deps",
+    ];
+    args.extend_from_slice(services);
+    for attempt in 1..=5 {
+        for service in services {
+            wait_healthy(&format!("venus-{service}-1"));
+        }
+        let out = docker(&args);
+        if out.status.success() {
+            return;
+        }
+        assert!(
+            attempt < 5,
+            "docker {}\n{}\n{}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// Docker reports a container `unhealthy` while paused and until its next probe
+/// after unpause. `compose up --wait` fails on that instead of waiting.
+fn wait_healthy(id: &str) {
+    for _ in 0..60 {
+        let out = docker(&[
+            "inspect",
+            "-f",
+            "{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+            id,
+        ]);
+        let text = String::from_utf8_lossy(&out.stdout);
+        if text.trim() != "true unhealthy" {
+            return;
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
 }
 
 fn service_id(service: &str) -> String {

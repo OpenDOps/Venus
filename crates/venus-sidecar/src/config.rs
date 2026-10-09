@@ -21,8 +21,8 @@ pub const DEFAULT_CORS_ORIGINS: [&str; 6] = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
+    "http://localhost:28700",
+    "http://127.0.0.1:28700",
 ];
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ impl Config {
         let listen = env::var("SIDECAR_LISTEN")
             .ok()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "0.0.0.0:3002".into())
+            .unwrap_or_else(|| "0.0.0.0:28720".into())
             .parse()
             .context("SIDECAR_LISTEN")?;
         let owner = env::var("SIDECAR_OWNER")

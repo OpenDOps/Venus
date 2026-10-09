@@ -502,6 +502,9 @@ impl Writer {
             for node in missed {
                 self.mark_lagging(set_id, &node, entry.lsn).await?;
             }
+            if pending > 0 {
+                self.settle_late(set_id, entry.lsn, rx);
+            }
             self.log
                 .lock()
                 .await
@@ -550,21 +553,67 @@ impl Writer {
     }
 
     async fn mark_lagging(&self, set_id: &str, node: &str, lsn: i64) -> anyhow::Result<()> {
-        {
-            let mut sets = self.sets.lock().await;
-            if let Some(set) = sets.get_mut(set_id) {
-                if let Some(copy) = set.copies.get_mut(node) {
-                    copy.state = "lagging".to_string();
+        mark_lagging(
+            &self.cluster,
+            &self.sets,
+            &self.lagged_at,
+            set_id,
+            node,
+            lsn,
+        )
+        .await
+    }
+
+    /// The ack returned before every copy answered. A copy that later fails,
+    /// times out, or replies `gap` / `divergent` is missing `lsn`: it goes
+    /// `lagging` instead of staying in the live stream.
+    fn settle_late(
+        &self,
+        set_id: &str,
+        lsn: i64,
+        mut rx: mpsc::Receiver<(String, anyhow::Result<ApplyReply>)>,
+    ) {
+        let cluster = self.cluster.clone();
+        let sets = Arc::clone(&self.sets);
+        let lagged_at = Arc::clone(&self.lagged_at);
+        let stopped = Arc::clone(&self.stopped);
+        let set_id = set_id.to_string();
+        tokio::spawn(async move {
+            while let Some((node, result)) = rx.recv().await {
+                let failed_transport = match &result {
+                    Ok(reply) if matches!(reply.status, ApplyStatus::Ok | ApplyStatus::Already) => {
+                        let mut sets = sets.lock().await;
+                        if let Some(copy) = sets
+                            .get_mut(&set_id)
+                            .and_then(|set| set.copies.get_mut(&node))
+                        {
+                            copy.applied = copy.applied.max(reply.applied_lsn);
+                        }
+                        continue;
+                    }
+                    Ok(reply) if reply.status == ApplyStatus::Fenced => {
+                        stopped.store(true, Ordering::Relaxed);
+                        continue;
+                    }
+                    Ok(_) => false,
+                    Err(err) => transport(err),
+                };
+                // Catch-up may have filled the copy while this reply was in flight.
+                let missing = {
+                    let sets = sets.lock().await;
+                    sets.get(&set_id)
+                        .and_then(|set| set.copies.get(&node))
+                        .is_some_and(|copy| copy.applied < lsn)
+                };
+                if !missing {
+                    continue;
+                }
+                let _ = mark_lagging(&cluster, &sets, &lagged_at, &set_id, &node, lsn).await;
+                if failed_transport {
+                    cluster.disconnect(&node).await;
                 }
             }
-        }
-        store::set_copy_state(self.cluster.pool(), set_id, node, "lagging").await?;
-        self.lagged_at
-            .lock()
-            .await
-            .entry(node.to_string())
-            .or_insert(lsn);
-        Ok(())
+        });
     }
 
     /// Drop log entries every in-sync copy has already applied. A copy that is
@@ -591,6 +640,31 @@ impl Writer {
             .or_default()
             .retain(|entry| entry.lsn > floor);
     }
+}
+
+async fn mark_lagging(
+    cluster: &Cluster,
+    sets: &Mutex<HashMap<String, SetRt>>,
+    lagged_at: &Mutex<HashMap<String, i64>>,
+    set_id: &str,
+    node: &str,
+    lsn: i64,
+) -> anyhow::Result<()> {
+    {
+        let mut sets = sets.lock().await;
+        if let Some(set) = sets.get_mut(set_id) {
+            if let Some(copy) = set.copies.get_mut(node) {
+                copy.state = "lagging".to_string();
+            }
+        }
+    }
+    store::set_copy_state(cluster.pool(), set_id, node, "lagging").await?;
+    lagged_at
+        .lock()
+        .await
+        .entry(node.to_string())
+        .or_insert(lsn);
+    Ok(())
 }
 
 fn spawn_lane(

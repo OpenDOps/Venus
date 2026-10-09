@@ -194,22 +194,22 @@ try {
 }
 
 compose(['up', '--build', '-d', '--wait', 'postgres', 'hub']);
-await waitHub(3000, 'hub A');
+await waitHub(28710, 'hub A');
 
 const doc = new Y.Doc();
 const providerA = new VenusHubProvider(
-  `ws://127.0.0.1:3000/collaboration/${WORKSPACE_ID}`,
+  `ws://127.0.0.1:28710/collaboration/${WORKSPACE_ID}`,
 );
 providerA.connect('spike', doc);
 await withReady(providerA, 15_000);
 console.log(`A holds lease workspace=${WORKSPACE_ID}`);
 
 compose(['--profile', 'ha', 'up', '--build', '-d', '--wait', 'hub-b']);
-await waitHub(3001, 'hub B');
+await waitHub(28712, 'hub B');
 
-const refused = await wsUpgrade(3001, WORKSPACE_ID);
+const refused = await wsUpgrade(28712, WORKSPACE_ID);
 if (refused.status === 101) {
-  throw new Error('hub-b must not apply a second live doc (WS upgraded on :3001)');
+  throw new Error('hub-b must not apply a second live doc (WS upgraded on :28712)');
 }
 if (refused.status !== 503) {
   throw new Error(
@@ -248,7 +248,7 @@ const deadline = Date.now() + 20_000;
 let last = '';
 while (Date.now() < deadline) {
   try {
-    await wsHasDrain(3001, drainId, 'hub-b after A drain');
+    await wsHasDrain(28712, drainId, 'hub-b after A drain');
     last = '';
     break;
   } catch (err) {
@@ -262,7 +262,7 @@ if (last) {
 
 const b = new Y.Doc();
 const providerB = new VenusHubProvider(
-  `ws://127.0.0.1:3001/collaboration/${WORKSPACE_ID}`,
+  `ws://127.0.0.1:28712/collaboration/${WORKSPACE_ID}`,
 );
 try {
   providerB.connect('spike', b);
@@ -277,5 +277,5 @@ try {
 
 compose(['--profile', 'ha', 'stop', 'hub-b']);
 compose(['up', '-d', '--wait', 'hub']);
-await waitHub(3000, 'product hub restored');
+await waitHub(28710, 'product hub restored');
 console.log('compose-ha: second owner 503; SIGTERM flushed drain and dropped lease');

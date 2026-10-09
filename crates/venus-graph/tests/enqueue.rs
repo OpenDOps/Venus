@@ -320,25 +320,19 @@ struct World {
 fn world() -> &'static World {
     static WORLD: OnceLock<World> = OnceLock::new();
     WORLD.get_or_init(|| {
-        for name in ["venus-surreal-search-0", "venus-surreal-search-1"] {
+        for name in [
+            "venus-surreal-graph",
+            "venus-surreal-search-0",
+            "venus-surreal-search-1",
+        ] {
             let listed = docker(&["ps", "-aq", "--filter", &format!("name={name}")]);
             for id in String::from_utf8_lossy(&listed.stdout).split_whitespace() {
                 let _ = docker(&["unpause", id]);
+                wait_healthy(id);
             }
         }
-        compose(&[
-            "--profile",
-            "graph",
-            "up",
-            "-d",
-            "--wait",
-            "--wait-timeout",
-            "300",
-            "--no-deps",
-            "surreal-search-0",
-            "surreal-search-1",
-        ]);
-        for port in [8001_u16, 8002] {
+        graph_up(&["surreal-search-0", "surreal-search-1"]);
+        for port in [28731_u16, 28732] {
             wait_port(port);
         }
         let (graph_url, graph_container) = ensure_graph();
@@ -380,6 +374,7 @@ fn world() -> &'static World {
 }
 
 fn ensure_graph() -> (String, String) {
+    wait_healthy("venus-surreal-graph-1");
     let up = docker(&[
         "compose",
         "--profile",
@@ -392,8 +387,8 @@ fn ensure_graph() -> (String, String) {
         "--no-deps",
         "surreal-graph",
     ]);
-    if up.status.success() && surreal_on(8000) {
-        return ("http://127.0.0.1:8000".into(), service_id("surreal-graph"));
+    if up.status.success() && surreal_on(28730) {
+        return ("http://127.0.0.1:28730".into(), service_id("surreal-graph"));
     }
     let name = format!("venus-enqueue-graph-{}", std::process::id());
     let _ = docker(&["rm", "-f", &name]);
@@ -500,6 +495,59 @@ fn unpause_board(world: &World) {
         if !id.is_empty() {
             let _ = docker(&["unpause", &id]);
         }
+    }
+}
+
+/// `compose up --wait` fails at once on a container Docker still reports
+/// `unhealthy` after an unpause, or whose name a removal from another test
+/// binary still holds. Both clear within seconds.
+fn graph_up(services: &[&str]) {
+    let mut args = vec![
+        "compose",
+        "--profile",
+        "graph",
+        "up",
+        "-d",
+        "--wait",
+        "--wait-timeout",
+        "300",
+        "--no-deps",
+    ];
+    args.extend_from_slice(services);
+    for attempt in 1..=5 {
+        for service in services {
+            wait_healthy(&format!("venus-{service}-1"));
+        }
+        let out = docker(&args);
+        if out.status.success() {
+            return;
+        }
+        assert!(
+            attempt < 5,
+            "docker {}\n{}\n{}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// Docker reports a container `unhealthy` while paused and until its next probe
+/// after unpause. `compose up --wait` fails on that instead of waiting.
+fn wait_healthy(id: &str) {
+    for _ in 0..60 {
+        let out = docker(&[
+            "inspect",
+            "-f",
+            "{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+            id,
+        ]);
+        let text = String::from_utf8_lossy(&out.stdout);
+        if text.trim() != "true unhealthy" {
+            return;
+        }
+        thread::sleep(Duration::from_millis(500));
     }
 }
 

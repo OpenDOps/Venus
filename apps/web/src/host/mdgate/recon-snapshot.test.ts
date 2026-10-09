@@ -14,8 +14,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const webRoot = join(here, '../../..');
 const repoRoot = join(webRoot, '../..');
 
-const EXPORT_COMMAND = `curl -sSSf http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export -o /tmp/venus-page.yjs`;
-const EXPORT_URL = `http://127.0.0.1:3000/api/block/${WORKSPACE_ID}/export`;
+const EXPORT_COMMAND = `curl -sSSf http://127.0.0.1:28710/api/block/${WORKSPACE_ID}/export -o /tmp/venus-page.yjs`;
+const EXPORT_URL = `http://127.0.0.1:28710/api/block/${WORKSPACE_ID}/export`;
 const CONVERT_CLI = join(here, 'from-pinned-cli.js');
 
 function snapshotterSection(map: string): string {
@@ -39,7 +39,7 @@ function actualCells(section: string): string[] {
 
 async function hubRootBody(): Promise<string | null> {
   try {
-    const res = await fetch('http://127.0.0.1:3000/', {
+    const res = await fetch('http://127.0.0.1:28710/', {
       signal: AbortSignal.timeout(1500),
     });
     return (await res.text()).trim();
@@ -64,13 +64,13 @@ const exportIsAd = exportCt.includes('json');
 
 if (hubBody && hubBody !== 'venus-hub') {
   throw new Error(
-    `:3000 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
+    `:28710 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
   );
 }
 
 if (!hubUp) {
   console.warn(
-    'recon-snapshot.test.ts: skipping hub export spike — nothing on 127.0.0.1:3000. Start with pnpm sync:up.',
+    'recon-snapshot.test.ts: skipping hub export spike — nothing on 127.0.0.1:28710. Start with pnpm sync:up.',
   );
 } else if (!exportIsAd) {
   console.warn(
@@ -131,7 +131,7 @@ test('Map complete: Names — git snapshotter Actuals are concrete', () => {
   expect(section).toContain('60000');
   expect(section).toMatch(/POST .*\/flush/);
   expect(section).toContain('GET /git/log');
-  expect(section).toContain('127.0.0.1:3002');
+  expect(section).toContain('127.0.0.1:28720');
   expect(section).toMatch(/inflight/i);
   expect(section).toMatch(/pin at \*\*claim\*\*|pin at claim/i);
   expect(section).toMatch(/`jobs`/);

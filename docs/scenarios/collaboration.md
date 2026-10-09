@@ -10,7 +10,7 @@
 pnpm sync:up
 pnpm test:e2e:m1
 # or against Compose web:
-# PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 pnpm --filter @venus/web exec playwright test e2e/m1-two-tabs.spec.ts
+# PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:28700 pnpm --filter @venus/web exec playwright test e2e/m1-two-tabs.spec.ts
 ```
 
 Open tab B **after** A has the seed H1 (DoD: no double page).

@@ -14,10 +14,10 @@ function urlOf(input: RequestInfo | URL) {
 
 test('blobOriginFromSyncUrl maps ws to http origin', () => {
   expect(
-    blobOriginFromSyncUrl(`ws://127.0.0.1:3000${COLLABORATION_PATH}`),
-  ).toBe('http://127.0.0.1:3000');
+    blobOriginFromSyncUrl(`ws://127.0.0.1:28710${COLLABORATION_PATH}`),
+  ).toBe('http://127.0.0.1:28710');
   expect(
-    blobOriginFromSyncUrl(`ws://127.0.0.1:3000${COLLABORATION_PATH}`, {
+    blobOriginFromSyncUrl(`ws://127.0.0.1:28710${COLLABORATION_PATH}`, {
       sameOrigin: true,
     }),
   ).toBe('');
@@ -30,7 +30,7 @@ test('blobSourcesFromEnv is unset without VITE_SYNC_URL', () => {
 
 test('blobSourcesFromEnv uses VenusBlobSource when VITE_SYNC_URL is set', () => {
   const sources = blobSourcesFromEnv({
-    VITE_SYNC_URL: `ws://127.0.0.1:3000${COLLABORATION_PATH}`,
+    VITE_SYNC_URL: `ws://127.0.0.1:28710${COLLABORATION_PATH}`,
   });
   expect(sources?.main).toBeInstanceOf(VenusBlobSource);
   expect(sources?.main.name).toBe('venus');
@@ -82,7 +82,7 @@ test('VenusBlobSource POSTs bytes, GETs them, list is empty', async () => {
   try {
     const src = new VenusBlobSource({
       workspaceId: WORKSPACE_ID,
-      origin: 'http://127.0.0.1:3000',
+      origin: 'http://127.0.0.1:28710',
     });
     expect(await src.list()).toEqual([]);
     expect(await src.get('missing')).toBeNull();

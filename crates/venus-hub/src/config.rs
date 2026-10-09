@@ -58,7 +58,7 @@ impl Config {
         let listen = env::var("HUB_LISTEN")
             .ok()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "0.0.0.0:3000".into())
+            .unwrap_or_else(|| "0.0.0.0:28710".into())
             .parse()
             .context("HUB_LISTEN")?;
         let owner = env::var("HUB_OWNER")
@@ -145,14 +145,14 @@ fn hyphenated_uuid(id: &str) -> bool {
     })
 }
 
-/// Vite `:5173`/`:5174` and Compose `:8080`, both `localhost` and `127.0.0.1`.
+/// Vite `:5173`/`:5174` and Compose `:28700`, both `localhost` and `127.0.0.1`.
 pub const DEFAULT_CORS_ORIGINS: [&str; 6] = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
+    "http://localhost:28700",
+    "http://127.0.0.1:28700",
 ];
 
 pub fn default_cors_origins() -> Vec<String> {
@@ -722,7 +722,7 @@ mod tests {
         assert!(parse_cors_origins("").unwrap().is_empty());
         assert!(parse_cors_origins("   ").unwrap().is_empty());
         let six = parse_cors_origins(
-            "http://localhost:5173, http://127.0.0.1:5173, http://localhost:5174, http://127.0.0.1:5174, http://localhost:8080, http://127.0.0.1:8080",
+            "http://localhost:5173, http://127.0.0.1:5173, http://localhost:5174, http://127.0.0.1:5174, http://localhost:28700, http://127.0.0.1:28700",
         )
         .unwrap();
         assert_eq!(six, default_cors_origins());

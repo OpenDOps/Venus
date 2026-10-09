@@ -9,14 +9,14 @@
 ```bash
 pnpm test
 pnpm sync:up          # then hydrate once (app or pnpm test:e2e:m1)
-pnpm test             # advertisement GET runs when hub is on :3000
+pnpm test             # advertisement GET runs when hub is on :28710
 ```
 
 Exact GET: api-map **Export advertisement**. Product bytes: **Export RPC** (`Hub.ExportDoc`). [runbook](../runbook.md#sync-m1).
 
 ## Vitest
 
-`snapshot.test.ts` checks the api-map GET string and, when `:3000` is up, that the body has **no** root `error` and lists home + catalog. Decode of Yjs is `ExportDoc` (step-spaces). There is no editor export button.
+`snapshot.test.ts` checks the api-map GET string and, when `:28710` is up, that the body has **no** root `error` and lists home + catalog. Decode of Yjs is `ExportDoc` (step-spaces). There is no editor export button.
 
 | Spec | Proves |
 |---|---|
@@ -26,4 +26,4 @@ Exact GET: api-map **Export advertisement**. Product bytes: **Export RPC** (`Hub
 | `snapshot.test.ts` — Reachable | GET `/export` **200** JSON; `advertisement.kind === doc_export`; `http_export === false` |
 | `snapshot.test.ts` — `?doc=` | **400** `error.code === export_http_disabled` with `advertisement` |
 
-Reachable **skips** when nothing listens on `127.0.0.1:3000` so `pnpm test` stays Docker-free. If the hub is up and GET is empty, not JSON, or has `error` on the bare path, they **fail**.
+Reachable **skips** when nothing listens on `127.0.0.1:28710` so `pnpm test` stays Docker-free. If the hub is up and GET is empty, not JSON, or has `error` on the bare path, they **fail**.

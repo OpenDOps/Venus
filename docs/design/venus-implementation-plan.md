@@ -120,7 +120,7 @@ Do not put hunks or threads in the published block schema. Hunk cards may sit in
 
 Single-workspace local users: display name + id in a config file or hub awareness. Lease `holder` is that id.
 
-**Leftover — authorization module (separately designed).** Who may open a `workspace_id`, apply Yjs, GET export, or POST/DELETE blobs is **not** in this milestone list and **not** the hub merge buffer. Do not bolt tokens onto `handle_socket`. Do not fold OIDC / sessions / ACLs into [M3.0](#m30--venus-hub-replace-keck-week). Write a design (and plan) when that work starts. Until then, Compose `hub:3000` is a local/trusted-network write surface. Awareness display names are not authorization.
+**Leftover — authorization module (separately designed).** Who may open a `workspace_id`, apply Yjs, GET export, or POST/DELETE blobs is **not** in this milestone list and **not** the hub merge buffer. Do not bolt tokens onto `handle_socket`. Do not fold OIDC / sessions / ACLs into [M3.0](#m30--venus-hub-replace-keck-week). Write a design (and plan) when that work starts. Until then, Compose `hub:28710` is a local/trusted-network write surface. Awareness display names are not authorization.
 
 ## Bindings (the actual glue)
 

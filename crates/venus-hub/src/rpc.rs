@@ -21,7 +21,7 @@ pub const CODE_DOC_DELETED: &str = "doc_deleted";
 
 pub const GRPC_SERVICE: &str = "venus.hub.v1.Hub";
 pub const GRPC_LISTEN_ENV: &str = "HUB_GRPC_LISTEN";
-pub const GRPC_LISTEN_DEFAULT: &str = "0.0.0.0:3100";
+pub const GRPC_LISTEN_DEFAULT: &str = "0.0.0.0:28711";
 
 /// Root `error` object. Callers treat any present `error` as failure.
 pub fn error_body(code: &str, message: &str) -> Value {

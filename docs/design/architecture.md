@@ -26,7 +26,7 @@ Words: [glossary.md](./glossary.md). Prototype CRDT stack: [CRDT/README.md](./CR
 
 ## Dataflow (M3.0)
 
-M1 proved the wire on **keck**. Product collab is the **Venus hub** (`hub:3000`): [hub](./components/backend/hub/). Postgres tables are `crdt_*` (not `jwst` docs). The browser wire did not change (`AFFiNE` + y-protocols).
+M1 proved the wire on **keck**. Product collab is the **Venus hub** (`hub:28710`): [hub](./components/backend/hub/). Postgres tables are `crdt_*` (not `jwst` docs). The browser wire did not change (`AFFiNE` + y-protocols).
 
 ```mermaid
 flowchart TB
@@ -36,7 +36,7 @@ flowchart TB
   end
 
   ws["SyncProvider kind venus<br/>VenusHubProvider<br/>Yjs update v1 · y-protocols/sync<br/>WebSocket subprotocol AFFiNE"]
-  hub["Venus hub<br/>Compose hub :3000<br/>Rust + y-octo<br/>/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00"]
+  hub["Venus hub<br/>Compose hub :28710<br/>Rust + y-octo<br/>/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00"]
   pg[("Postgres<br/>Compose postgres<br/>crdt_snapshot / crdt_update<br/>blob / workspace_lease / dirty<br/>volume pg-venus-data")]
 
   tabA --> ws
@@ -59,7 +59,7 @@ flowchart TB
 
 Stock **`y-websocket` is not on this diagram.** The wire is hub + `AFFiNE`. The unused `y-websocket` kind in code is not a Hocuspocus target. Persist hosted is Postgres. See [CRDT](./CRDT/README.md#seam). How the hub process works: [hub](./components/backend/hub/).
 
-Compose **`web`** (nginx on `:8080`) is a same-origin reverse proxy in front of **`hub:3000`**. It is not a fourth store. Vite `pnpm dev` still opens WS to `:3000` and proxies `/api`. How the containers run: [devops/compose](../devops/compose.md).
+Compose **`web`** (nginx on `:28700`) is a same-origin reverse proxy in front of **`hub:28710`**. It is not a fourth store. Vite `pnpm dev` still opens WS to `:28710` and proxies `/api`. How the containers run: [devops/compose](../devops/compose.md).
 
 ## Elements
 

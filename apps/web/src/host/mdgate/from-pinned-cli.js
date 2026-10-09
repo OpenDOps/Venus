@@ -7,7 +7,7 @@
  * not import the spectator pane or RAM splice exporter.
  *
  * Usage (cwd anywhere):
- *   VENUS_BLOB_ORIGIN=http://127.0.0.1:3000 node from-pinned-cli.js /tmp/venus-page.yjs
+ *   VENUS_BLOB_ORIGIN=http://127.0.0.1:28710 node from-pinned-cli.js /tmp/venus-page.yjs
  *   node from-pinned-cli.js -   # stdin
  * stdout: JSON `{ markdown, sidecar }`. Vite noise stays off stdout.
  */

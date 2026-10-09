@@ -34,14 +34,14 @@ COPY --from=rust-build --chown=venus:venus /src/target/release/venus-sidecar /us
 COPY --from=node-deps --chown=venus:venus /src /opt/venus
 RUN mkdir -p /wiki && chown venus:venus /wiki
 
-ENV SIDECAR_LISTEN=0.0.0.0:3002
+ENV SIDECAR_LISTEN=0.0.0.0:28720
 ENV CONVERT_CWD=/opt/venus/apps/web
 ENV CONVERT_CLI=/opt/venus/apps/web/src/host/mdgate/from-pinned-cli.js
-ENV VENUS_BLOB_ORIGIN=http://hub:3000
+ENV VENUS_BLOB_ORIGIN=http://hub:28710
 ENV WIKI_DIR=/wiki
 ENV HOME=/home/venus
 
-EXPOSE 3002
+EXPOSE 28720
 USER venus
 WORKDIR /opt/venus
 CMD ["venus-sidecar"]

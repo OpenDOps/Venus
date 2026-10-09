@@ -80,7 +80,7 @@ export class VenusHubProvider {
   connection = 'synced';
 
   /**
-   * @param {string} url full WS URL, e.g. ws://127.0.0.1:3000/collaboration/<workspace uuid>
+   * @param {string} url full WS URL, e.g. ws://127.0.0.1:28710/collaboration/<workspace uuid>
    * @param {{ sockets?: { failed: boolean, open: (url: string) => WebSocket, stats?: () => Promise<unknown> } | null }} [options]
    *   `sockets` = SharedWorker fan-in of the same wire A URLs. Unset or
    *   `failed` → one WebSocket per session in this tab.

@@ -67,7 +67,7 @@ The hub is **stateless** besides Postgres and in-memory rooms. `docker compose d
 Browsers already have the tree over the socket. **Other clients** (sidecar, later lease/git) are not in that session. They read the **current** Y.Doc over **gRPC** (`venus.hub.v1.Hub/ExportDoc`). GET `/api/block/:workspace/export` is advertisement JSON (available docs, `?doc=` / gRPC how-to). It does **not** return Yjs. Envelope: [rpc.md](../rpc.md).
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
+curl -sSSf http://127.0.0.1:28710/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
 # JSON advertisement — check there is no root "error"
 ```
 

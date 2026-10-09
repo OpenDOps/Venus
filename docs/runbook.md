@@ -30,25 +30,25 @@ pnpm dev
 
 Same as `pnpm --filter @venus/web dev` (Vite). Default URL is the Vite printout, usually `http://localhost:5173`.
 
-M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). **M3.0 hub** is the product collab server ([hub](./design/components/backend/hub/)). **M3 git snapshotter is done** (2026-09-14): Flush writes nested `wiki/`; clone it elsewhere and read markdown ([M3](./design/M3/README.md)). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **hub** + **web** (http://127.0.0.1:8080), refresh and a second tab keep the page. Host Flush + git log need `VITE_SIDECAR_URL` and Compose **sidecar** (`--profile snapshot`). `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **[M4 — folder tree](./design/M4/README.md)** (gated on M3 closed). Adapter: [MDGate](./design/MDGate/README.md).
+M0 is **done** (2026-08-29). M1 is **done** (2026-08-30). M2 is **done** (2026-08-30). **M3.0 hub** is the product collab server ([hub](./design/components/backend/hub/)). **M3 git snapshotter is done** (2026-09-14): Flush writes nested `wiki/`; clone it elsewhere and read markdown ([M3](./design/M3/README.md)). `pnpm dev` serves a **full-viewport page editor** (title “Venus”, seeded H1 “Why Venus” / H2 “Empty host”) with a read-only **markdown source** pane on the left (highlight.js) and BlockSuite’s in-page outline on the right. Type, slash menu, and undo work. The markdown pane follows WYSIWYG without reload. Click a heading in the outline to scroll. Without `VITE_SYNC_URL`, refresh drops typed text (`MemoryNoopProvider`). With Compose **postgres** + **hub** + **web** (http://127.0.0.1:28700), refresh and a second tab keep the page. Host Flush + git log need `VITE_SIDECAR_URL` and Compose **sidecar** (`--profile snapshot`). `pnpm dev` stays memory-only until `VITE_SYNC_URL` is set. Next is **[M4 — folder tree](./design/M4/README.md)** (gated on M3 closed). Adapter: [MDGate](./design/MDGate/README.md).
 
 Browser console noise from extensions (`contentscript.js`, MetaMask, ObjectMultiplex) is not Venus.
 
 ## Sync (hub)
 
-Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/backend/hub/)). The browser talks to the hub on `127.0.0.1:3000`; Postgres is not published. Host ports bind localhost only. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
+Postgres and the Venus hub are **separate** Compose services. The hub is MIT/Apache (`deploy/NOTICE`, [hub](./design/components/backend/hub/)). The browser talks to the hub on `127.0.0.1:28710`; Postgres is not published. Host ports bind localhost only. `pnpm dev` does **not** start these. Map of the stack: [devops/compose](./devops/compose.md).
 
 ```bash
 docker compose up --build postgres hub
 # same as: pnpm sync:up
 ```
 
-Wait until hub logs `listening on 0.0.0.0:3000` and `docker compose ps` shows both services running. Health:
+Wait until hub logs `listening on 0.0.0.0:28710` and `docker compose ps` shows both services running. Health:
 
 ```bash
-curl -sSSf -X POST http://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
+curl -sSSf -X POST http://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
 # {"protocol":"AFFiNE"}
-curl -sSSf http://127.0.0.1:3000/
+curl -sSSf http://127.0.0.1:28710/
 # venus-hub
 ```
 
@@ -57,7 +57,7 @@ Persist across `restart hub` and `down` without `-v`: `pnpm compose:dod`. Second
 **Doc export** (advertisement JSON; Yjs is gRPC `Hub.ExportDoc`):
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
+curl -sSSf http://127.0.0.1:28710/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
 ```
 
 JSON `{ "advertisement": { … } }` with **no** root `error`. Lists home + catalog and how to call gRPC. `?doc=` on this GET is **400** `export_http_disabled`. Contract: [rpc.md](./design/rpc.md). api-map **Export advertisement**. After the page has been hydrated at least once, `ExportDoc` (when the server is up) returns more than a trivial empty update. Vitest: `apps/web/src/host/snapshot.test.ts` (advertisement GET). [Doc export scenarios](./scenarios/doc-export.md).
@@ -77,10 +77,10 @@ Point Vite at the hub (does not start Compose; `pnpm dev` stays memory-only with
 
 ```bash
 # apps/web/.env — not required; copy from .env.example
-VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
+VITE_SYNC_URL=ws://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00
 ```
 
-Or one-shot: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 pnpm dev`.
+Or one-shot: `VITE_SYNC_URL=ws://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 pnpm dev`.
 
 M1 Playwright against host Vite (Compose hub must already be up):
 
@@ -92,7 +92,7 @@ That starts Vite on `127.0.0.1:5174` with `VITE_SYNC_URL` so it does not reuse m
 
 ## Deploy (Compose web)
 
-Three services, one command. **Web service URL:** http://127.0.0.1:8080
+Three services, one command. **Web service URL:** http://127.0.0.1:28700
 
 ```bash
 docker compose up --build
@@ -104,7 +104,7 @@ Wait until `docker compose ps` shows `postgres`, `hub`, and `web` running (web h
 Playwright against nginx instead of Vite:
 
 ```bash
-PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 pnpm --filter @venus/web test:e2e:m1
+PLAYWRIGHT_M1=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:28700 pnpm --filter @venus/web test:e2e:m1
 ```
 
 Kubernetes is not in M1: [devops/kubernetes](./devops/kubernetes.md).
@@ -117,7 +117,7 @@ Kubernetes is not in M1: [devops/kubernetes](./devops/kubernetes.md).
 pnpm test
 ```
 
-Same as `pnpm --filter @venus/web test` → `vitest run`. Node only (no browser). `snapshot.test.ts` Reachable / Decodes **skip** when nothing listens on `127.0.0.1:3000`, so machines without Docker still get a green `pnpm test`. With `pnpm sync:up` and `doc:home` hydrated, those tests run and must pass. `compose.test.ts` parses `docker-compose.yml` always; `docker compose config --services` runs when the daemon is up.
+Same as `pnpm --filter @venus/web test` → `vitest run`. Node only (no browser). `snapshot.test.ts` Reachable / Decodes **skip** when nothing listens on `127.0.0.1:28710`, so machines without Docker still get a green `pnpm test`. With `pnpm sync:up` and `doc:home` hydrated, those tests run and must pass. `compose.test.ts` parses `docker-compose.yml` always; `docker compose config --services` runs when the daemon is up.
 
 Watch mode (from `apps/web`, or via filter):
 
@@ -133,7 +133,7 @@ pnpm test:e2e
 
 Memory-only: `e2e/m0-*.spec.ts` and `e2e/m2-*.spec.ts`. Ignores `m1-*.spec.ts`. If a stale Vite is bound to 5173, kill it first — `reuseExistingServer` will reuse a broken process.
 
-M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:8080` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out), [Manual testing (M2)](#manual-testing-m2-close-out), [Manual testing (M3)](#manual-testing-m3-close-out), and [Manual testing (M4)](#manual-testing-m4-close-out). M4 e2e: `pnpm test:e2e:m4` (Compose `hub` + `sidecar`); after a Flush, `pnpm wiki:verify` checks the git tree against the catalog.
+M1 e2e (`e2e/m1-*.spec.ts` including `m1-smoke.spec.ts`) needs Compose **hub** up, then `pnpm test:e2e:m1`. Doc export is Vitest (`snapshot.test.ts`), not Playwright. Compose `web` on `:28700` is [scenarios/compose](./scenarios/compose.md). Person-in-browser close-out is [Manual testing (M1)](#manual-testing-m1-close-out), [Manual testing (M2)](#manual-testing-m2-close-out), [Manual testing (M3)](#manual-testing-m3-close-out), and [Manual testing (M4)](#manual-testing-m4-close-out). M4 e2e: `pnpm test:e2e:m4` (Compose `hub` + `sidecar`); after a Flush, `pnpm wiki:verify` checks the git tree against the catalog.
 
 ## Manual testing (M0 close-out)
 
@@ -158,17 +158,17 @@ If any step fails, M0 is not done. Fix the host; do not fake UI.
 
 First-paragraph `hello` / `from-a-…` / `from-b-…` mash on an old volume is leftover e2e typing (persist working). Title **Venus** and outline H1/H2 still count as seed. Wipe with `docker compose down -v` only if you want a clean note.
 
-1. From the repo root: `pnpm compose:up` (or confirm `docker compose ps` shows `postgres`, `hub`, and `web` healthy). Open **http://127.0.0.1:8080** (Compose `web`, not Vite `:5173`).
+1. From the repo root: `pnpm compose:up` (or confirm `docker compose ps` shows `postgres`, `hub`, and `web` healthy). Open **http://127.0.0.1:28700** (Compose `web`, not Vite `:5173`).
 2. **Seed.** Do not type yet. Title is **Venus**. Body has H1 **Why Venus** and H2 **Empty host**. The right-hand outline lists those headings only — no folders or other pages.
 3. **Type.** Click the **empty paragraph at the top of the note**, not the title. Type `hello`. It appears in the note.
 4. **Refresh.** Reload. `hello` is **still there**. Outline still matches (this fails M1 if it behaves like M0).
 5. **Second tab.** Open the same URL in a second tab. It shows `hello` without typing. Type `tab-b` in B; A shows `tab-b` without reload.
 6. **Image.** In A, insert an image (slash **Image** or paste). It renders. B shows the same image. Reload A; the image remains.
-7. **WS.** DevTools → Network → **WS**: a sync socket is open to `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` (same origin `:8080`, or `:3000` if you used host Vite). Not “no WS” like M0.
+7. **WS.** DevTools → Network → **WS**: a sync socket is open to `/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` (same origin `:28700`, or `:28710` if you used host Vite). Not “no WS” like M0.
 8. **Export advertisement.** From a terminal (no tab required):
 
 ```bash
-curl -sSSf http://127.0.0.1:3000/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
+curl -sSSf http://127.0.0.1:28710/api/block/77e4a2b1-8b40-5979-a73c-fd4477216d00/export
 ```
 
 Exit 0. JSON with `advertisement.kind = doc_export` and **no** root `error`. Yjs bytes are gRPC, not this GET.
@@ -179,17 +179,17 @@ If any required step fails, M1 is not done. Fix provider, hydrate, blobs, or the
 
 ## Manual testing (M2 close-out)
 
-**Passed 2026-08-30** (live pane on Compose `:8080`; memory path below). Playwright does **not** replace this. Use Chrome or Firefox yourself. Fail on uncaught exceptions from the host or BlockSuite. Ignore extension noise (`contentscript.js`, MetaMask, ObjectMultiplex).
+**Passed 2026-08-30** (live pane on Compose `:28700`; memory path below). Playwright does **not** replace this. Use Chrome or Firefox yourself. Fail on uncaught exceptions from the host or BlockSuite. Ignore extension noise (`contentscript.js`, MetaMask, ObjectMultiplex).
 
 There is **no markdown mode switch**. Layout is three columns: markdown **source** (left), WYSIWYG (middle), outline (right).
 
-1. From the repo root: `pnpm dev`. Open the Vite URL (usually `http://localhost:5173`). **Not** Compose `:8080` for this memory path.
+1. From the repo root: `pnpm dev`. Open the Vite URL (usually `http://localhost:5173`). **Not** Compose `:28700` for this memory path.
 2. **Source, not a preview.** Left pane shows `# Why Venus` and `## Empty host` as markdown (hash signs visible, token-colored). It is not a second rendered page. Outline on the right still lists those headings.
 3. **Type.** Click the **empty paragraph at the top of the note**, not the title. Type a unique word (e.g. `m2-hello`). It appears in the note **and** in the left pane **without reload**. Tokens stay colored.
 4. **Read-only.** Click the left pane and type. Nothing is inserted. The element is not `contenteditable`.
 5. **Refresh (memory).** Reload. The unique word is **gone**. Seed title + H1/H2 are back. Pane matches the seed source again (same as M0 persist).
 6. **No git.** There is no `wiki/` in the repo from this milestone. The pane is RAM only.
-7. **Optional Compose.** `pnpm compose:up`, open **http://127.0.0.1:8080**. Type a unique word; pane updates; reload **keeps** the word **and** the pane still matches (M1 persist). Not required to close M2. Opt-in extra blocks: `?md-demo=1` (appends once; numbered lists, fences, linked-doc comment). Rebuild `web` after host changes (`docker compose up --build -d web`).
+7. **Optional Compose.** `pnpm compose:up`, open **http://127.0.0.1:28700**. Type a unique word; pane updates; reload **keeps** the word **and** the pane still matches (M1 persist). Not required to close M2. Opt-in extra blocks: `?md-demo=1` (appends once; numbered lists, fences, linked-doc comment). Rebuild `web` after host changes (`docker compose up --build -d web`).
 8. **Optional two tabs (M1).** Same URL in a second tab. Type a unique word in A; B’s **note** (not only the pane) should show it without reload. If B stays stale, check hub logs (`docker compose logs hub`) — y-octo apply must not panic. Do not `docker compose down -v` unless you want a clean seed.
 
 If any required step (1–6) fails, M2 is not done. Fix the exporter or the pane loop; do not hide jitter by stripping whitespace. Full contract: [M2 step 8](./design/M2/plan.md#8-step-verify). Specs: [scenarios/markdown-projection](./scenarios/markdown-projection.md).
@@ -200,7 +200,7 @@ Keep this checklist for close-out and regression. Playwright (`pnpm test:e2e:m3`
 
 Clone-elsewhere without the editor is `cargo test -p venus-sidecar --test verify` (CI). After a real Flush, `pnpm wiki:clone` copies `wiki/` to `/tmp/venus-wiki-clone`.
 
-1. From the repo root: `mkdir -p wiki && chmod a+rwx wiki`, then `docker compose --profile snapshot up --build postgres hub sidecar` (or `pnpm compose:up` plus `--profile snapshot` sidecar). Host Vite: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` and `VITE_SIDECAR_URL=http://127.0.0.1:3002` (see `apps/web/.env.example`). Open the Vite URL on **:5174** if you copy the M3 Playwright ports, or Compose **http://127.0.0.1:8080** if `web` bakes `VITE_SIDECAR_URL`.
+1. From the repo root: `mkdir -p wiki && chmod a+rwx wiki`, then `docker compose --profile snapshot up --build postgres hub sidecar` (or `pnpm compose:up` plus `--profile snapshot` sidecar). Host Vite: `VITE_SYNC_URL=ws://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` and `VITE_SIDECAR_URL=http://127.0.0.1:28720` (see `apps/web/.env.example`). Open the Vite URL on **:5174** if you copy the M3 Playwright ports, or Compose **http://127.0.0.1:28700** if `web` bakes `VITE_SIDECAR_URL`.
 2. **Seed.** Title **Venus**. Body has H1 **Why Venus** and H2 **Empty host**. Flush and git-log chrome are visible (`data-testid="venus-flush"` / `venus-git-log`).
 3. **Type.** Click the empty paragraph at the top of the note. Type a unique word (e.g. `m3-hello`). Wait ~2s for persist.
 4. **Flush.** Click **Flush**. No review why. The editor stays editable (not `readonly`).
@@ -219,8 +219,8 @@ If any required step fails, M3 is not done. Fix the sidecar or host chrome; do n
 
 **Setup**
 
-1. From the repo root: `mkdir -p wiki && chmod a+rwx wiki`, then `docker compose --profile snapshot up --build -d postgres hub sidecar`. Rebuild after Rust changes: an old sidecar image answers `404` on `GET http://127.0.0.1:3002/flush/status`.
-2. Host Vite with Flush chrome: `VITE_SYNC_URL=ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 VITE_SIDECAR_URL=http://127.0.0.1:3002 VITE_DEBUG=1 pnpm --filter @venus/web dev`. Open **http://127.0.0.1:5173**. Other ports are not in `SIDECAR_CORS_ORIGINS`, so Flush and git log fail with `Failed to fetch`. Compose `web` on `:8080` has no debug bar; Flush there with `curl -X POST http://127.0.0.1:3002/flush`. Dev Vite serves ~3,500 unbundled modules, so a first load of 2–3 s is normal; the production build loads in ~0.5 s.
+1. From the repo root: `mkdir -p wiki && chmod a+rwx wiki`, then `docker compose --profile snapshot up --build -d postgres hub sidecar`. Rebuild after Rust changes: an old sidecar image answers `404` on `GET http://127.0.0.1:28720/flush/status`.
+2. Host Vite with Flush chrome: `VITE_SYNC_URL=ws://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00 VITE_SIDECAR_URL=http://127.0.0.1:28720 VITE_DEBUG=1 pnpm --filter @venus/web dev`. Open **http://127.0.0.1:5173**. Other ports are not in `SIDECAR_CORS_ORIGINS`, so Flush and git log fail with `Failed to fetch`. Compose `web` on `:28700` has no debug bar; Flush there with `curl -X POST http://127.0.0.1:28720/flush`. Dev Vite serves ~3,500 unbundled modules, so a first load of 2–3 s is normal; the production build loads in ~0.5 s.
 3. **Baseline.** Click **Flush**, then `pnpm wiki:verify`. It must print `ok`. A page created before the H2 fix has a catalog row and no body on the hub; verify names it `(no page body on the hub: H2 legacy page)`. It cannot be opened (`EmptyPageSyncError`). Select it in the tree, **Delete**, Flush, verify again.
 
 **Steps**
@@ -232,7 +232,7 @@ If any required step fails, M3 is not done. Fix the sidecar or host chrome; do n
 5. **Header undo / redo.** Open `protocol`, type `undo-me`. **Undo** removes it, **Redo** brings it back; ⌘Z / ⇧⌘Z (Ctrl on Linux) do the same. Undo is disabled with nothing to undo. The right-hand outline lists headings only, never folders or pages.
 6. **Delete a leaf.** Create another page and open it. **Delete** is hidden on `home`, on `spec`, and on a folder with children. Delete the open page: the editor switches to home. Flush. `git show --name-status HEAD` shows `D spec/<uuid>.md`.
 7. **Clone.** `pnpm wiki:clone` (home is markdown, not Yjs) and `pnpm wiki:verify` (prints `ok`). Compare the tree on screen with `find /tmp/venus-m4-verify -name '*.md' -not -path '*/.git/*'`: same folders, same file names. `/tmp/venus-m4-verify/spec/design/protocol.md` contains `hello-m4`. `git -C wiki status --short` is empty.
-8. **Two tabs.** Open the same URL in a second tab of the same window. In the console `__VENUS_HUB_TRANSPORT__` is `'shared-worker'` (Chrome, Firefox) or `'tab'` (no SharedWorker). With `shared-worker`, `chrome://inspect/#workers` lists `venus-hub:ws://127.0.0.1:3000/…` and the page's Network → WS has no `/collaboration` socket. Rename a page in A: B's tree updates without reload. Type in B's page: A shows it. The per-tab path (`'tab'`) is covered by `m4-shared-worker` Fallback and by `m4-tree`, which run without SharedWorker.
+8. **Two tabs.** Open the same URL in a second tab of the same window. In the console `__VENUS_HUB_TRANSPORT__` is `'shared-worker'` (Chrome, Firefox) or `'tab'` (no SharedWorker). With `shared-worker`, `chrome://inspect/#workers` lists `venus-hub:ws://127.0.0.1:28710/…` and the page's Network → WS has no `/collaboration` socket. Rename a page in A: B's tree updates without reload. Type in B's page: A shows it. The per-tab path (`'tab'`) is covered by `m4-shared-worker` Fallback and by `m4-tree`, which run without SharedWorker.
 9. **Reload.** Reload both tabs. Tree, names, the card, and the page text are unchanged.
 
 Record date, browser, and `__VENUS_HUB_TRANSPORT__` under `step-verify` → **Manual path** in [M4.state.yaml](./design/M4/M4.state.yaml). If any step fails, M4 is not done. Full contract: [M4 step 9](./design/M4/plan.md#9-step-verify).

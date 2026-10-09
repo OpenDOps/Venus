@@ -7,9 +7,9 @@ const isM4 = process.env.PLAYWRIGHT_M4 === '1';
 const composeWeb = process.env.PLAYWRIGHT_BASE_URL;
 const syncUrl =
   process.env.VITE_SYNC_URL ??
-  `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
 const sidecarUrl =
-  process.env.VITE_SIDECAR_URL ?? 'http://127.0.0.1:3002';
+  process.env.VITE_SIDECAR_URL ?? 'http://127.0.0.1:28720';
 
 if (composeWeb && !isM1 && !isM3 && !isM4) {
   throw new Error(

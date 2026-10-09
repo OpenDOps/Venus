@@ -65,7 +65,7 @@ fn world() -> &'static World {
     static WORLD: OnceLock<World> = OnceLock::new();
     WORLD.get_or_init(|| {
         sweep_scratch();
-        for port in [8001_u16, 8002] {
+        for port in [28731_u16, 28732] {
             let listed = docker(&["ps", "--format", "{{.Names}}\t{{.Ports}}"]);
             let text = String::from_utf8_lossy(&listed.stdout);
             let needle = format!(":{port}->");
@@ -198,8 +198,8 @@ fn config_long() -> Config {
 
 fn node_pair() -> [(&'static str, &'static str, &'static str); 2] {
     [
-        ("n8001", "http://127.0.0.1:8001", "z1"),
-        ("n8002", "http://127.0.0.1:8002", "z2"),
+        ("n28731", "http://127.0.0.1:28731", "z1"),
+        ("n28732", "http://127.0.0.1:28732", "z2"),
     ]
 }
 
@@ -254,6 +254,15 @@ fn entry(lsn: i64, prev: i64, prev_fence: i64, fence: i64, body: Body) -> Entry 
         at: "2026-10-07T00:00:00Z".into(),
         body,
     }
+}
+
+async fn copy_state(cluster: &Cluster, set_id: &str, node: &str) -> String {
+    let copies = cluster.copies(set_id).await.unwrap();
+    copies
+        .into_iter()
+        .find(|c| c.node_id == node)
+        .unwrap()
+        .state
 }
 
 fn doc(n: i64) -> Body {
@@ -321,7 +330,7 @@ async fn lease() {
 #[tokio::test]
 async fn renew_lost() {
     let _guard = lock();
-    wait_port(8001);
+    wait_port(28731);
     let cluster = cluster_with({
         let mut config = Config::from_env();
         config.lease = Duration::from_millis(800);
@@ -333,7 +342,7 @@ async fn renew_lost() {
     let writer = cluster.claim(&set_id, "a").await.unwrap().unwrap();
     writer.write(&set_id, doc(1), "t").await.unwrap();
     let sends = writer.sends();
-    let lsn = applied(&cluster, "n8001", "http://127.0.0.1:8001", &database).await;
+    let lsn = applied(&cluster, "n28731", "http://127.0.0.1:28731", &database).await;
     let _password = PgPassword(&world().pg_name);
     psql(&world().pg_name, "ALTER USER venus PASSWORD 'blocked'");
     terminate_others(&world().pg_name);
@@ -341,7 +350,7 @@ async fn renew_lost() {
     let err = writer.write(&set_id, doc(2), "t").await.unwrap_err();
     assert!(writer.sends() == sends, "sent after the lease died: {err}");
     assert_eq!(
-        applied(&cluster, "n8001", "http://127.0.0.1:8001", &database).await,
+        applied(&cluster, "n28731", "http://127.0.0.1:28731", &database).await,
         lsn
     );
 }
@@ -381,8 +390,8 @@ fn terminate_others(container: &str) {
 #[tokio::test]
 async fn fenced() {
     let _guard = lock();
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let cluster = cluster_with(config_long()).await;
     let (set_id, database) = scratch(&cluster, 2, 2).await;
     let a = cluster.claim(&set_id, "a").await.unwrap().unwrap();
@@ -421,13 +430,13 @@ async fn fenced() {
 #[tokio::test]
 async fn gap_already_divergent_atomic() {
     let _guard = lock();
-    wait_port(8001);
+    wait_port(28731);
     let cluster = cluster_with(config_long()).await;
     let (_set, database) = scratch(&cluster, 1, 1).await;
-    let url = "http://127.0.0.1:8001";
+    let url = "http://127.0.0.1:28731";
     let gap = apply(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -436,11 +445,11 @@ async fn gap_already_divergent_atomic() {
     .await
     .unwrap();
     assert_eq!(gap.status, ApplyStatus::Gap { at: 0 });
-    assert_eq!(applied(&cluster, "n8001", url, &database).await, 0);
+    assert_eq!(applied(&cluster, "n28731", url, &database).await, 0);
 
     let ok = apply(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -451,7 +460,7 @@ async fn gap_already_divergent_atomic() {
     assert_eq!(ok.status, ApplyStatus::Ok);
     let again = apply(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -461,7 +470,7 @@ async fn gap_already_divergent_atomic() {
     .unwrap();
     assert_eq!(again.status, ApplyStatus::Already);
     assert_eq!(
-        log_ids(&cluster, "n8001", url, "search", &database, 1, 10)
+        log_ids(&cluster, "n28731", url, "search", &database, 1, 10)
             .await
             .unwrap(),
         vec![1]
@@ -469,7 +478,7 @@ async fn gap_already_divergent_atomic() {
 
     let ahead = apply(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -480,7 +489,7 @@ async fn gap_already_divergent_atomic() {
     assert_eq!(ahead.status, ApplyStatus::Divergent);
     let fence = apply(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -489,9 +498,9 @@ async fn gap_already_divergent_atomic() {
     .await
     .unwrap();
     assert_eq!(fence.status, ApplyStatus::Divergent);
-    assert_eq!(applied(&cluster, "n8001", url, &database).await, 1);
+    assert_eq!(applied(&cluster, "n28731", url, &database).await, 1);
     assert_eq!(
-        log_ids(&cluster, "n8001", url, "search", &database, 1, 10)
+        log_ids(&cluster, "n28731", url, "search", &database, 1, 10)
             .await
             .unwrap(),
         vec![1]
@@ -499,11 +508,11 @@ async fn gap_already_divergent_atomic() {
 
     raw(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
-        "DEFINE TABLE item SCHEMAFULL; DEFINE FIELD n ON item TYPE int ASSERT $value > 0;",
+        "DEFINE TABLE OVERWRITE item SCHEMAFULL; DEFINE FIELD n ON item TYPE int ASSERT $value > 0;",
     )
     .await
     .unwrap();
@@ -512,7 +521,7 @@ async fn gap_already_divergent_atomic() {
         .upsert("item:10", serde_json::json!({"n": -1}));
     let err = apply(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -523,7 +532,7 @@ async fn gap_already_divergent_atomic() {
     assert!(!err.to_string().contains("gap"), "{err}");
     let rows = raw(
         &cluster,
-        "n8001",
+        "n28731",
         url,
         "search",
         &database,
@@ -535,9 +544,9 @@ async fn gap_already_divergent_atomic() {
         !rows.contains("item:9") && !rows.contains("item:10"),
         "rolled back: {rows}"
     );
-    assert_eq!(applied(&cluster, "n8001", url, &database).await, 1);
+    assert_eq!(applied(&cluster, "n28731", url, &database).await, 1);
     assert_eq!(
-        log_ids(&cluster, "n8001", url, "search", &database, 1, 10)
+        log_ids(&cluster, "n28731", url, "search", &database, 1, 10)
             .await
             .unwrap(),
         vec![1]
@@ -547,19 +556,19 @@ async fn gap_already_divergent_atomic() {
 #[tokio::test]
 async fn range_read() {
     let _guard = lock();
-    wait_port(8001);
+    wait_port(28731);
     let cluster = cluster_with(config_long()).await;
     let (set_id, database) = scratch(&cluster, 1, 1).await;
     let writer = cluster.claim(&set_id, "a").await.unwrap().unwrap();
     for n in 1_i64..=101 {
         writer.write(&set_id, doc(n), "t").await.unwrap();
     }
-    let url = "http://127.0.0.1:8001";
-    let ids = log_ids(&cluster, "n8001", url, "search", &database, 98, 101)
+    let url = "http://127.0.0.1:28731";
+    let ids = log_ids(&cluster, "n28731", url, "search", &database, 98, 101)
         .await
         .unwrap();
     assert_eq!(ids, vec![98, 99, 100, 101]);
-    let plan = explain_log(&cluster, "n8001", url, "search", &database, 98, 101)
+    let plan = explain_log(&cluster, "n28731", url, "search", &database, 98, 101)
         .await
         .unwrap();
     let lower = plan.to_ascii_lowercase();
@@ -573,8 +582,8 @@ async fn range_read() {
 #[tokio::test]
 async fn ack_policy() {
     let _guard = lock();
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let cluster = cluster_with(config_long()).await;
     let (fast, _) = scratch(&cluster, 1, 2).await;
     let writer = cluster.claim(&fast, "a").await.unwrap().unwrap();
@@ -589,11 +598,11 @@ async fn ack_policy() {
     let started = Instant::now();
     timeout(Duration::from_secs(5), writer.write(&fast, doc(1), "t"))
         .await
-        .expect("ack 1 must return while :8002 is paused")
+        .expect("ack 1 must return while :28732 is paused")
         .unwrap();
     assert!(started.elapsed() < Duration::from_secs(5));
     drop(_paused);
-    wait_port(8002);
+    wait_port(28732);
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let (slow, _) = scratch(&cluster, 2, 2).await;
@@ -609,33 +618,33 @@ async fn ack_policy() {
     let pending = writer.write(&slow, doc(2), "t");
     tokio::pin!(pending);
     tokio::select! {
-        _ = &mut pending => panic!("ack 2 returned while :8002 was paused"),
+        _ = &mut pending => panic!("ack 2 returned while :28732 was paused"),
         _ = tokio::time::sleep(Duration::from_millis(400)) => {}
     }
     drop(paused);
     timeout(Duration::from_secs(8), pending)
         .await
-        .expect("ack 2 completes after :8002 resumes")
+        .expect("ack 2 completes after :28732 resumes")
         .unwrap();
 }
 
 #[tokio::test]
 async fn one_copy_down() {
     let _guard = lock();
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let cluster = cluster_with(config_long()).await;
     let (set_id, database) = scratch(&cluster, 1, 2).await;
     let id = service_id("surreal-search-1");
-    cluster.disconnect("n8002").await;
+    cluster.disconnect("n28732").await;
     let _stopped = Stopped(id.clone());
     docker(&["stop", "-t", "1", &id]);
     let writer = cluster.claim(&set_id, "a").await.unwrap().unwrap();
     writer.write(&set_id, doc(7), "t").await.unwrap();
     let row = raw(
         &cluster,
-        "n8001",
-        "http://127.0.0.1:8001",
+        "n28731",
+        "http://127.0.0.1:28731",
         "search",
         &database,
         "SELECT * FROM item;",
@@ -644,16 +653,56 @@ async fn one_copy_down() {
     .unwrap();
     assert!(row.contains("7"), "{row}");
     let copies = cluster.copies(&set_id).await.unwrap();
-    let slow = copies.iter().find(|c| c.node_id == "n8002").unwrap();
+    let slow = copies.iter().find(|c| c.node_id == "n28732").unwrap();
     assert_eq!(slow.state, "lagging");
+    assert_eq!(cluster.health(&set_id).await.unwrap(), Health::Yellow);
+}
+
+/// Ack 1 returns before the paused copy answers. Its send times out after the
+/// write returned, and that copy still goes `lagging` (scale.md writer errors).
+#[tokio::test]
+async fn late_timeout() {
+    let _guard = lock();
+    wait_port(28731);
+    wait_port(28732);
+    let cluster = cluster_with(config_long()).await;
+    let (set_id, _database) = scratch(&cluster, 1, 2).await;
+    let writer = cluster.claim(&set_id, "a").await.unwrap().unwrap();
+    writer.write(&set_id, doc(1), "warm").await.unwrap();
+    let id = service_id("surreal-search-1");
+    let _paused = Paused(id.clone());
+    let paused = docker(&["pause", &id]);
+    assert!(
+        paused.status.success(),
+        "{}",
+        String::from_utf8_lossy(&paused.stderr)
+    );
+    let lsn = timeout(Duration::from_secs(5), writer.write(&set_id, doc(2), "t"))
+        .await
+        .expect("ack 1 must return while :28732 is paused")
+        .unwrap();
+    assert_eq!(copy_state(&cluster, &set_id, "n28732").await, "in_sync");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let state = copy_state(&cluster, &set_id, "n28732").await;
+        if state == "lagging" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "late timeout left :28732 {state}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert_eq!(writer.lagged_at("n28732").await, Some(lsn));
     assert_eq!(cluster.health(&set_id).await.unwrap(), Health::Yellow);
 }
 
 #[tokio::test]
 async fn one_in_flight() {
     let _guard = lock();
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let mut config = config_long();
     config.lag_entries = 10_000;
     let cluster = cluster_with(config).await;
@@ -687,8 +736,8 @@ async fn one_in_flight() {
 #[tokio::test]
 async fn lag_max() {
     let _guard = lock();
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let mut config = config_long();
     config.lag_entries = 8;
     config.lag = Duration::from_secs(30);
@@ -711,14 +760,14 @@ async fn lag_max() {
         started.elapsed() < Duration::from_secs(15),
         "writes waited on the paused copy"
     );
-    assert_eq!(writer.lagged_at("n8002").await, Some(8));
+    assert_eq!(writer.lagged_at("n28732").await, Some(8));
     let copies = cluster.copies(&set_id).await.unwrap();
     assert_eq!(
-        copies.iter().find(|c| c.node_id == "n8002").unwrap().state,
+        copies.iter().find(|c| c.node_id == "n28732").unwrap().state,
         "lagging"
     );
     assert_eq!(
-        applied(&cluster, "n8001", "http://127.0.0.1:8001", &database).await,
+        applied(&cluster, "n28731", "http://127.0.0.1:28731", &database).await,
         100
     );
 }
@@ -726,8 +775,8 @@ async fn lag_max() {
 #[tokio::test]
 async fn quiet_map() {
     let _guard = lock();
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let mut config = config_long();
     config.lag_entries = 10_000;
     config.lag = Duration::from_secs(60);
@@ -789,7 +838,7 @@ async fn tls() {
         "--name",
         &name,
         "-p",
-        "127.0.0.1:8019:8000",
+        "127.0.0.1:28739:8000",
         "-v",
         &format!("{}:/tls:ro", dir.display()),
         "-e",
@@ -832,10 +881,10 @@ async fn tls() {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     let pem = std::fs::read_to_string(&cert).unwrap();
-    dial_wss("127.0.0.1:8019", Some(&pem), "venus", "venus")
+    dial_wss("127.0.0.1:28739", Some(&pem), "venus", "venus")
         .await
         .expect("wss with the test CA");
-    let refused = dial_wss("127.0.0.1:8019", None, "venus", "venus").await;
+    let refused = dial_wss("127.0.0.1:28739", None, "venus", "venus").await;
     assert!(refused.is_err(), "wss without the test CA must be refused");
 }
 

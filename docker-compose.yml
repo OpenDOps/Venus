@@ -4,8 +4,9 @@
 # Hub image is MIT/Apache Venus code — see deploy/NOTICE.
 # M3 snapshotter is Compose `sidecar` (`--profile snapshot`). Flush autoinits wiki/.
 # Never omit Postgres (no SQLite fallback). Do not publish 5432.
-# Host ports bind 127.0.0.1 only (hub :3000, gRPC :3100, web :8080, hub-b :3001/:3101, sidecar :3002).
-# SurrealDB graph + search (`--profile graph`): :8000 graph, :8001 search-0, :8002 search-1.
+# Host ports bind 127.0.0.1 only, all in the 287xx block (docs/devops/compose.md):
+# web :28700, hub :28710, gRPC :28711, hub-b :28712/:28713, sidecar :28720.
+# SurrealDB graph + search (`--profile graph`): :28730 graph, :28731 search-0, :28732 search-1.
 # Default `up` does not start them. Image surrealdb/surrealdb:v2.7.0. Cache is 64MB, not host RAM.
 # Operators: docs/devops/compose.md  Component: docs/design/components/backend/hub/
 
@@ -21,7 +22,7 @@ x-hub-env: &hub-env
   POSTGRES_DB: venus
   # Product DSN. DATABASE_URL wins over POSTGRES_* (no SQLite fallback).
   DATABASE_URL: "postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable"
-  HUB_LISTEN: "0.0.0.0:3000"
+  HUB_LISTEN: "0.0.0.0:28710"
   HUB_DB_MAX_CONNECTIONS: "32"
   HUB_DB_MIN_CONNECTIONS: "4"
   HUB_DB_ACQUIRE_TIMEOUT_SECS: "10"
@@ -30,9 +31,9 @@ x-hub-env: &hub-env
   HUB_DB_WORK_MEM: "16MB"
   HUB_PERSIST_INTERVAL_MS: "1000"
   HUB_COMPACT_AFTER: "32"
-  # Vite/Playwright talk to hub:3000. Empty string disables CORS (same-origin nginx).
-  HUB_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080"
-  HUB_GRPC_LISTEN: "0.0.0.0:3100"
+  # Vite/Playwright talk to hub:28710. Empty string disables CORS (same-origin nginx).
+  HUB_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:28700,http://127.0.0.1:28700"
+  HUB_GRPC_LISTEN: "0.0.0.0:28711"
   # One hub process, one wiki. Other workspace ids are 404 before a room or lease.
   HUB_WORKSPACES: "77e4a2b1-8b40-5979-a73c-fd4477216d00"
 
@@ -110,12 +111,12 @@ services:
       <<: *hub-env
       HUB_OWNER: hub
     ports:
-      - "127.0.0.1:3000:3000"
-      - "127.0.0.1:3100:3100"
+      - "127.0.0.1:28710:28710"
+      - "127.0.0.1:28711:28711"
     # SIGTERM drain (flush persist, drop lease) before SIGKILL. Default 10s is tight.
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/28710'"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -136,11 +137,11 @@ services:
       <<: *hub-env
       HUB_OWNER: hub-b
     ports:
-      - "127.0.0.1:3001:3000"
-      - "127.0.0.1:3101:3100"
+      - "127.0.0.1:28712:28710"
+      - "127.0.0.1:28713:28711"
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/28710'"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -165,8 +166,8 @@ services:
       POSTGRES_PASSWORD: venus
       POSTGRES_DB: venus
       DATABASE_URL: "postgres://venus_hub:venus@postgres:5432/venus?sslmode=disable"
-      SIDECAR_LISTEN: "0.0.0.0:3002"
-      VENUS_BLOB_ORIGIN: "http://hub:3000"
+      SIDECAR_LISTEN: "0.0.0.0:28720"
+      VENUS_BLOB_ORIGIN: "http://hub:28710"
       SNAPSHOT_WORKERS: "2"
       SNAPSHOT_IDLE_MS: "60000"
       SNAPSHOT_OBSERVE_MS: "1000"
@@ -175,13 +176,13 @@ services:
       WIKI_DIR: /wiki
       # This directory publishes only the M0 wiki. POST /flush for any other id is 404.
       WIKI_WORKSPACE_ID: "77e4a2b1-8b40-5979-a73c-fd4477216d00"
-      SIDECAR_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080"
+      SIDECAR_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:28700,http://127.0.0.1:28700"
     volumes:
       # Nested wiki git (product .gitignore /wiki/). `mkdir -p wiki && chmod a+rwx wiki`
       # so USER venus can autoinit on the bind mount.
       - ./wiki:/wiki
     ports:
-      - "127.0.0.1:3002:3002"
+      - "127.0.0.1:28720:28720"
     mem_limit: 1g
     pids_limit: 512
     cap_drop:
@@ -189,7 +190,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3002'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/28720'"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -203,7 +204,7 @@ services:
       hub:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8080:80"
+      - "127.0.0.1:28700:80"
     mem_limit: 128m
     pids_limit: 128
     security_opt:
@@ -221,7 +222,7 @@ services:
     <<: *surreal
     command: ["start", "rocksdb:/data/graph.db"]
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:28730:8000"
     volumes:
       - surreal-graph-data:/data
 
@@ -229,7 +230,7 @@ services:
     <<: *surreal
     command: ["start", "rocksdb:/data/search.db"]
     ports:
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:28731:8000"
     volumes:
       - surreal-search-0-data:/data
 
@@ -237,7 +238,7 @@ services:
     <<: *surreal
     command: ["start", "rocksdb:/data/search.db"]
     ports:
-      - "127.0.0.1:8002:8000"
+      - "127.0.0.1:28732:8000"
     volumes:
       - surreal-search-1-data:/data
 

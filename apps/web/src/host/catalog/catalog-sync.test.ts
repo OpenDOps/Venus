@@ -8,7 +8,7 @@ import { FOLDER_SPEC_ID, getNode } from './schema.js';
 
 async function hubRootBody(): Promise<string | null> {
   try {
-    const res = await fetch('http://127.0.0.1:3000/', {
+    const res = await fetch('http://127.0.0.1:28710/', {
       signal: AbortSignal.timeout(1500),
     });
     return (await res.text()).trim();
@@ -22,19 +22,19 @@ const hubUp = hubBody === 'venus-hub';
 
 if (hubBody && hubBody !== 'venus-hub') {
   throw new Error(
-    `:3000 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
+    `:28710 is not the Venus hub (GET / → ${JSON.stringify(hubBody)}). Fail if keck is the process.`,
   );
 }
 
 if (!hubUp) {
   console.warn(
-    'catalog-sync.test.ts: skipping A→B — nothing on 127.0.0.1:3000. Start with pnpm sync:up.',
+    'catalog-sync.test.ts: skipping A→B — nothing on 127.0.0.1:28710. Start with pnpm sync:up.',
   );
 }
 
 describe.skipIf(!hubUp)('A→B catalog over hub WS', () => {
   test('createDoc on A appears on B without reload', async () => {
-    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
     const pa = new VenusHubProvider(url);
     const pb = new VenusHubProvider(url);
     const a = await createM0Workspace(pa);
@@ -67,7 +67,7 @@ describe.skipIf(!hubUp)('A→B catalog over hub WS', () => {
   });
 
   test('home_protected on A leaves home under spec on B', async () => {
-    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
     const pa = new VenusHubProvider(url);
     const pb = new VenusHubProvider(url);
     const a = await createM0Workspace(pa);

@@ -49,12 +49,12 @@ pub const FLUSH_JOBS_REASONS: &[&str] = &["idle", "flush", "lease"];
 pub const WORKSPACE_ID: &str = "77e4a2b1-8b40-5979-a73c-fd4477216d00";
 
 /// Node 0 is the graph. Nodes 1 and 2 are search.
-pub const GRAPH_NODE: (&str, &str) = ("0", "http://127.0.0.1:8000");
+pub const GRAPH_NODE: (&str, &str) = ("0", "http://127.0.0.1:28730");
 
 /// Search node ids for this board, and the host URL of each.
 pub const SEARCH_NODES: &[(&str, &str)] = &[
-    ("1", "http://127.0.0.1:8001"),
-    ("2", "http://127.0.0.1:8002"),
+    ("1", "http://127.0.0.1:28731"),
+    ("2", "http://127.0.0.1:28732"),
 ];
 
 /// Remote WebSocket client. Present only when `protocol-ws` is enabled.

@@ -28,4 +28,4 @@ The Vitest env-switch tests **do not** open a socket.
 
 | Spec | Needs | Proves |
 |---|---|---|
-| `e2e/m1-provider.spec.ts` | Compose hub, `PLAYWRIGHT_M1=1` Playwright this file | `GET /` is `venus-hub`; `kind === 'venus'`; one WS to `ws://127.0.0.1:3000/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with subprotocol `AFFiNE` |
+| `e2e/m1-provider.spec.ts` | Compose hub, `PLAYWRIGHT_M1=1` Playwright this file | `GET /` is `venus-hub`; `kind === 'venus'`; one WS to `ws://127.0.0.1:28710/collaboration/77e4a2b1-8b40-5979-a73c-fd4477216d00` with subprotocol `AFFiNE` |

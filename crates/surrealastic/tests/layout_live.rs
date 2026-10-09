@@ -83,7 +83,7 @@ fn surreal_on(port: u16) -> bool {
     text.contains("200") && !text.contains("nginx")
 }
 
-/// Compose publishes the graph on :8000. When that port is already taken, the
+/// Compose publishes the graph on :28730. When that port is already taken, the
 /// commit set runs in a scratch SurrealDB container on a free port.
 fn ensure_graph() -> String {
     let up = docker(&[
@@ -98,8 +98,8 @@ fn ensure_graph() -> String {
         "--no-deps",
         "surreal-graph",
     ]);
-    if up.status.success() && surreal_on(8000) {
-        return "http://127.0.0.1:8000".to_string();
+    if up.status.success() && surreal_on(28730) {
+        return "http://127.0.0.1:28730".to_string();
     }
     let name = format!("surrealastic-graph-{}", std::process::id());
     let _ = docker(&["rm", "-f", &name]);
@@ -156,7 +156,7 @@ fn world() -> &'static World {
             "surreal-search-0",
             "surreal-search-1",
         ]);
-        for port in [8001_u16, 8002] {
+        for port in [28731_u16, 28732] {
             wait_port(port);
         }
         let graph = ensure_graph();
@@ -317,8 +317,8 @@ struct ShardDb {
 fn node_url(node: &str) -> &'static str {
     match node {
         "g8000" => GRAPH.get().expect("graph endpoint").as_str(),
-        "n8001" => "http://127.0.0.1:8001",
-        "n8002" => "http://127.0.0.1:8002",
+        "n28731" => "http://127.0.0.1:28731",
+        "n28732" => "http://127.0.0.1:28732",
         other => panic!("unknown node {other}"),
     }
 }
@@ -331,8 +331,8 @@ async fn scratch(
 ) -> (Layout, Scratch) {
     for (node, url, pool, zone) in [
         ("g8000", node_url("g8000"), "graph", "z0"),
-        ("n8001", "http://127.0.0.1:8001", "search", "z1"),
-        ("n8002", "http://127.0.0.1:8002", "search", "z2"),
+        ("n28731", "http://127.0.0.1:28731", "search", "z1"),
+        ("n28732", "http://127.0.0.1:28732", "search", "z2"),
     ] {
         cluster
             .upsert_node(node, pool, url, zone, 1, "up")
@@ -474,7 +474,7 @@ async fn commit_returns_and_queued_apply() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["g8000"], vec!["n8001", "n8002"]],
+        &[vec!["g8000"], vec!["n28731", "n28732"]],
         None,
         None,
     )
@@ -512,13 +512,13 @@ async fn commit_returns_and_queued_apply() {
         "{lag:?}"
     );
     drop(paused);
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     until("queued item on shard 1", || {
         let cluster = cluster.clone();
         let database = scratch.shards[1].database.clone();
         async move {
-            for node in ["n8001", "n8002"] {
+            for node in ["n28731", "n28732"] {
                 let text = raw(
                     &cluster,
                     node,
@@ -547,7 +547,7 @@ async fn queue_order() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["g8000"], vec!["n8001", "n8002"]],
+        &[vec!["g8000"], vec!["n28731", "n28732"]],
         None,
         None,
     )
@@ -562,18 +562,18 @@ async fn queue_order() {
         commit_is_number(third);
     }
     drop(paused);
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let database = scratch.shards[1].database.clone();
     until("three commits on shard 1", || {
         let cluster = cluster.clone();
         let database = database.clone();
-        async move { logs(&cluster, "n8001", &database).await.len() >= 3 }
+        async move { logs(&cluster, "n28731", &database).await.len() >= 3 }
     })
     .await;
     let text = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[1].database,
         "SELECT * FROM row:1;",
     )
@@ -581,7 +581,7 @@ async fn queue_order() {
     assert!(text.contains('3'), "{text}");
     let cursor = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[1].database,
         "SELECT * FROM _layout:cursor;",
     )
@@ -600,7 +600,7 @@ async fn one_copy_down() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["n8001", "n8002"], vec!["n8001"]],
+        &[vec!["n28731", "n28732"], vec!["n28731"]],
         None,
         None,
     )
@@ -613,13 +613,13 @@ async fn one_copy_down() {
     commit_is_number(commit);
     let on_a = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[0].database,
         "SELECT * FROM row;",
     )
     .await;
     assert!(on_a.contains("solo") || on_a.contains("row:0"), "{on_a}");
-    until("n8002 lagging", || {
+    until("n28732 lagging", || {
         let cluster = cluster.clone();
         let set_id = scratch.shards[0].set_id.clone();
         async move {
@@ -630,7 +630,7 @@ async fn one_copy_down() {
                 .and_then(|copies| {
                     copies
                         .into_iter()
-                        .find(|copy| copy.node_id == "n8002")
+                        .find(|copy| copy.node_id == "n28732")
                         .map(|copy| copy.state == "lagging")
                 })
                 .unwrap_or(false)
@@ -639,7 +639,7 @@ async fn one_copy_down() {
     .await;
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await.len(), 1);
     drop(paused);
-    wait_port(8002);
+    wait_port(28732);
     finish(&cluster, &scratch).await;
 }
 
@@ -647,7 +647,7 @@ async fn one_copy_down() {
 async fn item_table_collision_and_delete() {
     let _guard = gate().await;
     let cluster = cluster().await;
-    let (layout, scratch) = scratch(&cluster, &[vec!["n8001"], vec!["n8002"]], None, None).await;
+    let (layout, scratch) = scratch(&cluster, &[vec!["n28731"], vec!["n28732"]], None, None).await;
     let commit = layout
         .write(Body::new(), vec![row_item(4, "kept")])
         .await
@@ -691,7 +691,7 @@ async fn item_table_collision_and_delete() {
     assert_eq!(logs(&cluster, "g8000", &scratch.commit_db).await, before);
     let still = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[0].database,
         "SELECT * FROM row;",
     )
@@ -712,7 +712,7 @@ async fn item_table_collision_and_delete() {
     assert!(!item.contains("kept"), "{item}");
     let shard = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[0].database,
         "SELECT * FROM row:4;",
     )
@@ -727,7 +727,7 @@ async fn cursor_and_fresh_read() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["g8000"], vec!["n8001", "n8002"]],
+        &[vec!["g8000"], vec!["n28731", "n28732"]],
         None,
         None,
     )
@@ -754,14 +754,14 @@ async fn cursor_and_fresh_read() {
     assert!(lag.iter().all(|row| row.behind == 0), "idle shard {lag:?}");
     let on_a = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[1].database,
         "SELECT * FROM _layout:cursor;",
     )
     .await;
     let on_b = q(
         &cluster,
-        "n8002",
+        "n28732",
         &scratch.shards[1].database,
         "SELECT * FROM _layout:cursor;",
     )
@@ -789,8 +789,8 @@ async fn cursor_and_fresh_read() {
         "{read:?}"
     );
     drop(paused);
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     until("shard 1 caught up", || {
         let layout = &layout;
         async move {
@@ -821,12 +821,12 @@ async fn schema_reaches_a_copy_that_was_down() {
     });
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["n8001", "n8002"], vec!["n8001"]],
+        &[vec!["n28731", "n28732"], vec!["n28731"]],
         None,
         Some(hooks.clone()),
     )
     .await;
-    for node in ["n8001", "n8002"] {
+    for node in ["n28731", "n28732"] {
         let info = q(
             &cluster,
             node,
@@ -848,22 +848,22 @@ async fn schema_reaches_a_copy_that_was_down() {
         .await
         .unwrap();
     assert_eq!(
-        logs(&cluster, "n8001", &scratch.shards[0].database).await,
+        logs(&cluster, "n28731", &scratch.shards[0].database).await,
         vec![lsn]
     );
     drop(paused);
-    wait_port(8002);
+    wait_port(28732);
     layout.catch_up(&scratch.shards[0].set_id).await.unwrap();
     let info = q(
         &cluster,
-        "n8002",
+        "n28732",
         &scratch.shards[0].database,
         "INFO FOR TABLE probe;",
     )
     .await;
     assert!(info.contains("extra"), "{info}");
     assert_eq!(
-        logs(&cluster, "n8002", &scratch.shards[0].database)
+        logs(&cluster, "n28732", &scratch.shards[0].database)
             .await
             .len(),
         1
@@ -884,7 +884,7 @@ async fn empty_shard_refills_from_the_commit_set() {
     });
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["n8001", "n8002"], vec!["n8001", "n8002"]],
+        &[vec!["n28731", "n28732"], vec!["n28731", "n28732"]],
         None,
         Some(hooks.clone()),
     )
@@ -893,8 +893,8 @@ async fn empty_shard_refills_from_the_commit_set() {
         .write(Body::new(), vec![row_item(0, "even"), row_item(1, "odd")])
         .await
         .unwrap();
-    let sibling_before = logs(&cluster, "n8001", &scratch.shards[1].database).await;
-    for node in ["n8001", "n8002"] {
+    let sibling_before = logs(&cluster, "n28731", &scratch.shards[1].database).await;
+    for node in ["n28731", "n28732"] {
         remove_database(
             &cluster,
             node,
@@ -908,7 +908,7 @@ async fn empty_shard_refills_from_the_commit_set() {
     layout.refill(0).await.expect("refill");
     let restored = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[0].database,
         "SELECT * FROM row;",
     )
@@ -918,7 +918,7 @@ async fn empty_shard_refills_from_the_commit_set() {
         "{restored}"
     );
     assert!(!restored.contains("odd"), "{restored}");
-    let sibling_after = logs(&cluster, "n8001", &scratch.shards[1].database).await;
+    let sibling_after = logs(&cluster, "n28731", &scratch.shards[1].database).await;
     assert_eq!(sibling_before, sibling_after);
     assert_eq!(hooks.rebuilds.load(Ordering::SeqCst), 0);
     assert_eq!(hooks.lost.load(Ordering::SeqCst), 0);
@@ -931,7 +931,12 @@ async fn dual_layout() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["n8001"], vec!["n8001"], vec!["n8002"], vec!["n8002"]],
+        &[
+            vec!["n28731"],
+            vec!["n28731"],
+            vec!["n28732"],
+            vec!["n28732"],
+        ],
         Some(4),
         None,
     )
@@ -943,14 +948,14 @@ async fn dual_layout() {
     commit_is_number(commit);
     let a = q(
         &cluster,
-        "n8001",
+        "n28731",
         &scratch.shards[0].database,
         "SELECT * FROM row;",
     )
     .await;
     let b = q(
         &cluster,
-        "n8002",
+        "n28732",
         &scratch.shards[2].database,
         "SELECT * FROM row;",
     )
@@ -964,7 +969,7 @@ async fn dual_layout() {
 async fn entry_limit_live() {
     let _guard = gate().await;
     let cluster = cluster().await;
-    let (layout, scratch) = scratch(&cluster, &[vec!["n8001"], vec!["n8002"]], None, None).await;
+    let (layout, scratch) = scratch(&cluster, &[vec!["n28731"], vec!["n28732"]], None, None).await;
     let items: Vec<Item> = (0..300)
         .map(|n| row_item(n * 2, &format!("i{n}")))
         .collect();
@@ -985,12 +990,12 @@ async fn entry_limit_live() {
         assert!(upserts <= 256 && upserts > 0, "{id} has {upserts}");
         assert!(text.len() < 4 * 1024 * 1024, "{id} is {} bytes", text.len());
     }
-    let ids = logs(&cluster, "n8001", &scratch.shards[0].database).await;
+    let ids = logs(&cluster, "n28731", &scratch.shards[0].database).await;
     assert_eq!(ids.len(), 2, "{ids:?}");
     for id in ids {
         let text = q(
             &cluster,
-            "n8001",
+            "n28731",
             &scratch.shards[0].database,
             &format!("SELECT * FROM _repl_log:{id};"),
         )
@@ -1008,7 +1013,7 @@ async fn queued_delete_survives_restart() {
     let cluster = cluster().await;
     let (layout, scratch) = scratch(
         &cluster,
-        &[vec!["g8000"], vec!["n8001", "n8002"]],
+        &[vec!["g8000"], vec!["n28731", "n28732"]],
         None,
         None,
     )
@@ -1021,8 +1026,8 @@ async fn queued_delete_survives_restart() {
         let cluster = &cluster;
         let db = scratch.shards[1].database.clone();
         async move {
-            let a = q(cluster, "n8001", &db, "SELECT * FROM row:1;").await;
-            let b = q(cluster, "n8002", &db, "SELECT * FROM row:1;").await;
+            let a = q(cluster, "n28731", &db, "SELECT * FROM row:1;").await;
+            let b = q(cluster, "n28732", &db, "SELECT * FROM row:1;").await;
             a.contains("row:1") || b.contains("row:1")
         }
     })
@@ -1036,8 +1041,8 @@ async fn queued_delete_survives_restart() {
     let db_id = scratch.db_id.clone();
     drop(layout);
     drop(paused);
-    wait_port(8001);
-    wait_port(8002);
+    wait_port(28731);
+    wait_port(28732);
     let layout = Layout::open(cluster.clone(), &db_id, "holder", None)
         .await
         .expect("reopen");
@@ -1045,8 +1050,8 @@ async fn queued_delete_survives_restart() {
         let cluster = &cluster;
         let db = scratch.shards[1].database.clone();
         async move {
-            let a = q(cluster, "n8001", &db, "SELECT * FROM row:1;").await;
-            let b = q(cluster, "n8002", &db, "SELECT * FROM row:1;").await;
+            let a = q(cluster, "n28731", &db, "SELECT * FROM row:1;").await;
+            let b = q(cluster, "n28732", &db, "SELECT * FROM row:1;").await;
             !a.contains("row:1") && !b.contains("row:1")
         }
     })

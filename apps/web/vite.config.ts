@@ -261,11 +261,11 @@ export default defineConfig({
     react(),
   ],
   server: {
-    // Playwright M1 uses :5174; same-origin /api proxy to hub:3000.
+    // Playwright M1 uses :5174; same-origin /api proxy to hub:28710.
     // WS still talks to the hub directly (not CORS).
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3000',
+        target: 'http://127.0.0.1:28710',
         changeOrigin: true,
       },
     },

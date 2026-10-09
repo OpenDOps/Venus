@@ -120,7 +120,7 @@ test('Memory has no worker: unset VITE_SYNC_URL constructs no SharedWorker', asy
 });
 
 test('Fallback: no SharedWorker, or one that throws, is the per-tab socket path', () => {
-  const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
   expect(typeof (globalThis as { SharedWorker?: unknown }).SharedWorker).toBe(
     'undefined',
   );
@@ -145,7 +145,7 @@ test('Fallback: no SharedWorker, or one that throws, is the per-tab socket path'
 });
 
 test('SharedWorker present: sessions open worker channels, not tab WebSockets', () => {
-  const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
   const workers: Array<{ name: string; posted: unknown[] }> = [];
   Object.defineProperty(globalThis, 'SharedWorker', {
     configurable: true,
@@ -235,7 +235,7 @@ test('Env switch: VITE_SYNC_URL selects venus without opening a socket until con
   globalThis.WebSocket = StubSocket;
 
   try {
-    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
     const fromEnv = providerFromEnv({ VITE_SYNC_URL: url });
     expect(fromEnv).toBeInstanceOf(VenusHubProvider);
     if (!(fromEnv instanceof VenusHubProvider)) {
@@ -267,14 +267,14 @@ test('Env switch: same-origin needs location.host and does not open a socket yet
   const desc = Object.getOwnPropertyDescriptor(globalThis, 'location');
   Object.defineProperty(globalThis, 'location', {
     configurable: true,
-    value: { protocol: 'http:', host: '127.0.0.1:8080' },
+    value: { protocol: 'http:', host: '127.0.0.1:28700' },
   });
   try {
     const fromEnv = providerFromEnv({ VITE_SYNC_URL: 'same-origin' });
     expect(fromEnv).toBeInstanceOf(VenusHubProvider);
     expect(fromEnv).toMatchObject({
       kind: 'venus',
-      url: `ws://127.0.0.1:8080${COLLABORATION_PATH}`,
+      url: `ws://127.0.0.1:28700${COLLABORATION_PATH}`,
     });
   } finally {
     if (desc) Object.defineProperty(globalThis, 'location', desc);
@@ -283,7 +283,7 @@ test('Env switch: same-origin needs location.host and does not open a socket yet
 });
 
 test('wire A: ?doc= is SQL uuid; home omits the query', () => {
-  const base = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+  const base = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
   expect(sqlIdForDoc(PAGE_DOC_ID)).toBe(PAGE_SQL_ID);
   expect(sqlIdForDoc(PAGE_SQL_ID.toUpperCase())).toBe(PAGE_SQL_ID);
   expect(sqlIdForDoc(CATALOG_GUID)).toBe(CATALOG_SQL_ID);
@@ -322,7 +322,7 @@ test('venus hub _gen is per session; disconnect one keeps the other socket', () 
   // @ts-expect-error stub
   globalThis.WebSocket = StubWs;
   try {
-    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
     const provider = new VenusHubProvider(url);
     const homeDoc = { on() {}, off() {} } as unknown as Doc;
     const pageDoc = { on() {}, off() {} } as unknown as Doc;
@@ -371,7 +371,7 @@ test('whenReady(docId) does not fail when another session closes', async () => {
   // @ts-expect-error stub
   globalThis.WebSocket = StubWs;
   try {
-    const url = `ws://127.0.0.1:3000${COLLABORATION_PATH}`;
+    const url = `ws://127.0.0.1:28710${COLLABORATION_PATH}`;
     const provider = new VenusHubProvider(url);
     const homeDoc = { on() {}, off() {} } as unknown as Doc;
     const pageDoc = { on() {}, off() {} } as unknown as Doc;

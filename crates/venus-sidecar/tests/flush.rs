@@ -488,7 +488,7 @@ async fn drop_pin_after_commit() {
 fn git_module_is_not_hub_export() {
     let src = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/git.rs"))
         .expect("git.rs");
-    for needle in ["/export", "reqwest", "get_doc", ":3000/api/block"] {
+    for needle in ["/export", "reqwest", "get_doc", ":28710/api/block"] {
         assert!(
             !src.contains(needle),
             "git snapshotter must not GET hub export ({needle})"

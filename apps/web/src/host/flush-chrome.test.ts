@@ -51,7 +51,7 @@ test('Flush chrome is host App, not mount-editor; no store.readonly', () => {
 test('sidecarUrlFromEnv is empty without VITE_SIDECAR_URL', () => {
   expect(sidecarUrlFromEnv({})).toBe('');
   expect(sidecarUrlFromEnv({ VITE_SIDECAR_URL: '  ' })).toBe('');
-  expect(sidecarUrlFromEnv({ VITE_SIDECAR_URL: 'http://127.0.0.1:3002/' })).toBe(
-    'http://127.0.0.1:3002',
+  expect(sidecarUrlFromEnv({ VITE_SIDECAR_URL: 'http://127.0.0.1:28720/' })).toBe(
+    'http://127.0.0.1:28720',
   );
 });
